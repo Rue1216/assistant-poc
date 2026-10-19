@@ -1,0 +1,11 @@
+# Local Claude Code settings
+.claude/settings.local.json
+
+# Secrets
+.env
+*.env.local
+
+# Build output
+backend/target/
+frontend/node_modules/
+frontend/dist/
