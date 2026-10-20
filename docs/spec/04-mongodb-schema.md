@@ -1,6 +1,6 @@
 # 04 MongoDB Schema
 
-> 版本：v0.5（POC）・2026-10-19
+> 版本：v0.7（POC）・2026-10-20
 
 ## 1. Collection 總覽
 
@@ -27,7 +27,6 @@
 | `configType` | string | ✓ | `SYSTEM_PROMPT`（只有一份 `system.main`）或 `SYSTEM_INSTRUCTION`（每份一個問題分類） |
 | `name` | string | ✓ | 顯示名稱，1–50 字 |
 | `content` | string | ✓ | Markdown 內容，最多 65,536 字元（API 另檢查 UTF-8 bytes） |
-| `relatedTools` | string[] | `SYSTEM_INSTRUCTION` 必填 | 這個問題分類需要的工具；使用者**全部可用**時才載入，範例問題也才會顯示為快捷按鈕 |
 | `status` | string | ✓ | `DRAFT`、`SCHEDULED`、`PUBLISHED`、`ARCHIVED` |
 | `version` | int | ✓ | 業務版本號，同一個 `configKey` 從 1 開始遞增 |
 | `basedOnVersion` | int \| null | | 回復時記錄來源版本 |
@@ -52,7 +51,6 @@
   "configType": "SYSTEM_INSTRUCTION",
   "name": "市場快訊",
   "content": "## 適用問題\n使用者詢問大盤、指數、個股行情或公司重大訊息……\n\n## 回答套版\n……\n\n## 範例問題\n- 今天大盤收盤如何？\n\n## 注意事項\n……",
-  "relatedTools": ["getMarketIndex", "getStockQuote", "getCompanyAnnouncements"],
   "status": "PUBLISHED",
   "version": 2,
   "basedOnVersion": null,
@@ -96,7 +94,6 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_CONFIG", {
         configType:     { enum: ["SYSTEM_PROMPT", "SYSTEM_INSTRUCTION"] },
         name:           { bsonType: "string", minLength: 1, maxLength: 50 },
         content:        { bsonType: "string", maxLength: 65536 },
-        relatedTools:   { bsonType: "array", items: { bsonType: "string", maxLength: 64 }, maxItems: 20 },
         status:         { enum: ["DRAFT", "SCHEDULED", "PUBLISHED", "ARCHIVED"] },
         version:        { bsonType: "int", minimum: 1 },
         basedOnVersion: { bsonType: ["int", "null"], minimum: 1 },
@@ -137,7 +134,7 @@ stateDiagram-v2
 
 | 操作 | 對象 | 行為 | `updatedBy` / `updatedAt` |
 |---|---|---|---|
-| 建立草稿 | — | 已有 `DRAFT` 或 `SCHEDULED` → 409。否則複製目前已發布版本的 `name`、`content`、`relatedTools`，新增 `version = 最大值 + 1`、`status = DRAFT` | 操作者 / 現在 |
+| 建立草稿 | — | 已有 `DRAFT` 或 `SCHEDULED` → 409。否則複製目前已發布版本的 `name`、`content`，新增 `version = 最大值 + 1`、`status = DRAFT` | 操作者 / 現在 |
 | 儲存 | DRAFT | 更新內容，維持 `DRAFT` | 操作者 / 現在 |
 | 儲存 | SCHEDULED | 更新內容，**保留排程**；先執行發布前驗證，不通過 → 422 | 操作者 / 現在（視為由此人重新確認排程） |
 | 存成草稿 | DRAFT | 同「儲存」 | 操作者 / 現在 |
@@ -182,7 +179,6 @@ stateDiagram-v2
 | `MAX_SIZE` | UTF-8 編碼後最多 65,536 bytes |
 | `REQUIRED_SECTION` | `SYSTEM_PROMPT` 必須有 `## 角色`、`## 安全規則`、`## 回答格式`；`SYSTEM_INSTRUCTION` 必須有 `## 適用問題`、`## 回答套版`、`## 範例問題`、`## 注意事項` |
 | `EXAMPLE_QUESTIONS` | `SYSTEM_INSTRUCTION` 的 `## 範例問題` 底下需有 1–5 個 `- ` 條列，每題最多 40 字 |
-| `RELATED_TOOLS` | `SYSTEM_INSTRUCTION` 至少一個 `relatedTools`，且每個都是已註冊的工具 |
 | `FORBIDDEN_CONTENT` | 不得包含下表任何樣式 |
 
 禁止內容（regex，不分大小寫）：
@@ -207,14 +203,14 @@ stateDiagram-v2
 
 第一次啟動時，若 collection 為空，從 `classpath:seed/*.md` 匯入以下設定並直接發布 v1：
 
-| configKey | configType | 名稱 | relatedTools |
-|---|---|---|---|
-| `system.main` | SYSTEM_PROMPT | 主要系統提示 | — |
-| `instruction.customer-overview` | SYSTEM_INSTRUCTION | 顧客概況 | `getCustomerProfile` |
-| `instruction.opportunity` | SYSTEM_INSTRUCTION | 經營機會 | `getCustomerProfile`、`getCustomerHoldings`、`getRecentInteractions`、`getCampaignResults` |
-| `instruction.contact-prep` | SYSTEM_INSTRUCTION | 聯繫準備 | `getRecentInteractions`、`getCampaignResults` |
-| `instruction.contact-topic` | SYSTEM_INSTRUCTION | 聯繫話題 | `getCustomerHoldings`、`getStockQuote`、`getCompanyAnnouncements` |
-| `instruction.market-brief` | SYSTEM_INSTRUCTION | 市場快訊 | `getMarketIndex`、`getStockQuote`、`getCompanyAnnouncements` |
+| configKey | configType | 名稱 |
+|---|---|---|
+| `system.main` | SYSTEM_PROMPT | 主要系統提示 |
+| `instruction.customer-overview` | SYSTEM_INSTRUCTION | 顧客概況 |
+| `instruction.opportunity` | SYSTEM_INSTRUCTION | 經營機會 |
+| `instruction.contact-prep` | SYSTEM_INSTRUCTION | 聯繫準備 |
+| `instruction.contact-topic` | SYSTEM_INSTRUCTION | 聯繫話題 |
+| `instruction.market-brief` | SYSTEM_INSTRUCTION | 市場快訊 |
 
 - 完整內容見 [07-prompt-examples.md](07-prompt-examples.md)。
 - 初始資料的 `createdBy`、`updatedBy` 為 `system`。

@@ -1,9 +1,13 @@
 # Local Claude Code settings
-.claude/settings.local.json
+/.claude/
 
 # Secrets
 .env
 *.env.local
+
+# Local reference material and UI prototype (not versioned)
+/reference.md
+/prototype/
 
 # Build output
 backend/target/

@@ -1,6 +1,6 @@
 # 03 Tool Catalog
 
-> 版本：v0.4（POC）・2026-10-19
+> 版本：v0.7（POC）・2026-10-20
 
 ## 1. 共通規則
 
@@ -178,7 +178,7 @@ public record ToolResult(
   "segment": "VIP",
   "ageRange": "55-64",
   "relationshipYears": 8,
-  "accessNote": "目前身分僅能查看去識別化基本輪廓"
+  "accessNote": "依您的權限僅能查看去識別化基本輪廓"
 }
 ```
 

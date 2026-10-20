@@ -281,7 +281,7 @@
   - (a) 固定附加在 System Prompt 後面
   - (b) 依問題類型動態載入
   - (c) 和特定 tool 綁定，提供使用說明
-- **預設假設**：（POC 已採用）改稱 System Instructions：每份是一個問題分類，含適用問題、回答套版、範例問題；`relatedTools` 全部可用才載入，範例問題顯示為快捷按鈕（見 [07-prompt-examples.md](spec/07-prompt-examples.md)）。
+- **預設假設**：（POC 已採用）改稱 System Instructions：每份是一個問題分類，含適用問題、回答套版、範例問題；所有已發布分類都載入，由模型判斷分類並從可用工具中挑選（工具依存取等級提供），範例問題顯示為快捷按鈕（見 [07-prompt-examples.md](spec/07-prompt-examples.md)）。
 - **回覆**：
 
 #### M20. configKey 與 configType 的命名

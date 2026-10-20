@@ -1,6 +1,6 @@
 # 07 範例 Prompt
 
-> 版本：v0.4（POC）・2026-10-19
+> 版本：v0.7（POC）・2026-10-20
 
 本文件提供 System Prompt 與 System Instructions 的範例內容，用途有三個：
 
@@ -17,11 +17,12 @@
 ```
 ① system.main（本文件第 2 節，可在管理頁修改）
 ② # 問題分類
-   使用者可用的每一份 System Instruction（本文件第 3 節，可在管理頁修改）
+   每一份已發布的 System Instruction（本文件第 3 節，可在管理頁修改）
 ③ # 不可覆寫的安全規則（寫死在 Java，管理頁無法修改，見 01-architecture.md 第 4 節）
 ```
 
-- 只有「`relatedTools` 全部可用」的 Instruction 才會組進去。後台管理人員和 IT 管理人員（`LIMITED`）只會拿到「顧客概況」和「市場快訊」兩個分類。
+- 所有已發布的 Instruction 都會組進去，不依存取等級篩選。由模型判斷問題屬於哪個分類，再從本次提供的工具中挑選呼叫。
+- 提供給模型的工具只依存取等級決定（`ToolRegistry.toolsFor`，見 [03-tool-catalog.md](03-tool-catalog.md) 1.7）。後台管理人員和 IT 管理人員（`LIMITED`）仍會看到「聯繫準備」等分類，但拿不到互動紀錄等 `FULL` 工具，由 ① 的規則回答「依您的權限無法查看這類資料」。
 - 第 ③ 部分放在最後，即使 ① ② 被改壞，關鍵防護仍然有效。
 
 ---
@@ -51,6 +52,7 @@
 - 先給結論，再列重點；重點以條列呈現，每點一行為原則。
 - 數字要標示資料時間，例如「（2026-10-16 收盤）」。
 - 若問題符合某個問題分類，依該分類的「回答套版」回答。
+- 若問題符合某個問題分類，但該分類需要的資料沒有可用的工具，回答「依您的權限無法查看這類資料」，不要套用回答套版，也不要提到工具名稱。
 - 若資料不足或工具失敗，明確說明缺少哪些資訊，不要用推測補齊。
 ```
 
@@ -60,7 +62,7 @@
 
 ### 3.1 `instruction.customer-overview`：顧客概況
 
-- `relatedTools`：`getCustomerProfile`
+- 主要使用的工具（撰寫參考，不需設定）：`getCustomerProfile`
 
 ```markdown
 ## 適用問題
@@ -87,13 +89,13 @@
 
 ## 注意事項
 
-- 若工具只回傳基本輪廓（`accessNote` 欄位存在），只呈現有的欄位，並說明目前身分僅能查看基本輪廓。
+- 若工具只回傳基本輪廓（`accessNote` 欄位存在），只呈現有的欄位，並說明「依您的權限僅能查看基本輪廓」。
 - 不要推測工具沒有提供的欄位。
 ```
 
 ### 3.2 `instruction.opportunity`：經營機會
 
-- `relatedTools`：`getCustomerProfile`、`getCustomerHoldings`、`getRecentInteractions`、`getCampaignResults`
+- 主要使用的工具（撰寫參考，不需設定）：`getCustomerProfile`、`getCustomerHoldings`、`getRecentInteractions`、`getCampaignResults`
 
 ```markdown
 ## 適用問題
@@ -123,7 +125,7 @@
 
 ### 3.3 `instruction.contact-prep`：聯繫準備
 
-- `relatedTools`：`getRecentInteractions`、`getCampaignResults`
+- 主要使用的工具（撰寫參考，不需設定）：`getRecentInteractions`、`getCampaignResults`
 
 ```markdown
 ## 適用問題
@@ -158,7 +160,7 @@
 
 ### 3.4 `instruction.contact-topic`：聯繫話題
 
-- `relatedTools`：`getCustomerHoldings`、`getStockQuote`、`getCompanyAnnouncements`
+- 主要使用的工具（撰寫參考，不需設定）：`getCustomerHoldings`、`getStockQuote`、`getCompanyAnnouncements`
 
 ```markdown
 ## 適用問題
@@ -190,7 +192,7 @@
 
 ### 3.5 `instruction.market-brief`：市場快訊
 
-- `relatedTools`：`getMarketIndex`、`getStockQuote`、`getCompanyAnnouncements`
+- 主要使用的工具（撰寫參考，不需設定）：`getMarketIndex`、`getStockQuote`、`getCompanyAnnouncements`
 
 ```markdown
 ## 適用問題
@@ -254,6 +256,5 @@
 |---|---|
 | 必要章節 | `SYSTEM_PROMPT`：`## 角色`、`## 安全規則`、`## 回答格式`<br>`SYSTEM_INSTRUCTION`：`## 適用問題`、`## 回答套版`、`## 範例問題`、`## 注意事項` |
 | 範例問題 | `## 範例問題` 底下以 `- ` 開頭的條列，1–5 題，每題最多 40 字；會顯示為對話視窗的快捷按鈕 |
-| `relatedTools` | `SYSTEM_INSTRUCTION` 至少一個，且都是已註冊的工具；使用者必須**全部可用**才會載入這個分類 |
 | 禁止內容 | 不得包含 API key、密碼、網址、IP、身分證號、手機號碼、顧客編號、越權指令（見 04-mongodb-schema.md 2.5） |
 | 大小 | 最多 64KB |

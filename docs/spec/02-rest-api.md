@@ -1,6 +1,6 @@
 # 02 REST API 規格
 
-> 版本：v0.5（POC）・2026-10-19
+> 版本：v0.7（POC）・2026-10-20
 
 ## 1. 共通規則
 
@@ -186,10 +186,10 @@
 
 ### 2.2 `GET /api/ai-assistant/customers/{customerId}/suggestions`
 
-取得對話視窗的快捷問題。內容來自已發布的 System Instructions 中的「範例問題」，依使用者對這位顧客的存取等級篩選。
+取得對話視窗的快捷問題。內容來自所有已發布 System Instructions 中的「範例問題」。
 
-- **權限**：同 2.1
-- **篩選規則**：只回傳「`relatedTools` 全部可用」的 Instruction。例如後台管理人員（`LIMITED`）看不到需要互動紀錄工具的「聯繫準備」分類。
+- **權限**：同 2.1；仍先判斷使用者能否存取這位顧客，不能存取時回 404。
+- **不依存取等級篩選**：所有可存取者拿到相同的分類。`LIMITED` 使用者點了需要 `FULL` 工具的問題（例如「聯繫準備」）時，模型拿不到對應工具，會回答「依您的權限無法查看這類資料」（見 [07-prompt-examples.md](07-prompt-examples.md) 第 2 節）。
 
 ```json
 {
@@ -301,7 +301,6 @@
   "configType": "SYSTEM_INSTRUCTION",
   "name": "聯繫準備",
   "content": "## 適用問題\n……\n\n## 回答套版\n……\n\n## 範例問題\n- 整理近期互動，幫我準備下次聯繫重點\n\n## 注意事項\n……",
-  "relatedTools": ["getRecentInteractions", "getCampaignResults"],
   "exampleQuestions": ["整理近期互動，幫我準備下次聯繫重點"],
   "status": "PUBLISHED",
   "version": 1,
@@ -334,7 +333,6 @@
 |---|---|---|---|
 | `name` | string | ✓ | 1–50 字 |
 | `content` | string | ✓ | 最多 65,536 bytes；`DRAFT` 時允許空白 |
-| `relatedTools` | string[] | `SYSTEM_INSTRUCTION` 必填 | 每個值都必須是已註冊的工具名稱 |
 | `changeNote` | string | | 最多 200 字 |
 | `saveMode` | string | ✓ | `KEEP_STATUS`（儲存）或 `DRAFT`（存成草稿） |
 | `docVersion` | number | ✓ | 讀取時拿到的 `docVersion` |

@@ -1,8 +1,8 @@
 # 行銷人員顧問小幫手 POC 設計
 
 - 日期：2026-10-19
-- 版本：v0.6（公司環境連不到 Maven repo，LangChain4j 的 jar 改放在專案內的 `backend/lib-repo/`）
-- 前一版：v0.5（Prompt 管理新增預約發布；發布資訊併入 `updatedBy`、`updatedAt`）
+- 版本：v0.7（2026-10-20：移除 System Instruction 的 `relatedTools`；所有已發布分類對所有可存取者載入，工具仍依存取等級提供；統一權限不足時的回答用語；`docs/spec/` 各文件版本統一為 v0.7）
+- 前一版：v0.6（公司環境連不到 Maven repo，LangChain4j 的 jar 改放在專案內的 `backend/lib-repo/`）
 - 狀態：待審查
 - 對應需求：[requirements.md](../../../requirements.md)
 - 詳細規格：[docs/spec/](../../spec/)
@@ -64,12 +64,12 @@ POC 程式碼之後要能整合進既有平台，所以小幫手模組和「平�
 | 角色看到的資料 | 除後台與 IT 外，所有角色可用的工具相同，差異在顧客範圍；後台與 IT 為 `LIMITED`，只看基本輪廓與市場資訊 | 使用者未要求理專與 AO 區分資料種類，先採最簡單的方案；之後可加 AO 專屬工具 |
 | 小幫手的定位 | 唯讀：只查詢、整理資訊，不修改任何資料 | 降低風險 |
 | Prompt 管理 | System Prompt 一份；System Instructions 多份，每份一個問題分類，含適用問題、回答套版、範例問題；範例問題顯示為快捷按鈕 | 讓 IT 人員預先設定問題分類與套版 |
-| Instruction 載入 | `relatedTools` 全部可用才載入 | 避免把使用者做不到的分類塞給模型，例如後台人員看不到「聯繫準備」 |
+| Instruction 載入 | 所有已發布的 Instruction 都載入，不依存取等級篩選；不設 `relatedTools`。由模型在同一個 tool calling 迴圈內判斷分類、從可用工具中挑選呼叫 | 管理者只需撰寫內文，不必理解工具名稱；工具增減或改名不會讓分類默默消失。代價是後台與 IT 會看到「聯繫準備」等用不了的快捷按鈕，由 `system.main` 規則回答「依您的權限無法查看這類資料」 |
 | Prompt 管理權限 | 後台管理人員和 IT 管理人員都可以編輯、發布與預約發布，不另設審核關卡 | 以 `createdBy`、`updatedBy` 與對應時間追溯；不另設 `publishedBy`、`publishedAt` |
 | 預約發布 | 發布可選「立即發布」或「預約發布」；新增 `SCHEDULED` 狀態與 `scheduledAt` 欄位；排程器每 30 秒發布到期版本，`updatedBy` 記預約者（排程中有人「儲存」則改記此人） | 讓 IT 人員能安排 prompt 在指定時間上線 |
 | 編輯頁按鈕 | 「儲存」維持目前狀態（已排程時保留排程）；「存成草稿」一律退回草稿（已排程時即取消排程）；「發布」依發布方式立即或預約 | 使用者確認 |
 | 排程中回復 | 先跳確認視窗，確認後立即回復；排程中的版本到期時照常發布並覆蓋回復結果 | 使用者確認 |
-| 管理頁編輯器 | textarea 加 `SafeMarkdown` 預覽，`relatedTools` 用勾選 | 使用者確認先不做複雜編輯器 |
+| 管理頁編輯器 | textarea 加 `SafeMarkdown` 預覽；不提供工具勾選 | 使用者確認先不做複雜編輯器 |
 | Markdown 渲染 | 自己寫解析器，以 Vue VNode 渲染，不用 `v-html`，不引入套件 | 公司可能不支援外部套件；從結構上保證安全 |
 | UI 框架 | 不使用 PrimeVue 或其他 UI 框架，用 scoped CSS | 使用者確認目前專案沒有實際使用 |
 | 平台慣例 | 只採用 SP 計畫已指定的 MongoDB 前綴 `COLL_ICRM_`，其他命名規範暫不處理 | 以技術驗證優先 |
@@ -112,8 +112,10 @@ POC 程式碼之後要能整合進既有平台，所以小幫手模組和「平�
 
 ### 4.4 Prompt 組裝
 
-- 組合方式：已發布的 `system.main` + `relatedTools` 全部可用的已發布 System Instructions + 寫死在 Java 的安全規則。
-- 快捷問題 API（`/suggestions`）使用相同的篩選規則。
+- 組合方式：已發布的 `system.main` + 全部已發布的 System Instructions + 寫死在 Java 的安全規則。
+- 提供給模型的工具只依存取等級決定（`ToolRegistry.toolsFor`），和載入哪些分類無關。
+- 快捷問題 API（`/suggestions`）回傳全部已發布分類的範例問題，不依存取等級篩選。
+- `LIMITED` 使用者問到需要 `FULL` 工具的分類時，由 `system.main` 規則回答「依您的權限無法查看這類資料」，不套用回答套版；以 [06-conversation-scenarios.md](../../spec/06-conversation-scenarios.md) P5 驗證不會編造內容。
 
 ### 4.5 Prompt 管理
 
