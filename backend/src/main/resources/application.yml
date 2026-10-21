@@ -1,0 +1,37 @@
+spring:
+  config.import: optional:file:./.env[.properties]   # 讀取 backend/.env（已列入 .gitignore）
+  threads.virtual.enabled: true
+  data.mongodb.uri: ${MONGODB_URI:mongodb://localhost:27017/copilot?replicaSet=rs0}
+
+management.endpoints.web.exposure.include: health   # 不開放 /env 等端點
+
+ai-assistant:
+  llm:
+    provider: openai
+    api-key: ${OPENAI_API_KEY}        # 來自 backend/.env；不得寫死、不得進版控、不得寫入 log
+    model-name: ${OPENAI_MODEL}
+    temperature: 0.2
+    timeout: 30s
+    max-output-tokens: 1000
+  limits:
+    message-max-chars: 1000
+    history-max-turns: 10
+    history-max-chars: 8000
+    max-tool-calls: 5
+    max-model-rounds: 3
+    request-timeout: 60s
+    token-budget: 16000
+    tool-timeout: 5s
+    tool-result-max-bytes: 4096
+    rate-limit-per-minute: 10
+  config:
+    schedule-check-interval: 30s     # 預約發布的檢查頻率
+    schedule-min-lead: 1m            # 預約時間至少在 1 分鐘後
+    schedule-max-lead: 90d           # 預約時間最多在 90 天內
+  market.twse:
+    base-url: https://openapi.twse.com.tw/v1
+    allowed-hosts: [openapi.twse.com.tw]
+    connect-timeout: 3s
+    read-timeout: 5s
+    max-response-bytes: 2097152
+    cache-ttl: 10m
