@@ -1,6 +1,6 @@
 # 05 錯誤碼清單
 
-> 版本：v0.7（POC）・2026-10-20
+> 版本：v0.9（POC）・2026-10-21
 
 ## 1. 原則
 
@@ -44,9 +44,9 @@
 | code | HTTP | 友善訊息 | 情境 |
 |---|---|---|---|
 | `AI_CONFIG_NOT_FOUND` | 404 | 找不到指定的設定或版本 | key、版本或草稿不存在 |
-| `AI_CONFIG_CONFLICT` | 409 | 內容已被他人更新，請重新載入後再編輯 | `docVersion` 不一致；同時發布造成 unique index 衝突；回復時已發布版本已變更 |
-| `AI_CONFIG_INVALID_STATE` | 409 | 目前狀態無法執行此操作 | 已有編輯中版本卻要建立草稿；捨棄已排程的版本；沒有可回復的版本；key 已存在；要新增第二份 System Prompt |
-| `AI_CONFIG_SCHEDULE_PENDING` | 409 | 此設定仍有預約發布的版本，到期後會覆蓋這次回復 | 有排程時執行回復但未帶 `confirmScheduledOverride`；`details` 含排程版本與預約時間 |
+| `AI_CONFIG_CONFLICT` | 409 | 內容已被他人更新，請重新載入後再編輯 | `docVersion` 不一致；同時發布造成 unique index 衝突；套用時編輯中版本已變更 |
+| `AI_CONFIG_INVALID_STATE` | 409 | 目前狀態無法執行此操作 | 已有編輯中版本卻要建立草稿；捨棄已排程的版本；套用的來源是草稿或已排程版本；key 已存在；要新增第二份 System Prompt |
+| `AI_CONFIG_OVERWRITE_PENDING` | 409 | 此設定已有編輯中的版本，套用後它會被標為已捨棄 | 套用歷史版本時已有草稿或排程，但未帶 `confirmOverwrite`；`details` 含編輯中版本的狀態、預約時間、最後儲存時間、`docVersion` |
 | `AI_CONFIG_VALIDATION_FAILED` | 422 | 內容未通過發布檢查，請依提示修正 | 發布前驗證失敗；`details` 列出每條規則 |
 
 `AI_CONFIG_VALIDATION_FAILED` 的 `details`：
@@ -85,7 +85,7 @@
 | 401 | Toast 後導向登入頁 |
 | 404 `AI_CUSTOMER_NOT_FOUND` | 對話視窗內顯示「查無此顧客或您沒有查看權限」，停用輸入框 |
 | 管理 API 409 衝突 | Toast，提供「重新載入」按鈕 |
-| 管理 API 409 `AI_CONFIG_SCHEDULE_PENDING` | 不跳 Toast，改跳確認視窗，顯示排程版本與預約時間；確認後帶 `confirmScheduledOverride: true` 重送 |
+| 管理 API 409 `AI_CONFIG_OVERWRITE_PENDING` | 不跳 Toast，改跳確認視窗（草稿：會被標為已捨棄；已排程：排程取消並標為已捨棄；兩者都說明仍可在版本歷程找回）；確認後帶 `confirmOverwrite: true` 與 `details[0].docVersion` 重送 |
 | 管理 API 400（預約時間） | 在預約時間欄位下方顯示「預約時間需在 1 分鐘後、90 天內」 |
 | 管理 API 422 驗證失敗 | 在編輯器下方列出每條 `details` |
 | 使用者按「取消」 | 不視為錯誤，訊息標示「已取消」，不跳 Toast |

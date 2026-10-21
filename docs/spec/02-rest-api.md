@@ -1,6 +1,6 @@
 # 02 REST API 規格
 
-> 版本：v0.7（POC）・2026-10-20
+> 版本：v0.9（POC）・2026-10-21
 
 ## 1. 共通規則
 
@@ -32,8 +32,8 @@
 | `CUSTOMER_360_VIEW` | 進入個人 360 頁面（平台既有權限，POC 由 `mockplatform` 模擬） |
 | `AI_ASSISTANT_USE` | 使用對話小幫手 |
 | `AI_CONFIG_READ` | 進入 Prompt 管理頁、檢視設定與版本 |
-| `AI_CONFIG_EDIT` | 新增設定、編輯與捨棄草稿 |
-| `AI_CONFIG_PUBLISH` | 發布、回復 |
+| `AI_CONFIG_EDIT` | 新增設定、編輯與捨棄草稿、套用歷史版本為草稿 |
+| `AI_CONFIG_PUBLISH` | 立即發布、預約發布 |
 
 | 角色 key | 帳號 | 角色 | 分行 / 區域 / 單位 | 權限 |
 |---|---|---|---|---|
@@ -208,8 +208,9 @@
 
 - **權限**：
   - 查詢類（3.1、3.3、3.4）：`AI_CONFIG_READ`
-  - 編輯類（3.2、3.5–3.8）：`AI_CONFIG_EDIT`
-  - 發布類（3.9、3.10）：`AI_CONFIG_PUBLISH`
+  - 編輯類（3.2、3.5–3.8、3.10）：`AI_CONFIG_EDIT`
+  - 發布類（3.9）：`AI_CONFIG_PUBLISH`
+- **版本的辨識**：`version` 是內部流水號，只用於 API 路徑與唯一索引（需求 3-5），**畫面上不顯示**。畫面一律以時間辨識版本：已發布 / 已封存的版本顯示 `updatedAt`（即生效時間）與 `updatedBy`，草稿顯示「最後儲存」時間，已捨棄的版本顯示捨棄時間與捨棄者。
 - **設定類型**：
   - `SYSTEM_PROMPT`：只有一份 `system.main`，定義角色、安全規則、回答格式
   - `SYSTEM_INSTRUCTION`：可以有多份，**每份代表一個問題分類**，包含適用問題、回答套版、範例問題
@@ -219,13 +220,18 @@
 
 ### 3.0 編輯頁操作與 API 對照
 
+畫面結構以 `prototype/prompt-management.html` 為準（設定清單、編輯區、發布前檢查、動作列），但**不顯示平台安全規則**。
+
 ```
-┌ 聯繫準備（instruction.contact-prep）── v3・已排程 2026/10/24 09:00 ┐
-│ [textarea 編輯區]              │ [預覽]                          │
+┌ 聯繫準備（instruction.contact-prep）── 已排程 2026/10/24 09:00 ───┐
+│ [ 編輯 | 預覽 ]   ← 分頁切換，一次只顯示一個                         │
+│ ┌──────────────────────────────────────────────────────────────┐ │
+│ │ 編輯分頁：textarea                                           │ │
+│ │ 預覽分頁：SafeMarkdown 渲染結果                                │ │
+│ └──────────────────────────────────────────────────────────────┘ │
 ├──────────────────────────────────────────────────────────────────┤
-│ 發布方式：(•) 立即發布  ( ) 預約發布 [2026/10/24] [09:00]          │
-│                                                                  │
-│            [存成草稿]   [儲存]   [發布]                            │
+│ 發布方式：( ) 立即發布  (•) 預約發布 [2026/10/24] [09:00]          │
+│                       [捨棄草稿] [存成草稿] [儲存] [更新預約]       │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -233,11 +239,21 @@
 |---|---|---|---|
 | 儲存 | 儲存內容，維持草稿 | 儲存內容，保留排程 | `PUT .../draft`，`saveMode: "KEEP_STATUS"` |
 | 存成草稿 | 同「儲存」 | 儲存內容，取消排程、退回草稿 | `PUT .../draft`，`saveMode: "DRAFT"` |
-| 發布（立即） | 立即發布 | 立即發布（不等預約時間） | 先儲存，再 `POST .../publish`，`publishMode: "IMMEDIATE"` |
-| 發布（預約） | 改為已排程 | 修改預約時間 | 先儲存，再 `POST .../publish`，`publishMode: "SCHEDULED"` |
+| 發布（立即）／按鈕文字「立即發布」 | 立即發布 | 立即發布（不等預約時間） | 先儲存，再 `POST .../publish`，`publishMode: "IMMEDIATE"` |
+| 發布（預約）／按鈕文字「預約發布」或「更新預約」 | 改為已排程 | 修改預約時間 | 先儲存，再 `POST .../publish`，`publishMode: "SCHEDULED"` |
+| 捨棄草稿 | 草稿改為「已捨棄」，內容保留在版本歷程 | 停用（需先存成草稿） | `DELETE .../draft` |
 
 - 「發布」由前端 composable 依序呼叫儲存與發布，用儲存回傳的 `docVersion` 接著發布。
 - 已排程時，編輯頁頂端顯示預約時間；「發布方式」預設選「預約發布」並帶入目前的預約時間。
+- 「編輯 / 預覽」是同一區塊的兩個分頁；切到預覽時以目前 textarea 的內容（含未儲存的修改）渲染。
+
+### 3.0.1 版本歷程：比較與套用
+
+- 版本清單列出該設定的所有版本（由新到舊），每列顯示狀態標籤、時間、操作者、修改說明；**不顯示版本號**。
+- 狀態標籤：草稿、已排程、已發布、已封存（曾上線、後被取代）、已捨棄（未上線就被放棄）。已捨棄的版本預設收合，以「顯示已捨棄的版本」切換；已捨棄列另外顯示原作者（`createdBy`），若曾排程則顯示「原預約 {scheduledAt}」。
+- **比較**：任選兩個版本（任何狀態皆可），以逐行差異顯示 `name` 與 `content` 的不同（新增、刪除標色）。比較在前端進行：以 3.4 分別取得兩版內容後計算差異，不需要額外 API。
+- **檢視**：點任一版本可唯讀檢視其內容（`SafeMarkdown` 渲染）。
+- **套用**：對任一已發布、已封存或已捨棄的版本按「套用」，以它的 `name` 與 `content` 新增一份草稿（3.10），之後照一般流程儲存、立即發布或預約發布。原本的草稿或排程會改為「已捨棄」，不會遺失。
 
 ### 3.1 `GET /api/ai-assistant/admin/configs`
 
@@ -263,7 +279,7 @@
 ```
 
 - `workingCopy` 是編輯中版本（`DRAFT` 或 `SCHEDULED`），沒有時為 `null`。
-- 清單上以標籤顯示「草稿」或「已排程 10/24 09:00」。
+- 清單上以標籤顯示「草稿」或「已排程 10/24 09:00」；`version` 只供後續 API 呼叫使用，不顯示。
 
 ### 3.2 `POST /api/ai-assistant/admin/configs`
 
@@ -281,15 +297,18 @@
 
 ### 3.3 `GET /api/ai-assistant/admin/configs/{configKey}/versions`
 
-列出版本歷程，依版本號由新到舊，不含內容。
+列出版本歷程，由新到舊（依內部 `version` 排序），不含內容。
 
 ```json
 [
-  { "version": 3, "status": "SCHEDULED", "scheduledAt": "2026-10-24T09:00:00+08:00", "changeNote": "調整回答格式", "basedOnVersion": null, "createdBy": "backoffice.admin", "updatedBy": "backoffice.admin", "updatedAt": "..." },
-  { "version": 2, "status": "PUBLISHED", "scheduledAt": null, "changeNote": "新增安全規則", "basedOnVersion": null, "createdBy": "it.admin", "updatedBy": "it.admin", "updatedAt": "..." },
-  { "version": 1, "status": "ARCHIVED", "scheduledAt": null, "changeNote": "初始版本", "basedOnVersion": null, "createdBy": "system", "updatedBy": "it.admin", "updatedAt": "..." }
+  { "version": 3, "status": "SCHEDULED", "scheduledAt": "2026-10-24T09:00:00+08:00", "changeNote": "調整回答格式", "basedOnVersion": null, "createdBy": "backoffice.admin", "updatedBy": "backoffice.admin", "updatedAt": "2026-10-20T14:32:00+08:00" },
+  { "version": 2, "status": "PUBLISHED", "scheduledAt": null, "changeNote": "新增安全規則", "basedOnVersion": null, "createdBy": "it.admin", "updatedBy": "it.admin", "updatedAt": "2026-10-19T09:30:00+08:00" },
+  { "version": 1, "status": "ARCHIVED", "scheduledAt": null, "changeNote": "初始版本", "basedOnVersion": null, "createdBy": "system", "updatedBy": "system", "updatedAt": "2026-10-19T08:00:00+08:00" }
 ]
 ```
+
+- 已封存版本的 `updatedAt` / `updatedBy` 是它當初生效的時間與操作者（封存時不改動，見 04 §2.4）。
+- `basedOnVersion` 不為 null 時，畫面顯示「套用自 {該版本的 updatedAt} 的版本」。
 
 ### 3.4 `GET /api/ai-assistant/admin/configs/{configKey}/versions/{version}`
 
@@ -351,7 +370,7 @@
 
 ### 3.7 `DELETE /api/ai-assistant/admin/configs/{configKey}/draft?docVersion={n}`
 
-捨棄草稿。只能捨棄 `DRAFT`；已排程的版本需先「存成草稿」取消排程。
+捨棄草稿：把 `DRAFT` 改為 `DISCARDED`，**不刪除**，內容保留在版本歷程中，之後仍可比較或套用回來。只能捨棄 `DRAFT`；已排程的版本需先「存成草稿」取消排程。
 
 - **204**
 - **404** `AI_CONFIG_NOT_FOUND`
@@ -389,7 +408,7 @@
 
 | `publishMode` | 結果 |
 |---|---|
-| `IMMEDIATE` | 在同一個交易中：舊的 PUBLISHED → ARCHIVED，編輯中版本 → PUBLISHED。已排程的版本也可以提前立即發布 |
+| `IMMEDIATE` | 在同一個交易中：舊的 PUBLISHED → ARCHIVED（不改動它的 `updatedBy`、`updatedAt`），編輯中版本 → PUBLISHED。已排程的版本也可以提前立即發布 |
 | `SCHEDULED` | 編輯中版本 → `SCHEDULED`，寫入 `scheduledAt`；已排程時即修改預約時間。到期由排程器自動發布，`updatedBy` 維持預約者 |
 
 - **200**：回傳發布後或排程後的版本
@@ -398,43 +417,53 @@
 - **409** `AI_CONFIG_CONFLICT`
 - **422** `AI_CONFIG_VALIDATION_FAILED`：`details` 格式同 3.8 的 `errors`
 
-### 3.10 `POST /api/ai-assistant/admin/configs/{configKey}/rollback`
+### 3.10 `POST /api/ai-assistant/admin/configs/{configKey}/versions/{version}/apply`
 
-回復到上一個版本：把「目前已發布版本之前的最新 ARCHIVED 版本」的內容複製成新版本並立即發布，記錄 `basedOnVersion`。不影響編輯中版本。
+套用任一已發布、已封存或已捨棄的版本：以它的 `name` 與 `content` **新增一份草稿**，記錄 `basedOnVersion`。**不會直接發布**，之後照 3.9 立即發布或預約發布（因此套用的內容一樣會經過發布前驗證，也可以預約）。取代原本的「回復上一版」。
 
 | 欄位 | 型別 | 必填 | 規則 |
 |---|---|---|---|
-| `expectedPublishedVersion` | number | ✓ | 使用者看到的目前已發布版本 |
-| `confirmScheduledOverride` | boolean | 有排程時必填 `true` | 使用者已確認「排程中的版本到期後會覆蓋這次回復」 |
+| `workingCopyDocVersion` | number \| null | 有編輯中版本時必填 | 使用者看到的編輯中版本 `docVersion`；沒有編輯中版本時為 `null` |
+| `confirmOverwrite` | boolean | 有編輯中版本時必填 `true` | 使用者已確認目前的草稿或排程會被改為「已捨棄」 |
 
 ```json
-{ "expectedPublishedVersion": 3, "confirmScheduledOverride": true }
+{ "workingCopyDocVersion": 7, "confirmOverwrite": true }
 ```
 
-**有排程時的流程**
+| 目前的編輯中版本 | 結果（在同一個交易中完成） |
+|---|---|
+| 沒有 | 新增一份 `DRAFT` |
+| `DRAFT` | 原草稿改為 `DISCARDED`（內容保留）；新增一份 `DRAFT` |
+| `SCHEDULED` | 原排程版本改為 `DISCARDED`（排程取消，`scheduledAt` 保留作為「原預約時間」紀錄）；新增一份 `DRAFT` |
 
-1. 前端送出回復（不帶 `confirmScheduledOverride`）。
-2. 後端發現該 key 有 `SCHEDULED` 版本，回 409 `AI_CONFIG_SCHEDULE_PENDING`：
+新增的草稿：`version` = 最大值 + 1，`name`、`content` 取自來源版本，`basedOnVersion` = 來源版本，`changeNote` 空，`createdBy`、`updatedBy` 為操作者。被改為 `DISCARDED` 的版本，`updatedBy`、`updatedAt` 為操作者與現在時間，`createdBy` 保留原作者。
+
+**有編輯中版本時的流程**
+
+1. 前端送出套用（`confirmOverwrite` 為 false 或未帶）。
+2. 後端發現已有編輯中版本，回 409 `AI_CONFIG_OVERWRITE_PENDING`：
 
    ```json
    {
-     "code": "AI_CONFIG_SCHEDULE_PENDING",
-     "message": "此設定仍有預約發布的版本，到期後會覆蓋這次回復",
+     "code": "AI_CONFIG_OVERWRITE_PENDING",
+     "message": "此設定已有編輯中的版本，套用後它會被標為已捨棄",
      "requestId": "a1b2c3d4",
-     "details": [ { "scheduledVersion": 5, "scheduledAt": "2026-10-24T09:00:00+08:00" } ]
+     "details": [ { "status": "SCHEDULED", "scheduledAt": "2026-10-24T09:00:00+08:00", "updatedAt": "2026-10-20T14:32:00+08:00", "docVersion": 7 } ]
    }
    ```
 
-3. 前端跳出確認視窗：「此設定仍有 v5 預約於 2026/10/24 09:00 發布，到期後會覆蓋這次回復。確定要回復嗎？」
-4. 使用者確認後，前端帶 `confirmScheduledOverride: true` 重送；回復立即生效，排程維持不變，到期時照常發布。
+3. 前端跳出確認視窗：
+   - 草稿時：「目前有一份 {updatedAt} 儲存的草稿，套用後它會被標為已捨棄（仍可在版本歷程中找回）。確定要套用嗎？」
+   - 已排程時：「目前有一份預約於 {scheduledAt} 發布的版本，套用後排程會取消，該版本會被標為已捨棄（仍可在版本歷程中找回）。確定要套用嗎？」
+4. 使用者確認後，前端帶 `confirmOverwrite: true` 與 `details[0].docVersion` 重送。
 
 **回應**
 
-- **200**：回傳新的已發布版本
-- **409** `AI_CONFIG_SCHEDULE_PENDING`：有排程但未確認
-- **409** `AI_CONFIG_CONFLICT`：目前已發布版本不是 `expectedPublishedVersion`（有人剛發布過，或排程剛到期）
-- **409** `AI_CONFIG_INVALID_STATE`：沒有可回復的上一版
-- **422** `AI_CONFIG_VALIDATION_FAILED`：舊內容不符合目前的驗證規則
+- **200**：回傳套用後的草稿（格式同 3.4），前端切到編輯分頁顯示它
+- **404** `AI_CONFIG_NOT_FOUND`：來源版本不存在
+- **409** `AI_CONFIG_OVERWRITE_PENDING`：已有編輯中版本但未確認
+- **409** `AI_CONFIG_CONFLICT`：`workingCopyDocVersion` 不一致（有人剛修改，或排程剛到期而已發布）
+- **409** `AI_CONFIG_INVALID_STATE`：來源版本是 `DRAFT` 或 `SCHEDULED`（只能套用已發布、已封存或已捨棄的版本）
 
 ---
 

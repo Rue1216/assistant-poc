@@ -1,6 +1,6 @@
 # 07 範例 Prompt
 
-> 版本：v0.7（POC）・2026-10-20
+> 版本：v0.9（POC）・2026-10-21
 
 本文件提供 System Prompt 與 System Instructions 的範例內容，用途有三個：
 

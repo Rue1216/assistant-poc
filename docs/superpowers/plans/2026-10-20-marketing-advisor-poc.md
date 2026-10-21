@@ -26,7 +26,9 @@
 - 錯誤回應格式 `{ code, message, requestId, details }`；`code` 與友善訊息照 05 §2 逐字使用；不得回傳 stack trace、供應商原始錯誤、內部網址。
 - 「不存在」和「無權限」回應相同（顧客 404 `AI_CUSTOMER_NOT_FOUND`）。
 - 權限不足時的回答用語：「依您的權限無法查看這類資料」、「依您的權限僅能查看基本輪廓」。
-- 前端：不用 PrimeVue 或其他 UI 框架（scoped CSS）；不用 `v-html`、`innerHTML`；不引入 Markdown 或 sanitizer 套件；元件不得直接 import axios，一律透過 `apiClient` 與 composable。
+- 前端：不用 PrimeVue 或其他 UI 框架（scoped CSS）；不用 `v-html`、`innerHTML`；不引入 Markdown、sanitizer 或 diff 套件；元件不得直接 import axios，一律透過 `apiClient` 與 composable。
+- 前端視覺：小幫手與 Prompt 管理頁照 `prototype/`（例外見 Phase C 開頭）；平台安全規則不出現在任何畫面；畫面不顯示 Prompt 的版本號。
+- Prompt 版本：封存舊版時不改動它的 `updatedBy`、`updatedAt`；「套用」一律新增草稿、不直接發布，原編輯中版本改為 `DISCARDED`；捨棄草稿是軟刪除；**任何操作都不刪除 config document**（04 §2.4、02 §3.10）。
 - 時間：API 用 ISO 8601 含時區；資料庫存 UTC；畫面以台北時間（`Asia/Taipei`）顯示。後端所有「現在」都取自注入的 `java.time.Clock`。
 - 模擬帳號密碼統一 `poc1234`。
 
@@ -88,17 +90,21 @@ frontend/
 ├─ package.json、vite.config.ts、tsconfig*.json、index.html
 └─ src/
    ├─ main.ts、App.vue
+   ├─ styles/tokens.css、base.css          自 prototype/styles 複製
    ├─ platform-mock/  apiClient.ts、useToast.ts、ToastHost.vue、useAuthStore.ts、router.ts、
    │                  MainLayout.vue、pages/（LoginPage、HomePage、CustomerListPage、
-   │                  Customer360Page、PromptManagementRoute）
+   │                  Customer360Page（簡易版）、PromptManagementRoute）
    └─ features/ai-assistant/
       ├─ types.ts、api/aiAssistantApi.ts
-      ├─ markdown/parser.ts、SafeMarkdown.ts
+      ├─ markdown/parser.ts、SafeMarkdown.ts、lineDiff.ts
       ├─ stores/useAssistantStore.ts
       ├─ composables/useAssistantChat.ts、useSuggestions.ts、usePromptAdmin.ts、taipeiTime.ts
-      ├─ components/AssistantLauncher.vue、AssistantPanel.vue、AssistantMessage.vue、
-      │             ToolCallSummary.vue、SuggestionChips.vue
-      └─ admin/PromptManagementPage.vue、ConfigEditor.vue、VersionHistory.vue
+      ├─ components/AssistantLauncher、AssistantPanel、AssistantHeader、MessageList、WelcomeCard、
+      │             QuickQuestions、UserMessage、AssistantMessage、ToolCallSummary、SourceList、
+      │             PendingMessage、ErrorMessage、ChatComposer（.vue，照 prototype/chatbot.html）
+      └─ admin/PromptManagementPage、ConfigList、ConfigEditor、PromptAssemblyGuide、MarkdownEditor、
+               ValidationPanel、PublishBar、VersionHistory、VersionDiff、VersionViewer、ConfirmDialog、
+               NewInstructionDialog（.vue，照 prototype/prompt-management.html）
 ```
 
 ---
@@ -703,10 +709,12 @@ frontend/
 
 ---
 
-### Task 11：`ConfigService`：草稿、儲存、發布、預約、回復
+### Task 11：`ConfigService`：草稿、儲存、發布、預約、套用
 
 **Files:**
-- Create: `aiassistant/config/ConfigService.java`、`SaveMode.java`、`PublishMode.java`、`SaveCommand.java`、`PublishCommand.java`、`ConfigSummary.java`
+- Create: `aiassistant/config/ConfigService.java`、`SaveMode.java`、`PublishMode.java`、`SaveCommand.java`、`PublishCommand.java`、`ApplyCommand.java`、`ConfigSummary.java`、`resources/seed/instruction-template.md`（07 §4.1 範本逐字）
+- Modify: `aiassistant/common/ErrorCode.java`：把 `AI_CONFIG_SCHEDULE_PENDING` 換成 `AI_CONFIG_OVERWRITE_PENDING`（409，訊息照 05 §2.3），並更新 Task 2 測試中引用它的地方
+- Modify: `aiassistant/config/ConfigStatus.java` 加入 `DISCARDED`；`resources/mongo/config-validator.json` 的 `status` enum 加入 `"DISCARDED"`（04 §2.3）；`MongoSchemaTest` 加一個測試確認 validator 接受 `DISCARDED`
 - Test: `aiassistant/config/ConfigServiceTest.java`
 
 **Interfaces:**
@@ -715,17 +723,20 @@ frontend/
   - `enum SaveMode { KEEP_STATUS, DRAFT }`、`enum PublishMode { IMMEDIATE, SCHEDULED }`
   - `record SaveCommand(String name, String content, String changeNote, SaveMode saveMode, long docVersion)`
   - `record PublishCommand(PublishMode mode, Instant scheduledAt, long docVersion)`
-  - `record ConfigSummary(String configKey, ConfigType configType, String name, VersionInfo published, VersionInfo workingCopy)`；`record VersionInfo(int version, ConfigStatus status, Instant scheduledAt, String updatedBy, Instant updatedAt)`
+  - `record ApplyCommand(int sourceVersion, Long workingCopyDocVersion, boolean confirmOverwrite)`
+  - `record ConfigSummary(String configKey, ConfigType configType, String name, VersionInfo published, VersionInfo workingCopy)`；`record VersionInfo(int version, ConfigStatus status, Instant scheduledAt, String updatedBy, Instant updatedAt)`（`version` 是內部流水號，前端不顯示）
   - `ConfigService`：
     - `AssistantConfig createKey(String configKey, ConfigType type, String name, String actor)`：草稿內容帶入 07 §4.1 範本（SYSTEM_INSTRUCTION）；已存在或第二份 SYSTEM_PROMPT → `AI_CONFIG_INVALID_STATE`。
     - `AssistantConfig createDraft(String configKey, String actor)`
     - `AssistantConfig saveWorkingCopy(String configKey, SaveCommand cmd, String actor)`
     - `void discardDraft(String configKey, long docVersion)`
     - `AssistantConfig publish(String configKey, PublishCommand cmd, String actor)`
-    - `AssistantConfig rollback(String configKey, int expectedPublishedVersion, boolean confirmScheduledOverride, String actor)`
-    - `int publishDue()`：發布所有 `scheduledAt <= now` 的 SCHEDULED，回傳成功筆數（Task 12 使用）。
+    - `AssistantConfig applyVersion(String configKey, ApplyCommand cmd, String actor)`：照 02 §3.10、04 §2.4「套用」列。來源必須是 PUBLISHED、ARCHIVED 或 DISCARDED；**一律新增一份 DRAFT**（`version` = 最大值 + 1、`basedOnVersion` = 來源、`changeNote` 空、`createdBy`/`updatedBy` = actor）；若已有編輯中版本，在同一個交易中先把它改為 DISCARDED（`updatedBy`/`updatedAt` = actor/now，`scheduledAt` 保留、`createdBy` 不變）；**不發布、不清快取**。
+    - `discardDraft` 改為**軟刪除**：`status = DISCARDED`、`updatedBy`/`updatedAt` = actor/now，不刪除 document（簽章改為 `void discardDraft(String configKey, long docVersion, String actor)`）。
+    - `int publishDue()`：發布所有 `scheduledAt <= now` 的 SCHEDULED，回傳成功筆數（Task 12 使用；依 Ruling R1，本任務完整實作含條件更新）。
     - `List<ConfigSummary> list()`、`List<AssistantConfig> versions(String configKey)`、`AssistantConfig version(String configKey, int version)`、`List<ValidationError> validateWorkingCopy(String configKey)`
-  - 錯誤一律丟 `AssistantException`：`AI_CONFIG_NOT_FOUND`、`AI_CONFIG_CONFLICT`（含 `OptimisticLockingFailureException` 與 `DuplicateKeyException`）、`AI_CONFIG_INVALID_STATE`、`AI_CONFIG_VALIDATION_FAILED`（details 為 `ValidationError` 清單）、`AI_CONFIG_SCHEDULE_PENDING`（details `[{scheduledVersion, scheduledAt}]`）、`AI_INPUT_INVALID`（預約時間超出範圍）。
+  - **封存規則**：任何發布（立即、排程到期）把舊 PUBLISHED 改成 ARCHIVED 時，**不改動**舊版的 `updatedBy`、`updatedAt`（04 §2.4）。
+  - 錯誤一律丟 `AssistantException`：`AI_CONFIG_NOT_FOUND`、`AI_CONFIG_CONFLICT`（含 `OptimisticLockingFailureException` 與 `DuplicateKeyException`）、`AI_CONFIG_INVALID_STATE`、`AI_CONFIG_VALIDATION_FAILED`（details 為 `ValidationError` 清單）、`AI_CONFIG_OVERWRITE_PENDING`（details `[{status, scheduledAt, updatedAt, docVersion}]`）、`AI_INPUT_INVALID`（預約時間超出範圍）。
 
 - [ ] **Step 1：寫失敗的測試**
 
@@ -738,17 +749,22 @@ frontend/
   @Test void saveKeepStatusOnScheduledKeepsScheduleAndRevalidates() // 內容合法 → 仍 SCHEDULED、scheduledAt 不變、updatedBy 改為儲存者；內容不合法 → AI_CONFIG_VALIDATION_FAILED，資料不變
   @Test void saveAsDraftCancelsSchedule()                       // SCHEDULED → DRAFT，scheduledAt null
   @Test void staleDocVersionConflicts()                         // docVersion 舊 → AI_CONFIG_CONFLICT
-  @Test void publishImmediateArchivesPrevious()                 // v1 ARCHIVED、v2 PUBLISHED；兩份 updatedBy = actor、updatedAt = now；cache invalidated
+  @Test void publishImmediateArchivesPrevious()                 // v1 ARCHIVED、v2 PUBLISHED；v2 updatedBy = actor、updatedAt = now；v1 的 updatedBy / updatedAt 與發布前完全相同；cache invalidated
   @Test void publishInvalidContentFails()                       // AI_CONFIG_VALIDATION_FAILED，details 含 rule
   @Test void scheduleSetsScheduledAt()                          // scheduledAt now+2m → SCHEDULED
   @Test void scheduleOutsideWindowIsInputInvalid()              // now+30s、now+91d → AI_INPUT_INVALID
   @Test void rescheduleChangesTime()                            // SCHEDULED 再 publish(SCHEDULED, 新時間) → scheduledAt 更新
   @Test void publishImmediateOnScheduledPublishesNow()
   @Test void discardOnlyAllowedForDraft()                       // SCHEDULED → AI_CONFIG_INVALID_STATE
-  @Test void rollbackCopiesPreviousArchived()                   // v1 ARCHIVED、v2 PUBLISHED → 新 v3 PUBLISHED，content = v1，basedOnVersion 1
-  @Test void rollbackWithScheduleRequiresConfirmation()         // 有 SCHEDULED v4 且 confirm=false → AI_CONFIG_SCHEDULE_PENDING，details scheduledVersion 4；confirm=true → 成功且 v4 仍 SCHEDULED
-  @Test void rollbackWithWrongExpectedVersionConflicts()
-  @Test void rollbackWithoutArchivedIsInvalidState()
+  @Test void applyWithoutWorkingCopyCreatesDraft()              // v1 ARCHIVED、v2 PUBLISHED；apply(v1) → 新 v3 DRAFT，name/content = v1，basedOnVersion 1，changeNote null，createdBy = actor；v2 仍 PUBLISHED；cache 未清除
+  @Test void applyOverDraftRequiresConfirmationAndDiscardsIt()  // 已有 DRAFT v3（createdBy "backoffice.admin"）：confirm=false → AI_CONFIG_OVERWRITE_PENDING，details[0].status "DRAFT"、docVersion；confirm=true + 正確 docVersion → v3 變 DISCARDED（內容不變、createdBy 仍 "backoffice.admin"、updatedBy = actor），新 v4 DRAFT 內容 = v1
+  @Test void applyOverScheduledDiscardsItAndCancelsSchedule()   // 已有 SCHEDULED v3：confirm=true → v3 變 DISCARDED、scheduledAt 保留；新 v4 DRAFT；之後 publishDue()（時間超過原預約）不會發布任何版本
+  @Test void applyFromDiscardedRestoresContent()                // 來源是 DISCARDED → 新 DRAFT 內容 = 該已捨棄版本
+  @Test void applyIsAtomic()                                    // 模擬新增 DRAFT 失敗（例如 stub repository 丟例外）→ 原編輯中版本仍是 DRAFT/SCHEDULED，沒有變成 DISCARDED
+  @Test void applyWithStaleWorkingCopyDocVersionConflicts()
+  @Test void applyFromDraftOrScheduledIsInvalidState()          // 來源版本是 DRAFT / SCHEDULED → AI_CONFIG_INVALID_STATE
+  @Test void applyUnknownVersionIsNotFound()
+  @Test void discardDraftIsSoft()                               // discardDraft → document 仍存在、status DISCARDED、updatedBy = actor；之後可再 createDraft
   @Test void createKeyRejectsSecondSystemPrompt()
   @Test void createKeyPrefillsInstructionTemplate()             // content 含 "## 適用問題"、"## 範例問題"
   ```
@@ -760,7 +776,7 @@ frontend/
 
 - [ ] **Step 3：實作 `ConfigService`**
 
-  發布、排程到期、回復用 `TransactionTemplate`（以 `MongoTransactionManager` 建立）包住「封存舊版 + 發布新版」，任一步失敗就整筆回滾。每次成功發布後呼叫 `PublishedConfigCache.invalidate()`。
+  發布與排程到期用 `TransactionTemplate`（以 `MongoTransactionManager` 建立）包住「封存舊版 + 發布新版」，任一步失敗就整筆回滾。每次成功發布後呼叫 `PublishedConfigCache.invalidate()`。封存舊版時只改 `status`，不設定 `updatedBy`、`updatedAt`。
 
 - [ ] **Step 4：執行測試確認通過**
 
@@ -789,7 +805,7 @@ frontend/
 - [ ] **Step 1：寫失敗的測試**
 
   ```java
-  @Test void publishesDueVersionKeepingSchedulerAsUpdatedBy()  // it.admin 預約 now+2m；Clock 前進 3 分鐘；run() → PUBLISHED，updatedBy "it.admin"，updatedAt = 新的 now，scheduledAt 保留；舊版 ARCHIVED 且 updatedBy "it.admin"
+  @Test void publishesDueVersionKeepingSchedulerAsUpdatedBy()  // it.admin 預約 now+2m；Clock 前進 3 分鐘；run() → PUBLISHED，updatedBy "it.admin"，updatedAt = 新的 now，scheduledAt 保留；舊版 ARCHIVED，且其 updatedBy / updatedAt 不變
   @Test void notYetDueIsUntouched()
   @Test void concurrentRunsPublishOnce()       // 兩個 thread 同時呼叫 publishDue() → 合計回傳 1，PUBLISHED 只有一份
   @Test void saveAfterJobPublishedReturnsConflict() // 排程到期並發布後，用排程時的 docVersion 呼叫 saveWorkingCopy → AI_CONFIG_NOT_FOUND 或 AI_CONFIG_CONFLICT（不得覆蓋 PUBLISHED 內容）
@@ -821,12 +837,12 @@ frontend/
 ### Task 13：Prompt 管理 REST API
 
 **Files:**
-- Create: `aiassistant/config/AdminConfigController.java`、`aiassistant/config/dto/*`（`CreateConfigRequest`、`SaveDraftRequest`、`PublishRequest`、`RollbackRequest`、`ConfigVersionView`、`ValidationReportView`）
+- Create: `aiassistant/config/AdminConfigController.java`、`aiassistant/config/dto/*`（`CreateConfigRequest`、`SaveDraftRequest`、`PublishRequest`、`ApplyRequest`、`ConfigVersionView`、`ValidationReportView`）
 - Test: `aiassistant/config/AdminConfigControllerTest.java`
 
 **Interfaces:**
 - Consumes: `ConfigService`、`CurrentUserPort`、`ExampleQuestionParser`
-- Produces: 02 §3.1–§3.10 的 10 個 endpoint，request / response 欄位逐字照 02；`ConfigVersionView` 含 `exampleQuestions`（由 `ExampleQuestionParser` 產生）。權限：`@PreAuthorize("hasAuthority('AI_CONFIG_READ')")` 等，對應照 02 §3。
+- Produces: 02 §3.1–§3.10 的 10 個 endpoint（§3.10 為 `POST .../versions/{version}/apply`），request / response 欄位逐字照 02；`ConfigVersionView` 含 `exampleQuestions`（由 `ExampleQuestionParser` 產生）。權限照 02 §3：查詢 `AI_CONFIG_READ`；編輯與套用 `AI_CONFIG_EDIT`；發布 `AI_CONFIG_PUBLISH`。
 
 - [ ] **Step 1：寫失敗的測試**
 
@@ -837,7 +853,10 @@ frontend/
   @Test void scheduledPublishRequiresScheduledAt()    // publishMode SCHEDULED 缺 scheduledAt → 400 AI_INPUT_INVALID
   @Test void validateEndpointReturnsErrors()          // 內容缺章節 → 200 {valid:false, errors:[...]}
   @Test void publishInvalidReturns422WithDetails()
-  @Test void rollbackScheduleHandshake()              // 有排程時 rollback 不帶旗標 → 409 AI_CONFIG_SCHEDULE_PENDING，details[0].scheduledVersion；帶 confirmScheduledOverride:true → 200
+  @Test void applyOverwriteHandshake()                // 有排程時 POST versions/1/apply 不帶旗標 → 409 AI_CONFIG_OVERWRITE_PENDING，details[0].status "SCHEDULED"、docVersion；帶 confirmOverwrite:true 與該 docVersion → 200，回傳新草稿 status "DRAFT"、basedOnVersion 1；GET versions 中原排程版本為 "DISCARDED"
+  @Test void deleteDraftKeepsDocumentAsDiscarded()    // DELETE draft → 204；GET versions 仍列出它，status "DISCARDED"
+  @Test void applyWithoutWorkingCopyReturnsDraft()    // workingCopyDocVersion null → 200 DRAFT
+  @Test void archivedVersionKeepsItsTimeAfterNewPublish() // 發布新版後 GET versions：舊版 ARCHIVED 的 updatedAt 與發布前相同
   @Test void versionViewIncludesExampleQuestions()
   @Test void scheduledAtIsSerializedWithOffset()      // 回應中的時間為 ISO 8601 含時區
   ```
@@ -1069,10 +1088,19 @@ frontend/
 
 ## Phase C：前端
 
+> **視覺依據：`prototype/`（本機檔案，不進版控）。** 小幫手照 `prototype/chatbot.html`（從「小幫手啟動按鈕」到「輸入區」的區塊），Prompt 管理頁照 `prototype/prompt-management.html`；元件拆分照 prototype HTML 註解中的 Vue 元件名稱，樣式取自 `prototype/styles/tokens.css`、`base.css`、`chatbot.css`、`prompt-management.css`，複製進 `frontend/` 並改寫為全域 tokens 與元件 scoped CSS。以下例外以 spec 為準：
+> - 不實作 prototype 的「原型切換」控制列與 `scripts/theme.js`。
+> - 個人 360 頁面只做簡易版（名片 + 基本資料），不移植 `customer-360.css` 的完整版面。
+> - 後台與 IT（`LIMITED`）的快捷按鈕顯示全部分類，**不**顯示 prototype 的「僅能查看基本輪廓」說明區塊。
+> - Prompt 管理頁**不顯示**平台安全規則：不做 `LockedSafetyRules`，`PromptAssemblyGuide` 只有兩步（System Prompt、問題分類）。
+> - 編輯與預覽改為「編輯 / 預覽」分頁切換，不並排。
+> - 畫面上不出現版本號；版本以時間辨識。
+
 ### Task 18：前端骨架與平台替身
 
 **Files:**
 - Create: `frontend/package.json`、`vite.config.ts`、`tsconfig.json`、`tsconfig.app.json`、`index.html`、`src/main.ts`、`src/App.vue`
+- Create: `src/styles/tokens.css`、`src/styles/base.css`（自 `prototype/styles/` 複製，於 `main.ts` 全域引入）
 - Create: `src/platform-mock/apiClient.ts`、`useToast.ts`、`ToastHost.vue`、`useAuthStore.ts`、`router.ts`、`MainLayout.vue`、`pages/LoginPage.vue`、`HomePage.vue`、`CustomerListPage.vue`、`Customer360Page.vue`、`PromptManagementRoute.vue`
 - Test: `src/platform-mock/__tests__/apiClient.spec.ts`、`router.spec.ts`
 
@@ -1096,7 +1124,7 @@ frontend/
   // apiClient.spec.ts（以 axios-mock-adapter 或自訂 adapter 模擬）
   it('maps error body to ApiError')            // 409 {code:'AI_CONFIG_CONFLICT', message:'內容已被他人更新…'} → ApiError.code、message
   it('shows toast with server message')        // 一般錯誤 → toast.show 被呼叫，參數為 body.message
-  it('skips toast for silent codes')           // meta.silentCodes ['AI_CONFIG_SCHEDULE_PENDING'] → 不呼叫 toast
+  it('skips toast for silent codes')           // meta.silentCodes ['AI_CONFIG_OVERWRITE_PENDING'] → 不呼叫 toast
   it('does not toast on abort')
   it('shows network message when no response')
   // router.spec.ts
@@ -1111,7 +1139,8 @@ frontend/
 
 - [ ] **Step 4：實作 platform-mock**
 
-  頁面用簡單的 scoped CSS。顧客經營頁要有「輸入顧客編號」欄位和可點擊的清單（`GET /api/mock/customers`）。360 頁面顯示 `GET /api/mock/customers/{id}` 的資料，404 時顯示「查無此顧客或您沒有查看權限」。
+  頁面用 `tokens.css` 的變數加簡單的 scoped CSS。顧客經營頁要有「輸入顧客編號」欄位和可點擊的清單（`GET /api/mock/customers`）。360 頁面是**簡易版**：上方麵包屑（顧客經營 / 個人 360）、名片（姓名、客群、往來年資、資產級距、標籤）與一個基本資料區，資料來自 `GET /api/mock/customers/{id}`；404 時顯示「查無此顧客或您沒有查看權限」。
+  登入流程：Login 頁先 `GET /api/mock/auth/me` 取得 `XSRF-TOKEN` cookie（未登入回 401 屬正常，不跳 Toast），再 POST login（Task 3 備註）。
 
 - [ ] **Step 5：執行測試確認通過**
 
@@ -1184,7 +1213,8 @@ frontend/
 
 **Files:**
 - Create: `src/features/ai-assistant/types.ts`、`api/aiAssistantApi.ts`、`stores/useAssistantStore.ts`、`composables/useAssistantChat.ts`、`composables/useSuggestions.ts`
-- Create: `components/AssistantLauncher.vue`、`AssistantPanel.vue`、`AssistantMessage.vue`、`ToolCallSummary.vue`、`SuggestionChips.vue`
+- Create（元件拆分照 `prototype/chatbot.html` 註解）：`components/AssistantLauncher.vue`、`AssistantPanel.vue`、`AssistantHeader.vue`、`MessageList.vue`、`WelcomeCard.vue`、`QuickQuestions.vue`、`UserMessage.vue`、`AssistantMessage.vue`（內含 `SafeMarkdown`、`ToolCallSummary.vue`、`SourceList.vue`）、`PendingMessage.vue`、`ErrorMessage.vue`、`ChatComposer.vue`
+- Style：`prototype/styles/chatbot.css` 中對應的規則搬進各元件的 `<style scoped>`
 - Modify: `platform-mock/pages/Customer360Page.vue`（換成真的 `AssistantLauncher`）
 - Test: `stores/__tests__/useAssistantStore.spec.ts`、`components/__tests__/AssistantPanel.spec.ts`、`AssistantMessage.spec.ts`
 
@@ -1212,7 +1242,9 @@ frontend/
   it('does not send while IME composing')                  // keydown Enter，event.isComposing true → 不送出
   it('limits input to 1000 characters and shows counter')
   it('disables input when unavailable')                    // 顯示「查無此顧客或您沒有查看權限」
-  it('clicking a suggestion chip sends that question')
+  it('clicking a suggestion chip sends that question')     // QuickQuestions 依分類分組顯示（同 prototype 的 ai-quick-group）
+  it('shows all categories for LIMITED users without the limited note') // suggestions 回 5 類 → 5 組；畫面沒有「僅能查看基本輪廓」說明
+  it('shows pending message while waiting and error message on failure')
   // AssistantMessage.spec.ts
   it('shows tool call summary only when toolCalls non-empty') // 摘要區塊可展開，顯示名稱、用途、狀態、耗時
   it('shows sources with data time and queried time, and disclaimer')
@@ -1245,36 +1277,52 @@ frontend/
 ### Task 21：Prompt 管理頁
 
 **Files:**
-- Create: `src/features/ai-assistant/composables/usePromptAdmin.ts`、`taipeiTime.ts`
-- Create: `src/features/ai-assistant/admin/PromptManagementPage.vue`、`ConfigEditor.vue`、`VersionHistory.vue`
+- Create: `src/features/ai-assistant/composables/usePromptAdmin.ts`、`taipeiTime.ts`、`markdown/lineDiff.ts`
+- Create（元件拆分照 `prototype/prompt-management.html` 註解，例外見 Phase C 開頭）：`admin/PromptManagementPage.vue`、`ConfigList.vue`、`ConfigEditor.vue`、`PromptAssemblyGuide.vue`（兩步）、`MarkdownEditor.vue`（編輯 / 預覽分頁）、`ValidationPanel.vue`、`PublishBar.vue`、`VersionHistory.vue`、`VersionDiff.vue`、`VersionViewer.vue`、`ConfirmDialog.vue`、`NewInstructionDialog.vue`
+- Style：`prototype/styles/prompt-management.css` 中對應的規則搬進各元件的 `<style scoped>`
 - Modify: `api/aiAssistantApi.ts`（加入 02 §3 的 10 個函式）、`platform-mock/pages/PromptManagementRoute.vue`（掛載 `PromptManagementPage`）
-- Test: `composables/__tests__/usePromptAdmin.spec.ts`、`taipeiTime.spec.ts`、`admin/__tests__/ConfigEditor.spec.ts`
+- Test: `composables/__tests__/usePromptAdmin.spec.ts`、`taipeiTime.spec.ts`、`markdown/__tests__/lineDiff.spec.ts`、`admin/__tests__/ConfigEditor.spec.ts`、`MarkdownEditor.spec.ts`、`VersionHistory.spec.ts`
 
 **Interfaces:**
 - Consumes: `aiAssistantApi`、`SafeMarkdown`、`useToast`
 - Produces:
-  - `taipeiTime.ts`：`taipeiLocalToIso(local: string): string`（`'2026-10-24T09:00'` → `'2026-10-24T09:00:00+08:00'`，不受瀏覽器時區影響）、`isoToTaipeiLocal(iso: string): string`、`formatTaipei(iso: string): string`（`2026/10/24 09:00`）。
-  - `usePromptAdmin(configKey: Ref<string>)`：`state`（目前 working copy、published、errors）、`save(mode: 'KEEP_STATUS' | 'DRAFT')`、`publish(mode: 'IMMEDIATE' | 'SCHEDULED', scheduledLocal?: string)`（依序先儲存再發布，使用儲存回傳的 `docVersion`）、`rollback()`（遇到 `AI_CONFIG_SCHEDULE_PENDING` 時回傳 `{ needsConfirm: true, scheduledVersion, scheduledAt }`）、`confirmRollback()`、`reload()`。
-  - 畫面依 02 §3.0：兩個分頁（System Prompt / System Instructions）、清單標籤（「草稿」/「已排程 10/24 09:00」）、textarea 加 `SafeMarkdown` 預覽、發布方式單選（立即 / 預約）加 `<input type="datetime-local">`、按鈕「存成草稿」「儲存」「發布」、422 時在編輯器下方列出 `details`、版本歷程顯示 `scheduledAt` 與 `updatedBy`。
+  - `taipeiTime.ts`：`taipeiDateTimeToIso(date: string, time: string): string`（`'2026-10-24'`、`'09:00'` → `'2026-10-24T09:00:00+08:00'`，不受瀏覽器時區影響）、`isoToTaipeiDateTime(iso: string): { date: string; time: string }`、`formatTaipei(iso: string): string`（`2026/10/24 09:00`）。
+  - `lineDiff.ts`：`type DiffLine = { kind: 'same' | 'added' | 'removed'; text: string }`；`diffLines(before: string, after: string): DiffLine[]`（以 LCS 逐行比對，自行實作，不引入套件）。
+  - `usePromptAdmin(configKey: Ref<string>)`：`state`（working copy、published、versions、errors）、`save(mode: 'KEEP_STATUS' | 'DRAFT')`、`publish(mode: 'IMMEDIATE' | 'SCHEDULED', date?: string, time?: string)`（依序先儲存再發布，使用儲存回傳的 `docVersion`）、`discard()`、`apply(sourceVersion: number)`（遇到 `AI_CONFIG_OVERWRITE_PENDING` 時回傳 `{ needsConfirm: true, status, scheduledAt, updatedAt, docVersion }`）、`confirmApply()`、`compare(a: number, b: number): Promise<{ nameDiff: DiffLine[]; contentDiff: DiffLine[] }>`、`reload()`。
+  - 畫面依 02 §3.0、§3.0.1：兩個分頁（System Prompt / System Instructions）；`ConfigList` 標籤「草稿」/「已排程 10/24 09:00」；`MarkdownEditor` 以「編輯 / 預覽」分頁切換（預覽渲染目前 textarea 內容）；`PublishBar` 發布方式單選（立即 / 預約）加日期、時間兩個輸入框，按鈕「捨棄草稿」「存成草稿」「儲存」「立即發布 / 預約發布 / 更新預約」；`ValidationPanel` 列出 422 的 `details`；`VersionHistory` 每列顯示狀態、`formatTaipei(updatedAt)`、`updatedBy`、`changeNote`、「套用自 {時間} 的版本」，可勾選兩列比較（`VersionDiff`）、點列檢視（`VersionViewer`）、對已發布 / 已封存版本按「套用」。**任何地方都不顯示 `version` 數字。**
 
 - [ ] **Step 1：寫失敗的測試**
 
   ```ts
   // taipeiTime.spec.ts
-  it('converts local Taipei time to ISO with +08:00')     // process.env.TZ 設為 'America/New_York' 仍得到 '+08:00'
+  it('converts Taipei date and time to ISO with +08:00')  // process.env.TZ 設為 'America/New_York' 仍得到 '+08:00'
   it('round-trips')
+  // lineDiff.spec.ts
+  it('marks added, removed and unchanged lines')          // "a\nb\nc" vs "a\nc\nd" → same a、removed b、same c、added d
+  it('handles empty inputs')
   // usePromptAdmin.spec.ts（mock api）
   it('save KEEP_STATUS calls PUT draft with saveMode KEEP_STATUS')
   it('save DRAFT on scheduled sends saveMode DRAFT')
   it('publish saves first then publishes with returned docVersion') // put 回 docVersion 7 → publish body docVersion 7
   it('scheduled publish sends scheduledAt with +08:00')
-  it('rollback with pending schedule asks for confirmation then resends with flag') // 第一次 409 → needsConfirm；confirmRollback → body.confirmScheduledOverride === true
+  it('apply without working copy returns the new draft')  // body.workingCopyDocVersion null
+  it('apply over scheduled asks for confirmation then resends with flag and docVersion') // 第一次 409 → needsConfirm、status SCHEDULED；confirmApply → body.confirmOverwrite === true、workingCopyDocVersion === details[0].docVersion
+  it('compare fetches both versions and diffs name and content')
   it('validation 422 exposes details as errors')
   it('conflict 409 offers reload')
+  // MarkdownEditor.spec.ts
+  it('shows only the textarea on the edit tab and only the preview on the preview tab')
+  it('preview renders unsaved textarea content through SafeMarkdown')
   // ConfigEditor.spec.ts
-  it('shows three buttons and publish mode options')
-  it('defaults to scheduled mode with current time when working copy is scheduled')
-  it('preview uses SafeMarkdown')
+  it('shows discard, save-as-draft, save and publish buttons with publish mode options')
+  it('defaults to scheduled mode with current date and time when working copy is scheduled; publish button reads 更新預約')
+  it('does not render any platform safety rules')         // 頁面文字不含 SafetyRules 的任一條
+  // VersionHistory.spec.ts
+  it('labels versions by time and never shows version numbers') // 文字中不出現 "v1"、"v2"、"版本 1" 之類
+  it('enables compare only when exactly two versions are selected')
+  it('offers apply only on published, archived and discarded versions')
+  it('hides discarded versions until "顯示已捨棄的版本" is toggled; discarded rows show creator and 原預約 time')
+  it('shows applied-from label when basedOnVersion is set')
   ```
 
 - [ ] **Step 2：執行測試確認失敗**
@@ -1284,7 +1332,8 @@ frontend/
 
 - [ ] **Step 3：實作**
 
-  回復前的確認視窗文字：「此設定仍有 v{n} 預約於 {時間} 發布，到期後會覆蓋這次回復。確定要回復嗎？」（04 §2.4）。`AI_CONFIG_SCHEDULE_PENDING` 放進 `meta.silentCodes`。
+  套用前的確認視窗文字逐字照 02 §3.10（草稿 / 已排程兩種，皆說明會被標為已捨棄、仍可在版本歷程中找回）。`AI_CONFIG_OVERWRITE_PENDING` 放進 `meta.silentCodes`。套用成功後切到編輯分頁顯示新草稿。狀態標籤五種：草稿、已排程、已發布、已封存、已捨棄。
+  **實作前重新讀取 `prototype/prompt-management.html` 與 `prototype/styles/prompt-management.css`**：使用者正在另一個 session 更新預覽區塊的設計，以實作當下的版本為準。
 
 - [ ] **Step 4：執行測試確認通過**
 

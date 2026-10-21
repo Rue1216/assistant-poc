@@ -1,6 +1,6 @@
 # 04 MongoDB Schema
 
-> 版本：v0.7（POC）・2026-10-20
+> 版本：v0.9（POC）・2026-10-21
 
 ## 1. Collection 總覽
 
@@ -27,14 +27,14 @@
 | `configType` | string | ✓ | `SYSTEM_PROMPT`（只有一份 `system.main`）或 `SYSTEM_INSTRUCTION`（每份一個問題分類） |
 | `name` | string | ✓ | 顯示名稱，1–50 字 |
 | `content` | string | ✓ | Markdown 內容，最多 65,536 字元（API 另檢查 UTF-8 bytes） |
-| `status` | string | ✓ | `DRAFT`、`SCHEDULED`、`PUBLISHED`、`ARCHIVED` |
-| `version` | int | ✓ | 業務版本號，同一個 `configKey` 從 1 開始遞增 |
-| `basedOnVersion` | int \| null | | 回復時記錄來源版本 |
+| `status` | string | ✓ | `DRAFT`（草稿）、`SCHEDULED`（已排程）、`PUBLISHED`（已發布）、`ARCHIVED`（已封存：曾上線、後被新版取代）、`DISCARDED`（已捨棄：未上線就被捨棄或被套用取代） |
+| `version` | int | ✓ | 內部流水號，同一個 `configKey` 從 1 開始遞增；只用於 API 路徑、排序與唯一索引（需求 3-5），**畫面不顯示** |
+| `basedOnVersion` | int \| null | | 套用歷史版本時記錄來源版本的流水號 |
 | `changeNote` | string \| null | | 修改說明，最多 200 字 |
 | `createdBy` | string | ✓ | |
 | `createdAt` | date | ✓ | |
-| `updatedBy` | string | ✓ | 最後一次變更狀態或內容的人；發布、預約、回復、封存都會更新（見 2.4） |
-| `updatedAt` | date | ✓ | 最後一次變更的時間；發布時即為實際生效時間 |
+| `updatedBy` | string | ✓ | 最後一次變更這份版本的人：儲存、套用、預約、發布會更新；**封存不更新**（見 2.4） |
+| `updatedAt` | date | ✓ | 最後一次變更的時間；已發布 / 已封存版本即為生效時間，畫面以它辨識版本 |
 | `scheduledAt` | date \| null | | 預約發布時間。`SCHEDULED` 必填；退回草稿時清空；排程發布後保留，作為「原預約時間」紀錄 |
 | `docVersion` | long | ✓ | Spring Data `@Version` 樂觀鎖，每次更新加 1 |
 
@@ -70,7 +70,7 @@
 
 | 名稱 | 欄位 | 選項 | 用途 |
 |---|---|---|---|
-| `UK_ICRM_AI_CFG_1` | `{ configKey: 1, version: 1 }` | unique | 需求指定；同一個 key 的版本號不重複 |
+| `UK_ICRM_AI_CFG_1` | `{ configKey: 1, version: 1 }` | unique | 需求指定；同一個 key 的內部流水號不重複 |
 | `UK_ICRM_AI_CFG_2` | `{ configKey: 1 }` | unique，partial：`{ status: "PUBLISHED" }` | 由資料庫保證同一個 key 只有一個已發布版本 |
 | `UK_ICRM_AI_CFG_3` | `{ configKey: 1 }` | unique，partial：`{ status: "DRAFT" }` | 同時建立草稿時只有一份成功 |
 | `IX_ICRM_AI_CFG_4` | `{ status: 1, configType: 1 }` | | 讀取所有已發布設定（組 prompt 時使用） |
@@ -94,7 +94,7 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_CONFIG", {
         configType:     { enum: ["SYSTEM_PROMPT", "SYSTEM_INSTRUCTION"] },
         name:           { bsonType: "string", minLength: 1, maxLength: 50 },
         content:        { bsonType: "string", maxLength: 65536 },
-        status:         { enum: ["DRAFT", "SCHEDULED", "PUBLISHED", "ARCHIVED"] },
+        status:         { enum: ["DRAFT", "SCHEDULED", "PUBLISHED", "ARCHIVED", "DISCARDED"] },
         version:        { bsonType: "int", minimum: 1 },
         basedOnVersion: { bsonType: ["int", "null"], minimum: 1 },
         changeNote:     { bsonType: ["string", "null"], maxLength: 200 },
@@ -121,16 +121,23 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_CONFIG", {
 
 ```mermaid
 stateDiagram-v2
-  [*] --> DRAFT: 建立草稿
+  [*] --> DRAFT: 建立草稿 / 套用
   DRAFT --> DRAFT: 儲存 / 存成草稿
-  DRAFT --> [*]: 捨棄
+  DRAFT --> DISCARDED: 捨棄草稿，或被套用取代
   DRAFT --> PUBLISHED: 立即發布
   DRAFT --> SCHEDULED: 預約發布
   SCHEDULED --> SCHEDULED: 儲存（保留排程）/ 修改預約時間
   SCHEDULED --> DRAFT: 存成草稿（取消排程）
+  SCHEDULED --> DISCARDED: 被套用取代（排程取消）
   SCHEDULED --> PUBLISHED: 立即發布，或到期由排程器自動發布
-  PUBLISHED --> ARCHIVED: 有新版本生效或回復
+  PUBLISHED --> ARCHIVED: 有新版本生效
 ```
+
+- **已封存（`ARCHIVED`）**：曾經上線、後來被新版本取代。`updatedAt` 是它當初的生效時間。
+- **已捨棄（`DISCARDED`）**：從未上線就被放棄，包括「捨棄草稿」與「被套用取代的草稿或排程」。內容完整保留，`updatedAt` / `updatedBy` 是捨棄的時間與操作者，原作者見 `createdBy`。
+- **沒有任何操作會刪除 document**，所有內容（含未上線的）都留在版本歷程中。
+
+套用歷史版本（`PUBLISHED`、`ARCHIVED` 或 `DISCARDED`）時，**一律新增一份 `DRAFT`**；若已有編輯中版本（`DRAFT` 或 `SCHEDULED`），在同一個交易中把它改成 `DISCARDED`。
 
 | 操作 | 對象 | 行為 | `updatedBy` / `updatedAt` |
 |---|---|---|---|
@@ -139,13 +146,18 @@ stateDiagram-v2
 | 儲存 | SCHEDULED | 更新內容，**保留排程**；先執行發布前驗證，不通過 → 422 | 操作者 / 現在（視為由此人重新確認排程） |
 | 存成草稿 | DRAFT | 同「儲存」 | 操作者 / 現在 |
 | 存成草稿 | SCHEDULED | 更新內容，`status = DRAFT`、清空 `scheduledAt`（取消排程） | 操作者 / 現在 |
-| 立即發布 | DRAFT、SCHEDULED | 先驗證；在交易中把舊的 PUBLISHED 改成 ARCHIVED、編輯中版本改成 PUBLISHED | 兩份都寫操作者 / 現在 |
+| 立即發布 | DRAFT、SCHEDULED | 先驗證；在交易中把舊的 PUBLISHED 改成 ARCHIVED、編輯中版本改成 PUBLISHED | 新版：操作者 / 現在；**舊版：不改動** |
 | 預約發布 | DRAFT、SCHEDULED | 先驗證；`status = SCHEDULED`、寫入 `scheduledAt`（已排程時即修改預約時間） | 操作者 / 現在 |
-| 排程到期 | SCHEDULED | 排程器在交易中把舊的 PUBLISHED 改成 ARCHIVED、SCHEDULED 改成 PUBLISHED；`scheduledAt` 保留 | **維持預約者** / 實際生效時間（舊版的 ARCHIVED 也寫預約者） |
-| 回復 | PUBLISHED | 找出 `version` 小於目前已發布版本的最新 ARCHIVED，複製內容成新版本（`version = 最大值 + 1`、`basedOnVersion = 來源版本`），在交易中發布。編輯中版本不受影響 | 操作者 / 現在 |
-| 捨棄草稿 | DRAFT | 刪除；`SCHEDULED` 需先存成草稿才能捨棄；PUBLISHED 和 ARCHIVED 不可刪除 | — |
+| 排程到期 | SCHEDULED | 排程器在交易中把舊的 PUBLISHED 改成 ARCHIVED、SCHEDULED 改成 PUBLISHED；`scheduledAt` 保留 | 新版：**維持預約者** / 實際生效時間；舊版：不改動 |
+| 套用 | 來源：PUBLISHED、ARCHIVED、DISCARDED | 已有編輯中版本且未帶 `confirmOverwrite: true` → 409 `AI_CONFIG_OVERWRITE_PENDING`。否則在交易中：(1) 既有的編輯中版本改為 `DISCARDED`（`scheduledAt` 保留，作為「原預約時間」紀錄）；(2) 新增一份 `DRAFT`：`version = 最大值 + 1`，`name`、`content` 取自來源版本，`basedOnVersion = 來源版本`，`changeNote` 空。來源版本本身不變 | 新草稿：操作者 / 現在（`createdBy` 也是操作者）；被取代的版本：操作者 / 現在 |
+| 捨棄草稿 | DRAFT | `status = DISCARDED`，內容保留，不刪除；`SCHEDULED` 需先存成草稿才能捨棄 | 操作者 / 現在 |
 
 所有寫入都以 `docVersion` 做條件更新；不一致 → 409 `AI_CONFIG_CONFLICT`。
+
+**為什麼封存時不改動舊版的 `updatedBy` / `updatedAt`**
+
+- 畫面以 `updatedAt` 辨識版本（不顯示版本號），已發布或已封存版本的 `updatedAt` 必須固定是它當初生效的時間。
+- 舊版只會在另一個版本生效時被封存，沒有單獨的封存操作。所以封存的時間與造成封存的人，就是下一個版本的 `updatedAt` 與 `updatedBy`，從版本歷程即可推得，不需要另外記錄。
 
 **預約時間規則**
 
@@ -159,15 +171,16 @@ stateDiagram-v2
 - 發布成功後清除 prompt 快取。
 - 發布失敗（例如交易衝突）會在下一輪重試，並記 WARN log（只含 configKey、version、錯誤類型）。
 
-**排程中執行回復**
+**套用時已有編輯中版本**
 
-- 若該 key 有 `SCHEDULED` 版本，回復請求必須帶 `confirmScheduledOverride: true`，否則回 409 `AI_CONFIG_SCHEDULE_PENDING`，並在 `details` 告知排程中的版本與預約時間。
-- 前端收到後跳出確認視窗：「此設定仍有 v{n} 預約於 {時間} 發布，到期後會覆蓋這次回復。確定要回復嗎？」使用者確認後帶旗標重送。
-- 回復立即生效；排程中的版本維持不變，到期時照常發布並覆蓋回復結果。
+- 套用請求必須帶 `confirmOverwrite: true` 與目前編輯中版本的 `docVersion`，否則回 409 `AI_CONFIG_OVERWRITE_PENDING`，`details` 告知編輯中版本的狀態、`scheduledAt`、`updatedAt`、`docVersion`。
+- 前端跳出確認視窗（文字見 02 §3.10），使用者確認後帶旗標重送。
+- 套用後，原本的編輯中版本變成 `DISCARDED`（排程隨之取消，不會到期發布），內容仍可在版本歷程中比較或再套用回來。
 
 **其他**
 
-- 版本號只增不減，任何操作都不會覆寫或刪除已發布過的版本，歷程完整可追溯。
+- 內部流水號 `version` 只增不減；沒有任何操作會刪除 document 或覆寫其他版本的內容，歷程完整可追溯。
+- 交易需確保「同一個 key 最多一份 `DRAFT`」：套用時先把舊的編輯中版本改為 `DISCARDED`，再新增 `DRAFT`，兩步在同一個交易中完成。
 - 交易需要 replica set：docker compose 以單節點 replica set（`rs0`）啟動。
 - 同時有兩人發布時，partial unique index `UK_ICRM_AI_CFG_2` 確保不會出現兩個 PUBLISHED，後到的交易失敗並回傳 409。
 
@@ -197,7 +210,7 @@ stateDiagram-v2
 
 - 組 prompt 與快捷問題（`/suggestions`）時讀取所有 `status = PUBLISHED` 的設定，放在記憶體快取。
 - `## 範例問題` 在發布時解析並快取，不在每次請求時重新解析。
-- 發布、排程到期或回復成功後清除快取；為了多台機器的情況，快取另設 60 秒 TTL。
+- 發布或排程到期成功後清除快取；為了多台機器的情況，快取另設 60 秒 TTL。（套用只產生草稿，不影響已發布內容，不需清除快取）
 
 ### 2.7 初始資料
 
@@ -217,8 +230,8 @@ stateDiagram-v2
 
 ### 2.8 資料生命週期
 
-- 所有版本永久保留，不設 TTL：資料量小，而且版本歷程本身就是稽核依據。
-- 如果之後資料量變大，可以把超過一年的 ARCHIVED 版本搬到封存 collection（目前不實作）。
+- 所有版本（含 `DISCARDED`）永久保留，不設 TTL：資料量小，而且版本歷程本身就是稽核依據。
+- 如果之後資料量變大，可以把超過一年的 `ARCHIVED`、`DISCARDED` 版本搬到封存 collection（目前不實作）。
 
 ---
 

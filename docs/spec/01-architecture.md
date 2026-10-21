@@ -1,6 +1,6 @@
 # 01 架構說明
 
-> 版本：v0.7（POC）・2026-10-20
+> 版本：v0.9（POC）・2026-10-21
 
 ## 1. 系統元件
 
@@ -202,22 +202,28 @@ backend/
 
 ```
 frontend/src/
+├─ styles/          tokens.css、base.css（取自 prototype/styles，作為全域 CSS variables 與基礎樣式）
 ├─ features/ai-assistant/
-│  ├─ components/   AssistantLauncher（接收 customerId）、AssistantPanel、AssistantMessage、
-│  │                ToolCallSummary、SuggestionChips
-│  ├─ admin/        PromptManagementPage（System Prompt / System Instructions 兩個分頁）、
-│  │                ConfigEditor（textarea + 預覽 + 發布方式：立即 / 預約；
-│  │                按鈕：存成草稿、儲存、發布）、VersionHistory（含預約時間、回復前的排程確認）
-│  ├─ markdown/     parser.ts、SafeMarkdown.ts
+│  ├─ components/   AssistantLauncher（接收 customerId）、AssistantPanel、AssistantHeader、
+│  │                MessageList、WelcomeCard、QuickQuestions、UserMessage、AssistantMessage
+│  │                （內含 SafeMarkdown、ToolCallSummary、SourceList）、PendingMessage、
+│  │                ErrorMessage、ChatComposer
+│  ├─ admin/        PromptManagementPage、ConfigList、ConfigEditor、PromptAssemblyGuide（兩步：
+│  │                System Prompt、問題分類；不顯示平台安全規則）、MarkdownEditor（編輯 / 預覽分頁）、
+│  │                ValidationPanel、PublishBar、VersionHistory（比較、檢視、套用）、VersionDiff、
+│  │                VersionViewer、ConfirmDialog、NewInstructionDialog
+│  ├─ markdown/     parser.ts、SafeMarkdown.ts、lineDiff.ts（逐行差異，自行實作）
 │  ├─ api/          aiAssistantApi.ts
 │  ├─ stores/       useAssistantStore.ts（對話以 customerId 為單位，換顧客即清空）
-│  ├─ composables/  useAssistantChat.ts、useSuggestions.ts
+│  ├─ composables/  useAssistantChat.ts、useSuggestions.ts、usePromptAdmin.ts、taipeiTime.ts
 │  └─ types.ts
 └─ platform-mock/   apiClient、useToast、useAuthStore、router、layout
                     頁面：登入（9 個帳號）、首頁、顧客經營（/customer：輸入編號 + 列表）、
-                          個人 360（/customer/:customerId，放置小幫手）、
+                          個人 360（/customer/:customerId，簡易版：名片 + 基本資料，放置小幫手）、
                           後台管理（/setting/prompt-management，掛載 PromptManagementPage）
 ```
+
+**視覺依據**：小幫手與 Prompt 管理頁照 `prototype/chatbot.html`、`prototype/prompt-management.html`（元件拆分照 prototype 註解中的 Vue 元件名稱，樣式取自 `prototype/styles/chatbot.css`、`prompt-management.css`，改寫為元件的 scoped CSS）。`prototype/` 不進版控，所以用到的樣式要複製進 `frontend/`。個人 360 頁面是平台替身，實際平台樣式已定，只做簡易版。prototype 中標示「原型切換，Vue 版不實作」的控制列不實作。
 
 ## 6. 設定（application.yml）
 
