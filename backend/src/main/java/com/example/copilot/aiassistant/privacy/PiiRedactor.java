@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class PiiRedactor {
 
-    static final String SELF = "【本顧客】";
+    public static final String SELF = "【本顧客】";
     static final String MASKED = "【已遮蔽】";
     static final String OTHER = "【其他顧客】";
 

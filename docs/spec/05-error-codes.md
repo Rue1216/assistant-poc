@@ -70,6 +70,7 @@
 | `TOOL_ARGUMENT_INVALID` | DENIED | 參數格式不正確 | 參數驗證失敗，或含有 schema 以外的欄位（例如模型自行加上 `customerId`） |
 | `CUSTOMER_DATA_UNAVAILABLE` | ERROR | 目前無法取得本顧客資料 | 綁定的顧客在查詢當下已無資料 |
 | `STOCK_NOT_FOUND` | ERROR | 查無此上市股票代號 | 代號不存在或為上櫃股票 |
+| `TOOL_CALL_LIMIT_REACHED` | DENIED | 已達本次查詢次數上限，未執行 | 單次提問的工具呼叫超過 5 次，超過的部分不執行 |
 | `TOOL_TIMEOUT` | TIMEOUT | 查詢逾時 | 工具執行超過 timeout |
 | `MARKET_DATA_TIMEOUT` | TIMEOUT | 市場資料查詢逾時 | TWSE 逾時 |
 | `MARKET_DATA_UNAVAILABLE` | ERROR | 市場資料暫時無法取得 | TWSE 連線失敗、非 2xx、格式錯誤、超過大小上限 |

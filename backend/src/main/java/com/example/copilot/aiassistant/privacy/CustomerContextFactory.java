@@ -6,12 +6,15 @@ import com.example.copilot.aiassistant.port.CustomerDataPort;
 import com.example.copilot.aiassistant.port.CustomerRecord;
 import com.example.copilot.aiassistant.port.UserContext;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import org.springframework.stereotype.Component;
 
 @Component
 public class CustomerContextFactory {
+
+    private static final List<String> HONORIFICS = List.of("先生", "小姐", "女士", "太太", "大哥", "大姐", "大姊", "哥", "姐", "姊");
 
     private final CustomerAccessPort accessPort;
     private final CustomerDataPort dataPort;
@@ -30,10 +33,11 @@ public class CustomerContextFactory {
         return dataPort.findCustomer(customerId).map(record -> build(record, level));
     }
 
-    private static CustomerContext build(CustomerRecord record, AccessLevel level) {
+    static CustomerContext build(CustomerRecord record, AccessLevel level) {
         Set<String> self = new LinkedHashSet<>();
         add(self, record.customerId());
         add(self, record.name());
+        addNameForms(self, record.name());
         Set<String> sensitive = new LinkedHashSet<>();
         add(sensitive, record.nationalId());
         add(sensitive, record.mobile());
@@ -42,6 +46,24 @@ public class CustomerContextFactory {
             record.accountNumbers().forEach(a -> add(sensitive, a));
         }
         return new CustomerContext(record.customerId(), level, self, sensitive);
+    }
+
+    /**
+     * Partial forms of the name people actually write (03 section 1.6 rule 1): the given name, the surname with an
+     * honorific, and the masked form the platform shows LIMITED users. A single-character surname is assumed.
+     * The surname alone is not added (王道, 國王 must survive) and neither is a one-character given name.
+     */
+    private static void addNameForms(Set<String> target, String name) {
+        if (name == null || name.length() < 2) {
+            return;
+        }
+        if (name.length() >= 3) {
+            add(target, name.substring(1));
+        }
+        String surname = name.substring(0, 1);
+        HONORIFICS.forEach(h -> add(target, surname + h));
+        String last = name.length() == 2 ? "○" : name.substring(name.length() - 1);
+        add(target, surname + "○".repeat(name.length() - 2) + last);
     }
 
     private static void add(Set<String> target, String value) {

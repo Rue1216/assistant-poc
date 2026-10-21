@@ -61,6 +61,15 @@ public class ToolExecutor {
         return outcome(tool.name(), tool.purpose(), result, context, start);
     }
 
+    /** The answer for a call beyond the per-question cap: not executed, but the model still gets a result for it. */
+    public ToolOutcome limitReached(ToolExecutionRequest request, ToolContext context) {
+        String purpose = guard.purposeOf(request.name()).orElse(UNKNOWN_PURPOSE);
+        ToolResult result = ToolResult.failure(ToolStatus.DENIED, "TOOL_CALL_LIMIT_REACHED", "已達本次查詢次數上限，未執行");
+        ToolOutcome built = outcome(safeName(request.name()), purpose, result, context, System.nanoTime());
+        // Not executed, so no duration to measure.
+        return new ToolOutcome(built.toolName(), built.purpose(), built.result(), built.payloadForModel(), 0);
+    }
+
     @SuppressWarnings({"unchecked", "rawtypes"})
     private ToolResult run(AssistantTool tool, Record args, ToolContext context) {
         Duration timeout = tool.timeout().compareTo(timeoutCeiling) < 0 ? tool.timeout() : timeoutCeiling;

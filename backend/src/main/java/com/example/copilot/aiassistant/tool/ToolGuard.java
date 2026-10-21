@@ -3,6 +3,7 @@ package com.example.copilot.aiassistant.tool;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import jakarta.validation.Validator;
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 import java.util.Set;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.DeserializationFeature;
@@ -56,6 +57,11 @@ public class ToolGuard {
         } catch (RuntimeException e) {
             return reject(ARGUMENT_INVALID, "參數格式不正確");
         }
+    }
+
+    /** The purpose of a registered tool (offered or not), or empty for an unknown name. */
+    Optional<String> purposeOf(String name) {
+        return name == null ? Optional.empty() : registry.find(name).map(AssistantTool::purpose);
     }
 
     private static Rejected reject(String code, String message) {

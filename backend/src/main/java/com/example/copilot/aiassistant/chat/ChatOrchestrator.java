@@ -38,12 +38,15 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -57,6 +60,11 @@ import org.springframework.stereotype.Component;
 public class ChatOrchestrator {
 
     static final String MARKET_DISCLAIMER = "資訊僅供內部經營參考，不構成投資建議";
+    private static final String SELF_WORDING = "本顧客";
+    private static final String DECORATION = "[\\s\\u3000>*_\\-（）().。：:※\\u26A0\\uFE0F]*";
+    private static final Pattern HORIZONTAL_RULE = Pattern.compile("\\s*([-*_])\\1{2,}\\s*");
+    private static final Pattern DISCLAIMER_ONLY = Pattern.compile(
+            DECORATION + Pattern.quote(MARKET_DISCLAIMER) + DECORATION);
     private static final String USER_ROLE = "user";
     private static final String ASSISTANT_ROLE = "assistant";
 
@@ -90,9 +98,8 @@ public class ChatOrchestrator {
     public ChatResult chat(ChatCommand command, UserContext user, CustomerContext customer) {
         Turn turn = new Turn(user, customer);
         try {
-            String answer = turn.answer(command);
-            ChatResult result = turn.result(answer);
-            turn.audit(answer, "ANSWERED", null);
+            ChatResult result = turn.result(turn.answer(command));
+            turn.audit(result.answer(), "ANSWERED", null);
             log.info("chat answered requestId={} userId={} durationMs={} modelCalls={} toolCalls={} totalTokens={}",
                     turn.requestId, user.userId(), turn.elapsedMs(), turn.modelCalls, turn.executed.size(),
                     turn.totalTokens);
@@ -119,6 +126,8 @@ public class ChatOrchestrator {
         private final CustomerContext customer;
         private final ToolContext toolContext;
         private final List<ExecutedTool> executed = new ArrayList<>();
+        /** Calls beyond the cap: reported in the summary, never executed, never audited as tool calls. */
+        private final List<ToolOutcome> skipped = new ArrayList<>();
         private String redactedQuestion;
         private int modelCalls;
         private long totalTokens;
@@ -207,20 +216,23 @@ public class ChatOrchestrator {
         }
 
         /**
-         * Executes the requested calls up to the tool-call cap. Only executed calls are echoed back, each followed
-         * by its result, so every tool call id the model sees has exactly one result.
+         * Executes the requested calls up to the tool-call cap. Calls beyond the cap are not executed but are still
+         * echoed with a TOOL_CALL_LIMIT_REACHED result, so every tool call id the model sees has exactly one result.
          */
         private void runTools(AiMessage reply, List<ChatMessage> messages, Set<String> offered) {
             List<ToolExecutionRequest> echoed = new ArrayList<>();
             List<ChatMessage> results = new ArrayList<>();
             for (ToolExecutionRequest request : reply.toolExecutionRequests()) {
-                if (executed.size() >= limits.maxToolCalls()) {
-                    break;
-                }
                 checkDeadline();
                 ToolExecutionRequest safe = redactCall(request);
-                ToolOutcome outcome = executor.execute(safe, toolContext, offered);
-                executed.add(new ExecutedTool(outcome, clock.instant()));
+                ToolOutcome outcome;
+                if (executed.size() >= limits.maxToolCalls()) {
+                    outcome = executor.limitReached(safe, toolContext);
+                    skipped.add(outcome);
+                } else {
+                    outcome = executor.execute(safe, toolContext, offered);
+                    executed.add(new ExecutedTool(outcome, clock.instant()));
+                }
                 echoed.add(safe);
                 results.add(ToolExecutionResultMessage.from(safe, outcome.payloadForModel()));
             }
@@ -240,9 +252,10 @@ public class ChatOrchestrator {
             }
         }
 
-        ChatResult result(String answer) {
+        /** Builds the response from the redacted answer; the shown (and audited) answer is finalised here. */
+        ChatResult result(String redactedAnswer) {
             Instant queriedAt = clock.instant();
-            List<ToolCallSummary> toolCalls = executed.stream().map(ExecutedTool::outcome)
+            List<ToolCallSummary> toolCalls = Stream.concat(executed.stream().map(ExecutedTool::outcome), skipped.stream())
                     .map(o -> new ToolCallSummary(o.toolName(), o.purpose(), o.result().status().name(),
                             o.durationMs()))
                     .toList();
@@ -260,8 +273,11 @@ public class ChatOrchestrator {
                     .map(e -> new SourceView(e.getKey().name(), e.getKey().url(), e.getKey().dataTime(),
                             e.getValue()))
                     .toList();
-            return new ChatResult(requestId, answer, sourceViews, queriedAt, marketData ? MARKET_DISCLAIMER : null,
-                    toolCalls);
+            String disclaimer = marketData ? MARKET_DISCLAIMER : null;
+            String shown = disclaimer == null ? redactedAnswer : stripTrailingDisclaimer(redactedAnswer);
+            // Last, after the redaction pass: the token is for the model's input, people read plain wording.
+            shown = shown.replace(PiiRedactor.SELF, SELF_WORDING);
+            return new ChatResult(requestId, shown, sourceViews, queriedAt, disclaimer, toolCalls);
         }
 
         void fail(ErrorCode code) {
@@ -283,6 +299,35 @@ public class ChatOrchestrator {
 
         private String redact(String text) {
             return redactor.redact(text, customer);
+        }
+    }
+
+    /**
+     * The UI shows the disclaimer itself, so a last line that only repeats it (possibly with markdown or punctuation
+     * around it) is dropped. A line that carries any other content is kept.
+     */
+    static String stripTrailingDisclaimer(String answer) {
+        String[] lines = answer.split("\n", -1);
+        int last = lines.length - 1;
+        while (last >= 0 && lines[last].isBlank()) {
+            last--;
+        }
+        if (last < 0 || !DISCLAIMER_ONLY.matcher(lines[last]).matches()) {
+            return answer;
+        }
+        List<String> kept = new ArrayList<>(Arrays.asList(lines).subList(0, last));
+        trimTrailingBlanks(kept);
+        if (!kept.isEmpty() && HORIZONTAL_RULE.matcher(kept.get(kept.size() - 1)).matches()) {
+            kept.remove(kept.size() - 1);
+            trimTrailingBlanks(kept);
+        }
+        // Nothing but the disclaimer: keep the answer rather than return an empty one.
+        return kept.isEmpty() ? answer : String.join("\n", kept);
+    }
+
+    private static void trimTrailingBlanks(List<String> lines) {
+        while (!lines.isEmpty() && lines.get(lines.size() - 1).isBlank()) {
+            lines.remove(lines.size() - 1);
         }
     }
 

@@ -284,13 +284,16 @@ class ChatOrchestratorTest {
 
         assertThat(result.answer()).isEqualTo("依現有資料整理。");
         assertThat(result.toolCalls()).extracting(ToolCallSummary::name).containsExactly("getCustomerProfile",
-                "getCustomerHoldings", "getCampaignResults", "getRecentInteractions", "getMarketIndex");
+                "getCustomerHoldings", "getCampaignResults", "getRecentInteractions", "getMarketIndex",
+                "getCustomerProfile");
+        assertThat(result.toolCalls().get(5).status()).isEqualTo("DENIED");
+        assertThat(singleAudit().toolCalls()).hasSize(5);
         List<ChatRequest> requests = model.requests();
         assertThat(requests).hasSize(3);
         assertThat(toolNames(requests.get(0))).hasSize(7);
         assertThat(toolNames(requests.get(1))).hasSize(7);
         assertThat(requests.get(2).toolSpecifications()).isNullOrEmpty();
-        // every tool call id sent back to the model has exactly one result message, and c6 was never sent back
+        // every tool call id sent back to the model has exactly one result message; c6 is answered, not executed
         List<String> callIds = new ArrayList<>();
         List<String> resultIds = new ArrayList<>();
         for (ChatMessage message : requests.get(2).messages()) {
@@ -300,8 +303,123 @@ class ChatOrchestratorTest {
                 resultIds.add(tr.id());
             }
         }
-        assertThat(callIds).containsExactly("c1", "c2", "c3", "c4", "c5");
-        assertThat(resultIds).containsExactly("c1", "c2", "c3", "c4", "c5");
+        assertThat(callIds).containsExactly("c1", "c2", "c3", "c4", "c5", "c6");
+        assertThat(resultIds).containsExactly("c1", "c2", "c3", "c4", "c5", "c6");
+    }
+
+    @Test
+    void stripsTrailingDisclaimerLineWhenDisclaimerSet() {
+        for (String line : List.of(DISCLAIMER, "*" + DISCLAIMER + "*", "> " + DISCLAIMER + "。",
+                "_（" + DISCLAIMER + "）_", "※ " + DISCLAIMER, "⚠️ " + DISCLAIMER, "　" + DISCLAIMER)) {
+            audits.clear();
+            model.reply(toolCalls(100, call("call_1", "getStockQuote", "{\"stockCode\":\"2330\"}")))
+                    .reply(text("台積電收盤 2420 元。\n\n" + line + "\n\n", 200));
+
+            ChatResult result = ask("台積電今天收多少？");
+
+            assertThat(result.answer()).isEqualTo("台積電收盤 2420 元。");
+            assertThat(result.disclaimer()).isEqualTo(DISCLAIMER);
+            assertThat(singleAudit().answer()).isEqualTo("台積電收盤 2420 元。");
+        }
+    }
+
+    @Test
+    void stripsHorizontalRuleLeftBehindByTheDisclaimer() {
+        model.reply(toolCalls(100, call("call_1", "getStockQuote", "{\"stockCode\":\"2330\"}")))
+                .reply(text("台積電收盤 2420 元。\n\n---\n" + DISCLAIMER + "\n", 200));
+
+        assertThat(ask("台積電今天收多少？").answer()).isEqualTo("台積電收盤 2420 元。");
+    }
+
+    @Test
+    void keepsAnswerWhenItIsOnlyTheDisclaimer() {
+        model.reply(toolCalls(100, call("call_1", "getStockQuote", "{\"stockCode\":\"2330\"}")))
+                .reply(text("> " + DISCLAIMER, 200));
+
+        assertThat(ask("台積電今天收多少？").answer()).isEqualTo("> " + DISCLAIMER);
+    }
+
+    @Test
+    void keepsDisclaimerSentenceEmbeddedInOtherText() {
+        String answer = "台積電收盤 2420 元。\n注意：" + DISCLAIMER + "，請自行判斷。";
+        model.reply(toolCalls(100, call("call_1", "getStockQuote", "{\"stockCode\":\"2330\"}")))
+                .reply(text(answer, 200));
+
+        assertThat(ask("台積電今天收多少？").answer()).isEqualTo(answer);
+    }
+
+    @Test
+    void doesNotStripWhenNoMarketTool() {
+        String answer = "本顧客為 VIP 客群。\n" + DISCLAIMER;
+        model.reply(text(answer, 100));
+
+        ChatResult result = ask("幫我整理這位顧客的概況");
+
+        assertThat(result.disclaimer()).isNull();
+        assertThat(result.answer()).isEqualTo(answer);
+    }
+
+    @Test
+    void answerShowsPlainSelfReference() {
+        model.reply(text("王小明偏好電話聯絡，【本顧客】近期無新活動。", 100));
+
+        ChatResult result = ask("聯絡方式？");
+
+        assertThat(result.answer()).contains("本顧客").doesNotContain("王小明", "【本顧客】");
+        assertThat(singleAudit().answer()).isEqualTo(result.answer());
+    }
+
+    @Test
+    void overCapCallsAreAnsweredWithLimitReached() {
+        model.reply(toolCalls(100, call("c1", "getCustomerProfile", "{}"), call("c2", "getCustomerHoldings", "{}"),
+                        call("c3", "getCampaignResults", "{}"), call("c4", "getRecentInteractions", "{}"),
+                        call("c5", "getMarketIndex", "{}"), call("c6", "getStockQuote", "{\"stockCode\":\"2330\"}")))
+                .reply(text("依現有資料整理。", 100));
+
+        ask("全部整理");
+
+        List<String> callIds = new ArrayList<>();
+        List<String> resultIds = new ArrayList<>();
+        ToolExecutionResultMessage sixth = null;
+        for (ChatMessage message : model.requests().get(1).messages()) {
+            if (message instanceof AiMessage ai && ai.hasToolExecutionRequests()) {
+                ai.toolExecutionRequests().forEach(r -> callIds.add(r.id()));
+            } else if (message instanceof ToolExecutionResultMessage tr) {
+                resultIds.add(tr.id());
+                if (tr.id().equals("c6")) {
+                    sixth = tr;
+                }
+            }
+        }
+        assertThat(callIds).containsExactly("c1", "c2", "c3", "c4", "c5", "c6");
+        assertThat(resultIds).containsExactly("c1", "c2", "c3", "c4", "c5", "c6");
+        assertThat(sixth).isNotNull();
+        assertThat(sixth.text()).contains("\"status\":\"DENIED\"", "TOOL_CALL_LIMIT_REACHED",
+                "已達本次查詢次數上限，未執行");
+        assertThat(singleAudit().toolCalls()).hasSize(5);
+    }
+
+    @Test
+    void overCapCallsShowAsDeniedInSummary() {
+        model.reply(toolCalls(100, call("c1", "getCustomerProfile", "{}"), call("c2", "getCustomerHoldings", "{}"),
+                        call("c3", "getCampaignResults", "{}"), call("c4", "getRecentInteractions", "{}"),
+                        call("c5", "getMarketIndex", "{}"), call("c6", "getStockQuote", "{\"stockCode\":\"2330\"}"),
+                        call("c7", "deleteCustomer", "{}")))
+                .reply(text("依現有資料整理。", 100));
+
+        ChatResult result = ask("全部整理");
+
+        assertThat(result.toolCalls()).hasSize(7);
+        assertThat(result.toolCalls().get(5)).satisfies(c -> {
+            assertThat(c.name()).isEqualTo("getStockQuote");
+            assertThat(c.purpose()).isNotEqualTo("未知工具");
+            assertThat(c.status()).isEqualTo("DENIED");
+            assertThat(c.durationMs()).isZero();
+        });
+        assertThat(result.toolCalls().get(6)).satisfies(c -> {
+            assertThat(c.status()).isEqualTo("DENIED");
+            assertThat(c.purpose()).isEqualTo("未知工具");
+        });
     }
 
     @Test
@@ -465,7 +583,7 @@ class ChatOrchestratorTest {
 
         ChatResult result = ask("下次聯繫重點？");
 
-        assertThat(result.answer()).contains("【本顧客】").doesNotContain(C001_IDENTIFIERS);
+        assertThat(result.answer()).contains("本顧客").doesNotContain("【本顧客】").doesNotContain(C001_IDENTIFIERS);
         assertThat(singleAudit().answer()).isEqualTo(result.answer());
     }
 
