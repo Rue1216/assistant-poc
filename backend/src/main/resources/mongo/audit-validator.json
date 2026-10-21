@@ -1,0 +1,35 @@
+{
+  "$jsonSchema": {
+    "bsonType": "object",
+    "required": ["requestId", "userId", "roleKey", "customerId", "accessLevel", "question", "outcome", "toolCalls", "durationMs", "createdAt"],
+    "properties": {
+      "requestId":       { "bsonType": "string", "maxLength": 64 },
+      "userId":          { "bsonType": "string", "maxLength": 64 },
+      "roleKey":         { "bsonType": "string", "maxLength": 32 },
+      "customerId":      { "bsonType": "string", "maxLength": 32 },
+      "accessLevel":     { "enum": ["FULL", "LIMITED"] },
+      "question":        { "bsonType": "string", "maxLength": 1000 },
+      "answer":          { "bsonType": ["string", "null"], "maxLength": 8000 },
+      "answerTruncated": { "bsonType": "bool" },
+      "outcome":         { "enum": ["ANSWERED", "FAILED"] },
+      "errorCode":       { "bsonType": ["string", "null"], "maxLength": 64 },
+      "toolCalls": {
+        "bsonType": "array",
+        "maxItems": 5,
+        "items": {
+          "bsonType": "object",
+          "required": ["toolName", "status", "durationMs"],
+          "properties": {
+            "toolName":   { "bsonType": "string", "maxLength": 64 },
+            "status":     { "enum": ["SUCCESS", "ERROR", "DENIED", "TIMEOUT"] },
+            "errorCode":  { "bsonType": ["string", "null"], "maxLength": 64 },
+            "durationMs": { "bsonType": "int", "minimum": 0 }
+          }
+        }
+      },
+      "durationMs": { "bsonType": "int", "minimum": 0 },
+      "createdAt":  { "bsonType": "date" }
+    },
+    "additionalProperties": true
+  }
+}

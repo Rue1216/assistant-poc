@@ -1,0 +1,25 @@
+package com.example.copilot.aiassistant.llm;
+
+import com.example.copilot.aiassistant.AiAssistantProperties;
+import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.openai.OpenAiChatModel;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+/** The only place that knows the provider; everything else depends on {@link ChatModel} (01 section 6). */
+@Configuration(proxyBeanMethods = false)
+public class LlmConfiguration {
+
+    @Bean
+    ChatModel chatModel(AiAssistantProperties props) {
+        AiAssistantProperties.Llm llm = props.llm();
+        return OpenAiChatModel.builder()
+                .apiKey(llm.apiKey())
+                .modelName(llm.modelName())
+                .temperature(llm.temperature())
+                .timeout(llm.timeout())
+                .maxCompletionTokens(llm.maxOutputTokens())
+                .maxRetries(0) // timeouts and rate limits are reported to the user, not retried here
+                .build();
+    }
+}

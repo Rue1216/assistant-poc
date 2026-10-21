@@ -60,14 +60,14 @@ public class MockCustomerData {
                     new HoldingRecord("FUND", "科技成長基金", null, new BigDecimal("0.35")),
                     new HoldingRecord("DEPOSIT", "台幣活存", null, new BigDecimal("0.20"))),
             "C004", List.of(
-                    new HoldingRecord("ETF", "元大台灣50", "0050", new BigDecimal("0.50")),
+                    new HoldingRecord("STOCK", "元大台灣50", "0050", new BigDecimal("0.50")),
                     new HoldingRecord("DEPOSIT", "台幣活存", null, new BigDecimal("0.50"))),
             "C005", List.of(
                     new HoldingRecord("DEPOSIT", "台幣定存", null, new BigDecimal("0.60")),
                     new HoldingRecord("INSURANCE", "終身壽險", null, new BigDecimal("0.25")),
                     new HoldingRecord("FUND", "投資等級債券基金", null, new BigDecimal("0.15"))),
             "C006", List.of(
-                    new HoldingRecord("ETF", "元大高股息", "0056", new BigDecimal("0.40")),
+                    new HoldingRecord("STOCK", "元大高股息", "0056", new BigDecimal("0.40")),
                     new HoldingRecord("STOCK", "中華電", "2412", new BigDecimal("0.30")),
                     new HoldingRecord("DEPOSIT", "台幣定存", null, new BigDecimal("0.30"))));
 
@@ -112,7 +112,7 @@ public class MockCustomerData {
             "C002", List.of(
                     new CustomerCampaignRecord("外幣定存加碼優惠", LocalDate.of(2026, 9, 20), "LINE", "OPENED")),
             "C003", List.of(
-                    new CustomerCampaignRecord("科技基金說明會", LocalDate.of(2026, 9, 10), "Email", "IGNORED")),
+                    new CustomerCampaignRecord("科技基金說明會", LocalDate.of(2026, 9, 10), "Email", "NO_RESPONSE")),
             "C004", List.of(
                     new CustomerCampaignRecord("ETF 入門課程", LocalDate.of(2026, 10, 10), "簡訊", "CONVERTED"),
                     new CustomerCampaignRecord("數位帳戶新戶禮", LocalDate.of(2026, 8, 25), "簡訊", "CLICKED")),

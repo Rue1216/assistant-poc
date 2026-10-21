@@ -1,0 +1,98 @@
+package com.example.copilot.aiassistant.chat;
+
+import dev.langchain4j.agent.tool.ToolExecutionRequest;
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.data.message.ToolExecutionResultMessage;
+import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.chat.request.ChatRequest;
+import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.output.TokenUsage;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Deque;
+import java.util.List;
+import java.util.function.Function;
+
+/** A {@link ChatModel} that answers with pre-arranged responses in order and records every request it receives. */
+public class ScriptedChatModel implements ChatModel {
+
+    private final Deque<Function<ChatRequest, ChatResponse>> script = new ArrayDeque<>();
+    private final List<ChatRequest> requests = new ArrayList<>();
+
+    public ScriptedChatModel reply(ChatResponse response) {
+        return reply(request -> response);
+    }
+
+    /** A step that can inspect the request or cause side effects (for example advance a clock). */
+    public ScriptedChatModel reply(Function<ChatRequest, ChatResponse> step) {
+        script.add(step);
+        return this;
+    }
+
+    public ScriptedChatModel fail(RuntimeException error) {
+        return reply(request -> {
+            throw error;
+        });
+    }
+
+    @Override
+    public ChatResponse chat(ChatRequest request) {
+        requests.add(request);
+        Function<ChatRequest, ChatResponse> step = script.poll();
+        if (step == null) {
+            throw new AssertionError("unexpected model call #" + requests.size());
+        }
+        return step.apply(request);
+    }
+
+    public List<ChatRequest> requests() {
+        return List.copyOf(requests);
+    }
+
+    public static ChatResponse text(String text, int totalTokens) {
+        return ChatResponse.builder().aiMessage(AiMessage.from(text)).tokenUsage(new TokenUsage(totalTokens)).build();
+    }
+
+    public static ChatResponse toolCalls(int totalTokens, ToolExecutionRequest... calls) {
+        return toolCalls(null, totalTokens, calls);
+    }
+
+    public static ChatResponse toolCalls(String text, int totalTokens, ToolExecutionRequest... calls) {
+        AiMessage message = text == null ? AiMessage.from(Arrays.asList(calls))
+                : AiMessage.from(text, Arrays.asList(calls));
+        return ChatResponse.builder().aiMessage(message).tokenUsage(new TokenUsage(totalTokens)).build();
+    }
+
+    public static ToolExecutionRequest call(String id, String name, String arguments) {
+        return ToolExecutionRequest.builder().id(id).name(name).arguments(arguments).build();
+    }
+
+    /** Every piece of text a message carries to the model, including echoed tool-call names and arguments. */
+    public static List<String> texts(ChatMessage message) {
+        List<String> texts = new ArrayList<>();
+        switch (message) {
+            case SystemMessage m -> texts.add(m.text());
+            case UserMessage m -> texts.add(m.singleText());
+            case AiMessage m -> {
+                texts.add(m.text());
+                for (ToolExecutionRequest r : m.toolExecutionRequests()) {
+                    texts.add(r.id());
+                    texts.add(r.name());
+                    texts.add(r.arguments());
+                }
+            }
+            case ToolExecutionResultMessage m -> {
+                texts.add(m.id());
+                texts.add(m.toolName());
+                texts.add(m.text());
+            }
+            default -> throw new AssertionError("unexpected message type " + message.type());
+        }
+        texts.removeIf(t -> t == null);
+        return texts;
+    }
+}

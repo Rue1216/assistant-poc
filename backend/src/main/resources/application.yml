@@ -25,6 +25,7 @@ ai-assistant:
     tool-result-max-bytes: 4096
     rate-limit-per-minute: 10
   config:
+    scheduler-enabled: true          # tests turn this off so the job never fires on its own
     schedule-check-interval: 30s     # 預約發布的檢查頻率
     schedule-min-lead: 1m            # 預約時間至少在 1 分鐘後
     schedule-max-lead: 90d           # 預約時間最多在 90 天內

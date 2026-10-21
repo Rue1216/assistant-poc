@@ -18,7 +18,7 @@ public abstract class IntegrationTestBase {
     // Singleton container shared by all subclasses. Spring caches the context across test classes,
     // so the container must outlive any single class (Ryuk removes it when the JVM exits).
     @ServiceConnection
-    static final MongoDBContainer MONGO = new MongoDBContainer("mongo:8");
+    static final MongoDBContainer MONGO = new MongoDBContainer("mongo:8").withReplicaSet();
 
     static {
         MONGO.start();
@@ -34,5 +34,6 @@ public abstract class IntegrationTestBase {
     static void llmProperties(DynamicPropertyRegistry registry) {
         registry.add("ai-assistant.llm.api-key", () -> "test-key");
         registry.add("ai-assistant.llm.model-name", () -> "test-model");
+        registry.add("ai-assistant.config.scheduler-enabled", () -> "false");
     }
 }

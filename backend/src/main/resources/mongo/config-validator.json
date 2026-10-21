@@ -1,0 +1,27 @@
+{
+  "$jsonSchema": {
+    "bsonType": "object",
+    "required": ["configKey", "configType", "name", "content", "status", "version",
+                 "createdBy", "createdAt", "updatedBy", "updatedAt", "docVersion"],
+    "properties": {
+      "configKey":      { "bsonType": "string", "pattern": "^(system|instruction)\\.[a-z0-9-]{1,50}$" },
+      "configType":     { "enum": ["SYSTEM_PROMPT", "SYSTEM_INSTRUCTION"] },
+      "name":           { "bsonType": "string", "minLength": 1, "maxLength": 50 },
+      "content":        { "bsonType": "string", "maxLength": 65536 },
+      "status":         { "enum": ["DRAFT", "SCHEDULED", "PUBLISHED", "ARCHIVED", "DISCARDED"] },
+      "version":        { "bsonType": "int", "minimum": 1 },
+      "basedOnVersion": { "bsonType": ["int", "null"], "minimum": 1 },
+      "changeNote":     { "bsonType": ["string", "null"], "maxLength": 200 },
+      "createdBy":      { "bsonType": "string" },
+      "createdAt":      { "bsonType": "date" },
+      "updatedBy":      { "bsonType": "string" },
+      "updatedAt":      { "bsonType": "date" },
+      "scheduledAt":    { "bsonType": ["date", "null"] },
+      "docVersion":     { "bsonType": "long" }
+    }
+  },
+  "$or": [
+    { "status": { "$ne": "SCHEDULED" } },
+    { "scheduledAt": { "$type": "date" } }
+  ]
+}
