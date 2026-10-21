@@ -24,11 +24,22 @@ watch(
   },
   { immediate: true },
 )
+
+function startNewChat(): void {
+  chat.clear()
+  chat.draft.value = ''
+}
 </script>
 
 <template>
   <section class="ai-panel" aria-label="顧問小幫手">
-    <AssistantHeader :customer-id="customerId" @clear="chat.clear" @close="$emit('close')" />
+    <AssistantHeader
+      :customer-id="customerId"
+      :has-messages="chat.messages.value.length > 0"
+      @new-chat="startNewChat"
+      @delete="chat.clear"
+      @close="$emit('close')"
+    />
     <div class="ai-notice">
       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <rect x="4" y="11" width="16" height="10" rx="2" />

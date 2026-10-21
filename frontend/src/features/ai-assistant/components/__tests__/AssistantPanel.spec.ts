@@ -186,12 +186,66 @@ describe('AssistantPanel', () => {
     expect(wrapper.text()).not.toContain('正在查詢資料並整理回答')
   })
 
-  it('clear button empties the conversation and close emits close', async () => {
-    chat.mockResolvedValue(answer())
-    const { wrapper, store } = await mountPanel()
-    await store.send('hello')
-    await wrapper.find('button[aria-label="清除對話"]').trigger('click')
-    expect(store.messages).toEqual([])
+  describe('more-actions menu', () => {
+    const trigger = (w: Awaited<ReturnType<typeof mountPanel>>['wrapper']) => w.find('button[aria-label="更多動作"]')
+    const item = (w: Awaited<ReturnType<typeof mountPanel>>['wrapper'], label: string) =>
+      w.findAll('[role="menuitem"]').find((b) => b.text() === label)!
+
+    it('opens with three actions; history is disabled for now', async () => {
+      const { wrapper } = await mountPanel()
+      expect(wrapper.find('[role="menu"]').exists()).toBe(false)
+      expect(trigger(wrapper).attributes('aria-expanded')).toBe('false')
+
+      await trigger(wrapper).trigger('click')
+      expect(trigger(wrapper).attributes('aria-expanded')).toBe('true')
+      expect(wrapper.findAll('[role="menuitem"]').map((b) => b.text())).toEqual(['開新對話', '查看對話紀錄', '刪除對話'])
+      expect(item(wrapper, '查看對話紀錄').attributes('disabled')).toBeDefined()
+    })
+
+    it('delete is disabled while there is nothing to delete, then empties the conversation', async () => {
+      chat.mockResolvedValue(answer())
+      const { wrapper, store } = await mountPanel()
+      await trigger(wrapper).trigger('click')
+      expect(item(wrapper, '刪除對話').attributes('disabled')).toBeDefined()
+      await trigger(wrapper).trigger('click')
+
+      await store.send('hello')
+      await wrapper.find('textarea').setValue('草稿')
+      await trigger(wrapper).trigger('click')
+      expect(item(wrapper, '刪除對話').attributes('disabled')).toBeUndefined()
+      await item(wrapper, '刪除對話').trigger('click')
+      expect(store.messages).toEqual([])
+      expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('草稿')
+      expect(wrapper.find('[role="menu"]').exists()).toBe(false)
+    })
+
+    it('new chat empties the conversation and the draft', async () => {
+      chat.mockResolvedValue(answer())
+      const { wrapper, store } = await mountPanel()
+      await store.send('hello')
+      await wrapper.find('textarea').setValue('草稿')
+      await trigger(wrapper).trigger('click')
+      await item(wrapper, '開新對話').trigger('click')
+      expect(store.messages).toEqual([])
+      expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('')
+      expect(wrapper.find('[role="menu"]').exists()).toBe(false)
+    })
+
+    it('closes on Escape and on a click outside', async () => {
+      const { wrapper } = await mountPanel()
+      await trigger(wrapper).trigger('click')
+      await wrapper.find('[role="menu"]').trigger('keydown', { key: 'Escape' })
+      expect(wrapper.find('[role="menu"]').exists()).toBe(false)
+
+      await trigger(wrapper).trigger('click')
+      document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+      await flushPromises()
+      expect(wrapper.find('[role="menu"]').exists()).toBe(false)
+    })
+  })
+
+  it('minimize emits close', async () => {
+    const { wrapper } = await mountPanel()
     await wrapper.find('button[aria-label="縮小對話視窗"]').trigger('click')
     expect(wrapper.emitted('close')).toHaveLength(1)
   })

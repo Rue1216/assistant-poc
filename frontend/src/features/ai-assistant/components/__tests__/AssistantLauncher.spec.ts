@@ -23,6 +23,12 @@ describe('AssistantLauncher', () => {
     expect(w.find('.ai-fab').exists()).toBe(false)
   })
 
+  it('shows an icon-only button with an accessible name', () => {
+    const w = setup(['AI_ASSISTANT_USE'])
+    expect(w.find('.ai-fab').text()).toBe('')
+    expect(w.find('.ai-fab').attributes('aria-label')).toBe('開啟顧問小幫手')
+  })
+
   it('loads suggestions only on first open, and minimize hides the panel', async () => {
     const w = setup(['AI_ASSISTANT_USE'])
     expect(suggestions).not.toHaveBeenCalled()
