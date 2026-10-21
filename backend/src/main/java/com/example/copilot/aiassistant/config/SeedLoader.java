@@ -3,6 +3,8 @@ package com.example.copilot.aiassistant.config;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.annotation.Order;
@@ -15,6 +17,7 @@ import tools.jackson.databind.ObjectMapper;
 @Order(2)
 public class SeedLoader implements ApplicationRunner {
 
+    private static final Logger log = LoggerFactory.getLogger(SeedLoader.class);
     private static final String SYSTEM_USER = "system";
 
     private final AssistantConfigRepository repository;
@@ -33,6 +36,7 @@ public class SeedLoader implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) {
         if (repository.count() > 0) {
+            log.info("seed skipped: configs already exist");
             return;
         }
         Instant now = clock.instant();
@@ -52,5 +56,6 @@ public class SeedLoader implements ApplicationRunner {
             config.setUpdatedAt(now);
             repository.save(config);
         }
+        log.info("seed completed: {} configs published", entries.size());
     }
 }

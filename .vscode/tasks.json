@@ -1,0 +1,106 @@
+{
+  // 執行方式：Ctrl+Shift+P →「Tasks: Run Task」→ 選擇工作；或按 F5 一次啟動全部（見 launch.json）
+  // 停止：在終端機面板對該工作按垃圾桶，或 Ctrl+Shift+P →「Tasks: Terminate Task」
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "POC：全部啟動",
+      "detail": "依序啟動 MongoDB、後端（8090）、前端（5173）",
+      "dependsOn": ["MongoDB：啟動", "後端：啟動", "前端：啟動"],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    },
+    {
+      "label": "MongoDB：啟動",
+      "detail": "docker compose up，等到 replica set 就緒",
+      "type": "shell",
+      "command": "docker compose up -d --wait",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "presentation": { "group": "poc", "reveal": "silent" }
+    },
+    {
+      "label": "MongoDB：停止",
+      "type": "shell",
+      "command": "docker compose stop",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "MongoDB：重設資料",
+      "detail": "刪除所有資料後重新建立；後端下次啟動會重新寫入初始設定（請先停止後端）",
+      "type": "shell",
+      "command": "docker compose down -v; docker compose up -d --wait",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "後端：啟動",
+      "detail": "mvnw spring-boot:run，http://localhost:8090",
+      "type": "shell",
+      "command": ".\\mvnw.cmd spring-boot:run",
+      "options": { "cwd": "${workspaceFolder}/backend" },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "poc-backend",
+        "pattern": { "regexp": "^__never_matches__$" },
+        "background": {
+          "activeBegins": true,
+          "beginsPattern": "Scanning for projects|Starting CopilotApplication",
+          "endsPattern": "Started CopilotApplication|APPLICATION FAILED TO START|BUILD FAILURE"
+        }
+      },
+      "presentation": { "group": "poc", "reveal": "always" }
+    },
+    {
+      "label": "前端：啟動",
+      "detail": "npm run dev，http://localhost:5173",
+      "type": "shell",
+      "command": "npm run dev",
+      "options": { "cwd": "${workspaceFolder}/frontend" },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "poc-frontend",
+        "pattern": { "regexp": "^__never_matches__$" },
+        "background": {
+          "activeBegins": true,
+          "beginsPattern": "vite|VITE",
+          "endsPattern": "ready in|Local"
+        }
+      },
+      "presentation": { "group": "poc", "reveal": "always" }
+    },
+    {
+      "label": "前端：安裝套件",
+      "detail": "第一次執行或 package.json 改變時需要",
+      "type": "shell",
+      "command": "npm install",
+      "options": { "cwd": "${workspaceFolder}/frontend" },
+      "problemMatcher": []
+    },
+    {
+      "label": "測試：後端",
+      "type": "shell",
+      "command": ".\\mvnw.cmd test",
+      "options": { "cwd": "${workspaceFolder}/backend" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "測試：前端",
+      "detail": "單元測試與型別檢查 + 建置",
+      "type": "shell",
+      "command": "npm test; if ($?) { npm run build }",
+      "options": { "cwd": "${workspaceFolder}/frontend", "shell": { "executable": "powershell.exe", "args": ["-NoProfile", "-Command"] } },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "查看稽核紀錄（最新 5 筆）",
+      "type": "shell",
+      "command": "docker compose exec mongo mongosh copilot --quiet --eval \"db.COLL_ICRM_AI_ASSISTANT_AUDIT.find({}, {_id:0, userId:1, customerId:1, question:1, createdAt:1}).sort({createdAt:-1}).limit(5)\"",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    }
+  ]
+}

@@ -152,3 +152,55 @@ Get-ChildItem "$env:USERPROFILE\.m2\repository\dev\langchain4j" -Recurse -Filter
 ```
 
 放進 `lib-repo` 的其他 artifact 也照同樣方式檢查。
+
+## 7. 執行 POC
+
+**用 VS Code（建議）**：按 **F5**，選「POC：全部啟動並開啟 Edge」，會依序啟動 MongoDB、後端、前端，然後開啟瀏覽器。其他操作（停止 MongoDB、重設資料、跑測試、查看稽核紀錄）在 `Ctrl+Shift+P` →「Tasks: Run Task」中選擇。設定在 `.vscode/tasks.json`、`.vscode/launch.json`。
+
+**手動執行**：需要開三個 PowerShell 視窗（或 VS Code 的三個終端機分頁）。
+
+```powershell
+# 1. MongoDB（replica set，第一次啟動約 20 秒完成初始化）
+cd C:\Users\user\Desktop\chat-boilerplate
+docker compose up -d
+docker compose ps                  # mongo 顯示 (healthy) 才繼續
+
+# 2. 後端（另開一個視窗），http://localhost:8090
+cd C:\Users\user\Desktop\chat-boilerplate\backend
+.\mvnw spring-boot:run
+
+# 3. 前端（另開一個視窗），http://localhost:5173
+cd C:\Users\user\Desktop\chat-boilerplate\frontend
+npm install                        # 只有第一次或 package.json 改變時需要
+npm run dev
+```
+
+啟動後：
+
+- 後端 log 出現 `seed completed: 6 configs published`（第一次啟動）或 `seed skipped`（之後的啟動）。
+- 瀏覽器開 `http://localhost:8090/actuator/health`，應顯示 `{"status":"UP"}`。
+- 瀏覽器開 `http://localhost:5173`，以下列任一帳號登入，密碼都是 `poc1234`：
+
+| 帳號 | 角色 | 能做什麼 |
+|---|---|---|
+| `fc.officer` / `fc.supervisor` | 理專經辦 / 理專主管 | 360 頁面使用小幫手 |
+| `ao.officer` / `ao.supervisor` | AO 經辦 / AO 主管 | 同上，範圍不同 |
+| `branch.mgr`、`region.north`、`hq.viewer` | 分行主管、區域、總行 | 同上，範圍不同 |
+| `backoffice.admin`、`it.admin` | 後台管理、IT 管理 | 小幫手（只看基本輪廓）＋ Prompt 管理 |
+
+> **Port**：後端預設 8090（本機的 8080 常被其他程式占用）。要改用其他 port 時，後端設 `$env:SERVER_PORT = "9000"`，前端啟動前設 `$env:VITE_API_TARGET = "http://localhost:9000"`。
+
+### 7.1 重設資料
+
+想回到初始狀態（例如 demo 前）：
+
+```powershell
+docker compose down -v             # 連同資料一起刪除
+docker compose up -d               # 重新建立；後端下次啟動會重新寫入 seed
+```
+
+### 7.2 查看稽核紀錄
+
+```powershell
+docker compose exec mongo mongosh copilot --quiet --eval "db.COLL_ICRM_AI_ASSISTANT_AUDIT.find({}, {userId:1, customerId:1, question:1, createdAt:1}).sort({createdAt:-1}).limit(5)"
+```

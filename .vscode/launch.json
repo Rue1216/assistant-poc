@@ -1,0 +1,30 @@
+{
+  // 按 F5（或左側「執行與偵錯」選擇設定後按綠色箭頭）
+  // 關閉瀏覽器只會結束這次偵錯；MongoDB、後端、前端會繼續執行，停止方式見 tasks.json
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "POC：全部啟動並開啟 Edge",
+      "type": "msedge",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/frontend",
+      "preLaunchTask": "POC：全部啟動"
+    },
+    {
+      "name": "POC：全部啟動並開啟 Chrome",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/frontend",
+      "preLaunchTask": "POC：全部啟動"
+    },
+    {
+      "name": "開啟 Edge（服務已在執行）",
+      "type": "msedge",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/frontend"
+    }
+  ]
+}

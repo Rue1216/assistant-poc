@@ -231,7 +231,7 @@ frontend/src/
 spring:
   config.import: optional:file:./.env[.properties]   # 讀取 backend/.env（已列入 .gitignore）
   threads.virtual.enabled: true
-  data.mongodb.uri: ${MONGODB_URI:mongodb://localhost:27017/copilot?replicaSet=rs0}
+  mongodb.uri: ${MONGODB_URI:mongodb://localhost:27017/copilot?replicaSet=rs0}
 
 management.endpoints.web.exposure.include: health   # 不開放 /env 等端點
 

@@ -1,7 +1,9 @@
 spring:
   config.import: optional:file:./.env[.properties]   # 讀取 backend/.env（已列入 .gitignore）
   threads.virtual.enabled: true
-  data.mongodb.uri: ${MONGODB_URI:mongodb://localhost:27017/copilot?replicaSet=rs0}
+  mongodb.uri: ${MONGODB_URI:mongodb://localhost:27017/copilot?replicaSet=rs0}
+
+server.port: ${SERVER_PORT:8090}   # 本機 8080 常被其他程式占用
 
 management.endpoints.web.exposure.include: health   # 不開放 /env 等端點
 
