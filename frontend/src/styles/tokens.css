@@ -1,0 +1,206 @@
+/* ==========================================================================
+   Design tokens — 行銷人員顧問小幫手 POC
+   清新、專業的綠色系。之後移到 Vue 時可直接作為全域 CSS variables。
+   ========================================================================== */
+
+:root {
+  /* ---- Brand green ---- */
+  --green-50: #eef8f3;
+  --green-100: #d6efe2;
+  --green-200: #aedfc6;
+  --green-300: #7bc9a4;
+  --green-400: #43ae82;
+  --green-500: #179467;   /* primary */
+  --green-600: #0e7a55;   /* primary hover */
+  --green-700: #0b6145;   /* primary active / strong text */
+  --green-800: #0a4b37;
+  --green-900: #083a2b;
+
+  /* AI 識別用的清新 teal，搭配主綠色做漸層 */
+  --teal-400: #2fb9a3;
+  --teal-500: #14a08c;
+  --gradient-ai: linear-gradient(135deg, var(--green-500) 0%, var(--teal-400) 100%);
+  --gradient-soft: linear-gradient(180deg, #f3fbf7 0%, #ffffff 100%);
+
+  /* ---- Neutrals（略帶綠調的灰） ---- */
+  --gray-0: #ffffff;
+  --gray-25: #f8fbf9;
+  --gray-50: #f2f6f4;
+  --gray-100: #e5ece8;
+  --gray-200: #d4ddd8;
+  --gray-300: #b5c2bb;
+  --gray-400: #8b9a93;
+  --gray-500: #67766f;
+  --gray-600: #4d5a54;
+  --gray-700: #37423d;
+  --gray-800: #25302b;
+  --gray-900: #17201c;
+
+  /* ---- Semantic ---- */
+  --amber-50: #fff7e8;
+  --amber-100: #fde9c2;
+  --amber-200: #f6dca8;
+  --amber-500: #d98a00;
+  --amber-700: #95580a;
+  --red-50: #fdeeec;
+  --red-200: #f5c3bd;
+  --red-600: #c0362c;
+  --red-700: #a12a21;
+  --blue-50: #ecf4fb;
+  --blue-200: #cfe0f1;
+  --blue-700: #24578a;
+  --orange-50: #fdf0ea;
+  --orange-700: #a8431a;
+
+  /* ---- Chart（已用 dataviz validator 驗證，light / dark 各自選色） ---- */
+  --series-1: #179467;        /* 本顧客 */
+  --series-1-soft: #a9dcc4;
+  --series-2: #2a78d6;        /* 客群 / 比較對象 */
+  --series-3: #eda100;
+  --series-hl: #eb6834;       /* 最強意圖高亮 */
+  --cat-1: #2a78d6;           /* 多類別（AuM / LuM 組成） */
+  --cat-2: #eb6834;
+  --cat-3: #1baf7a;
+  --cat-4: #eda100;
+  --cat-5: #e87ba4;
+  --cat-6: #008300;
+  --chart-grid: var(--gray-100);
+  --chart-axis: var(--gray-200);
+  --chart-text: var(--gray-500);
+
+  /* ---- Roles ---- */
+  --color-primary: var(--green-500);
+  --color-primary-hover: var(--green-600);
+  --color-primary-active: var(--green-700);
+  --color-primary-subtle: var(--green-50);
+  --color-primary-border: var(--green-200);
+
+  --color-bg: var(--gray-50);
+  --color-surface: var(--gray-0);
+  --color-surface-alt: var(--gray-25);
+  --color-border: var(--gray-100);
+  --color-border-strong: var(--gray-200);
+
+  --color-text: var(--gray-800);
+  --color-text-strong: var(--gray-900);
+  --color-text-muted: var(--gray-500);
+  --color-text-subtle: var(--gray-400);
+  --color-text-on-primary: #ffffff;
+
+  --color-focus-ring: rgba(23, 148, 103, 0.28);
+
+  /* ---- Typography ---- */
+  --font-sans: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", Consolas, "SFMono-Regular", monospace;
+
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 18px;
+  --text-2xl: 22px;
+
+  --leading-tight: 1.35;
+  --leading-normal: 1.6;
+
+  /* ---- Spacing (4px grid) ---- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* ---- Radius ---- */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-pill: 999px;
+
+  /* ---- Elevation（帶一點綠色調的陰影） ---- */
+  --shadow-sm: 0 1px 2px rgba(12, 52, 38, 0.06);
+  --shadow-md: 0 4px 12px rgba(12, 52, 38, 0.08), 0 1px 3px rgba(12, 52, 38, 0.05);
+  --shadow-lg: 0 18px 48px rgba(12, 52, 38, 0.16), 0 4px 12px rgba(12, 52, 38, 0.08);
+
+  /* ---- Motion ---- */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-fast: 120ms;
+  --duration-normal: 220ms;
+
+  color-scheme: light;
+}
+
+/* ==========================================================================
+   深色模式：<html class="dark">（scripts/theme.js 切換）
+   直接覆蓋色票：灰階反轉、品牌綠改為深底淺字的階層，元件 CSS 不需另寫 dark 規則。
+   ========================================================================== */
+
+html.dark {
+  color-scheme: dark;
+
+  --green-50: #0f2a20;
+  --green-100: #133626;
+  --green-200: #1c4a36;
+  --green-300: #2a6b4f;
+  --green-400: #3f9d74;
+  --green-500: #1d9a6c;
+  --green-600: #23ad7c;
+  --green-700: #6fd3a6;
+  --green-800: #9fe3c3;
+  --green-900: #cdf2e0;
+
+  --teal-400: #26a892;
+  --teal-500: #1d9583;
+  --gradient-ai: linear-gradient(135deg, #168a60 0%, #1f9c88 100%);
+  --gradient-soft: linear-gradient(180deg, #13221c 0%, #151c19 100%);
+
+  --gray-0: #151c19;
+  --gray-25: #19211d;
+  --gray-50: #1e2723;
+  --gray-100: #28322d;
+  --gray-200: #35403a;
+  --gray-300: #4a5650;
+  --gray-400: #7b8a83;
+  --gray-500: #98a69f;
+  --gray-600: #b3beb8;
+  --gray-700: #c9d3ce;
+  --gray-800: #dde5e1;
+  --gray-900: #eef3f0;
+
+  --amber-50: #2a2110;
+  --amber-100: #3b2c12;
+  --amber-200: #5a4318;
+  --amber-500: #c98500;
+  --amber-700: #f0b955;
+  --red-50: #2e1715;
+  --red-200: #5e2a25;
+  --red-600: #e0534a;
+  --red-700: #f08a80;
+  --blue-50: #122131;
+  --blue-200: #24405e;
+  --blue-700: #8bbcef;
+  --orange-50: #33190e;
+  --orange-700: #f39a70;
+
+  --series-1: #22a271;
+  --series-1-soft: #1f5a42;
+  --series-2: #3987e5;
+  --series-3: #c98500;
+  --series-hl: #d95926;
+  --cat-1: #3987e5;
+  --cat-2: #d95926;
+  --cat-3: #199e70;
+  --cat-4: #c98500;
+  --cat-5: #d55181;
+  --cat-6: #008300;
+
+  --color-bg: #0e1412;
+  --color-focus-ring: rgba(47, 174, 124, 0.4);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.3);
+}

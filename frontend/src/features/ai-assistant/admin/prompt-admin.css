@@ -1,0 +1,343 @@
+/* ==========================================================================
+   Prompt 管理頁：多個元件共用的區塊（from prototype/styles/prompt-management.css）
+   ConfigEditor、VersionViewer、VersionDiff 共用卡片頭、橫幅、面板與動作列；
+   ConfirmDialog、NewInstructionDialog 共用對話框。只在 PromptManagementPage 匯入一次。
+   各元件專屬的規則放在元件自己的 <style scoped>。
+   ========================================================================== */
+
+/* ---- 卡片頭 ---- */
+
+.pm-editor__head {
+  padding: var(--space-5) var(--space-6) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.pm-editor__title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.pm-editor__title {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--color-text-strong);
+}
+
+.pm-editor__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-top: 6px;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.pm-editor__meta code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--gray-50);
+}
+
+.pm-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--gray-300);
+}
+
+.pm-editor__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-6) var(--space-6);
+}
+
+/* ---- 提示橫幅 ---- */
+
+.pm-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin: var(--space-4) var(--space-6) 0;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid;
+  font-size: var(--text-sm);
+}
+
+.pm-banner > div {
+  flex: 1;
+}
+
+.pm-banner__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pm-banner--info {
+  background: var(--green-50);
+  border-color: var(--green-100);
+  color: var(--green-800);
+}
+
+.pm-banner--info .pm-banner__icon {
+  background: var(--color-primary);
+  color: #fff;
+  font-style: italic;
+}
+
+.pm-banner--scheduled {
+  background: var(--amber-50);
+  border-color: var(--amber-200);
+  color: var(--amber-700);
+}
+
+.pm-banner--scheduled .pm-banner__icon {
+  background: var(--amber-100);
+}
+
+.pm-banner--conflict {
+  align-items: center;
+  background: var(--red-50);
+  border-color: var(--red-200);
+  color: var(--red-700);
+}
+
+.pm-banner--conflict .pm-banner__icon {
+  background: var(--red-600);
+  color: #fff;
+}
+
+.pm-banner--readonly {
+  align-items: center;
+  background: var(--gray-50);
+  border-color: var(--color-border-strong);
+  color: var(--gray-700);
+}
+
+.pm-banner--readonly .pm-banner__icon {
+  background: var(--color-surface);
+  color: var(--gray-600);
+  box-shadow: inset 0 0 0 1px var(--color-border-strong);
+}
+
+/* ---- 面板 ---- */
+
+.pm-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 560px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--color-surface);
+}
+
+.pm-pane:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
+}
+
+.pm-pane--auto {
+  height: auto;
+}
+
+.pm-pane__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--gray-25);
+}
+
+.pm-pane__title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.pm-pane__count {
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.pm-preview {
+  flex: 1;
+  min-height: 0;
+  padding: 16px 18px;
+  overflow-y: auto;
+}
+
+/* ---- 動作列 ---- */
+
+.pm-actionbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-5);
+  padding: var(--space-3) var(--space-6);
+  border-top: 1px solid var(--color-border);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  background: color-mix(in srgb, var(--color-surface) 94%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.pm-actionbar--viewer {
+  position: static;
+}
+
+.pm-actionbar__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.pm-actionbar__note {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+/* ---- 對話框（Vue 版由 open 狀態控制） ---- */
+
+.dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+}
+
+.dialog__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(14, 30, 24, 0.42);
+  backdrop-filter: blur(2px);
+  animation: dialog-fade var(--duration-normal) var(--ease-out);
+}
+
+.dialog__panel {
+  position: relative;
+  width: min(440px, 100%);
+  padding: var(--space-6);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-lg);
+  animation: dialog-pop var(--duration-normal) var(--ease-out);
+}
+
+.dialog__panel--form {
+  width: min(480px, 100%);
+}
+
+.dialog__icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: var(--space-3);
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.dialog__icon--warn {
+  background: var(--amber-50);
+  color: var(--amber-700);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--amber-50) 50%, var(--color-surface));
+}
+
+.dialog__title {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--color-text-strong);
+}
+
+.dialog__text {
+  margin-top: 6px;
+  color: var(--color-text-muted);
+}
+
+.dialog__summary {
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--gray-25);
+  border: 1px solid var(--color-border);
+  font-size: var(--text-sm);
+}
+
+.dialog__summary div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 3px 0;
+}
+
+.dialog__summary dt {
+  color: var(--color-text-muted);
+}
+
+.dialog__summary dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.dialog__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+}
+
+.dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
+}
+
+@keyframes dialog-fade {
+  from { opacity: 0; }
+}
+
+@keyframes dialog-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+}
+
+/* ---- Responsive ---- */
+
+@media (max-width: 1280px) {
+  .pm-pane:not(.pm-pane--auto) { height: 420px; }
+}
+
+@media (max-width: 1100px) {
+  .pm-editor__head,
+  .pm-editor__body,
+  .pm-actionbar {
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+  .pm-banner {
+    margin-left: var(--space-4);
+    margin-right: var(--space-4);
+  }
+}
