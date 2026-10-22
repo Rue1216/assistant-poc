@@ -138,6 +138,17 @@
 - **預設假設**：沒有。在 chat endpoint 自行加上每位使用者的限流。
 - **回覆**：
 
+### S18. MongoDB sharding 慣例 ⚠️
+
+- **問題**：
+  1. 叢集的 Hash Sharding 是所有 collection 都 shard，還是只有資料量大的 collection？既有 collection 的 shard key 怎麼選？
+  2. `sh.shardCollection` 由誰、在什麼時機執行（migration、DBA 手動）？新建的 collection 會不會預設 shard？
+  3. 在 sharded collection 上，既有程式怎麼處理 unique index（例如以 shard key 開頭）？
+  4. 應用程式是不是透過 mongos 連線？既有程式有沒有使用 transaction？
+- **為何要問**：全行開放後，稽核紀錄很可能需要 shard（見 M36）；設定 collection 依賴 unique index 和 transaction，不能隨意 shard（見 [04-mongodb-schema.md](spec/04-mongodb-schema.md) 第 5 節）。
+- **預設假設**：只有資料量大的 collection 才 shard，由 migration 或 DBA 執行；應用程式透過 mongos 連線，可使用 transaction。
+- **回覆**：
+
 ---
 
 ## Part 2：主管確認清單
@@ -167,6 +178,7 @@
 
 - **問題**：稽核資料（含提問與 LLM 回答全文）要保存多久？需要查詢介面嗎？誰可以查看提問與回答明細？提問或回答含顧客資料時，需要額外遮罩或加密嗎？
 - **預設假設**：保存 180 天，不做查詢介面，只存資料；記錄顧客編號以便追溯，提問存去識別化後的版本並遮罩疑似憑證。
+- **補充**：保存期限也決定稽核紀錄要不要 sharding，見 M36。
 - **回覆**：
 
 ### B. GPT 供應商與費用
@@ -389,6 +401,19 @@
 - **預設假設**：後端一個獨立套件（加上 `backend/lib-repo/` 的第三方 jar）、前端一個獨立資料夾，設定集中管理，並附上平移步驟說明。
 - **回覆**：
 
+### H. 資料量與擴充
+
+#### M36. 稽核紀錄的資料量與 sharding ⚠️
+
+- **問題**：
+  1. 預計開放給哪些人員（理專、AO、業務等）、大約多少人？每人每天大約提問幾次？
+  2. 稽核紀錄要保存多久（同 M4）？法遵是否要求保存 5 年以上？
+  3. 稽核紀錄是否要保存工具查到的原始資料？（目前不保存，只記錄工具名稱、狀態與耗時。）
+  4. 如果要 shard，shard key 由誰決定、誰審核？
+- **為何要問**：這幾項決定稽核紀錄的資料量。以 1 萬人、每人每天 20 題、每筆 2 KB 估算：保存 180 天約 80 GB，保存 5～7 年約 0.8～1 TB；如果要保存工具原始資料，資料量會再放大 5～10 倍。估算細節見 [04-mongodb-schema.md](spec/04-mongodb-schema.md) 第 5 節。
+- **預設假設**：全行開放後，稽核紀錄很可能需要 shard，shard key 用 `{ userId: "hashed" }`；設定 collection 不 shard。**POC 階段先不改動作法**：程式不修改，`sh.shardCollection` 在整合時放進平台的 migration。
+- **回覆**：
+
 ---
 
 ## 附錄：需求章節與題號對照
@@ -408,3 +433,4 @@
 | 4. 加分挑戰              | M27, M34                                |
 | 5. 評分標準              | M33, M34                                |
 | 平移需求（開頭）         | S2, M35                                 |
+| 資料量與 sharding        | S10, S18, M4, M25, M36                  |

@@ -7,7 +7,7 @@
 | Collection | 用途 | 資料量預估 | Sharding |
 |---|---|---|---|
 | `COLL_ICRM_AI_ASSISTANT_CONFIG` | System Prompt 與 System Instructions 的所有版本 | 數十到數百筆 | 不需要 |
-| `COLL_ICRM_AI_ASSISTANT_AUDIT` | 稽核紀錄（提問、回答、工具呼叫） | 每次提問 1 筆，保留 180 天 | POC 不需要；正式環境依量評估 |
+| `COLL_ICRM_AI_ASSISTANT_AUDIT` | 稽核紀錄（提問、回答、工具呼叫） | 每次提問 1 筆，保留 180 天 | POC 不 shard；全行開放後很可能需要（見第 5 節，待確認） |
 
 > collection 前綴採 SP 計畫指定的 `COLL_ICRM_`；index 名稱比照使用 `UK_ICRM_`、`IX_ICRM_`。
 > 對話內容**不保存供使用者回看**（需求 3-1），所以沒有對話 collection；稽核 collection 只保存每次提問與最終回答，供稽核使用（需求 3-4）。
@@ -356,3 +356,46 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_AUDIT", {
 
 - **POC**：啟動時由 `MongoSchemaInitializer` 冪等地建立 collection、validator、index（已存在就跳過或更新 validator）。
 - **正式環境**：改用平台的 migration 機制或交給 DBA，並在規格審查時確認。
+
+---
+
+## 5. 容量估算與 sharding（待確認）
+
+> 平台的 MongoDB 8.0 叢集使用 Hash Sharding。全行開放（理專、AO、業務）後，稽核紀錄很可能需要 shard。**POC 階段先不改動作法**：不 shard、程式不修改。以下是目前的估算和建議，待 [questions-for-manager.md](../questions-for-manager.md) S18、M4、M36 確認後再定案。
+
+### 5.1 稽核紀錄的資料量估算
+
+假設：10,000 人、每人每天 20 題（偏高的估計）→ 每天 20 萬筆。每筆以 2 KB 計（POC 實測平均 0.8 KB、最大 1.1 KB，正式環境回答可能較長）。
+
+| 保存期限 | 筆數 | 資料量（含 index 約） | 是否需要 shard |
+|---|---|---|---|
+| 180 天（目前 TTL） | 約 3,600 萬 | 約 80 GB | 不一定，單一 replica set 可處理 |
+| 1 年 | 約 7,300 萬 | 約 160 GB | 不一定 |
+| 5～7 年（如法規要求） | 3.6～5 億 | 0.8～1 TB | 建議 shard |
+
+- 寫入量平均每秒約 7 筆、尖峰數十筆，壓力在累積的資料量，不在寫入速度。
+- 如果之後要保存工具查到的原始資料（目前不保存，見 3.1），每筆可能增加到 10～20 KB（`tool-result-max-bytes` 4 KB × 最多 5 次工具呼叫），資料量放大 5～10 倍。
+
+### 5.2 各 collection 的建議
+
+| Collection | 建議 | 原因 |
+|---|---|---|
+| `COLL_ICRM_AI_ASSISTANT_CONFIG` | 不 shard | 筆數取決於設定與版本數，和使用人數無關。它依賴 3 個以 `configKey` 開頭的 unique index（2.2）和 transaction（2.4）；shard 後 unique index 必須以 shard key 開頭，可能無法維持原本的防重複機制 |
+| `COLL_ICRM_AI_ASSISTANT_AUDIT` | 需要時以 `{ userId: "hashed" }` shard | 寫入平均分散；依使用者查詢只查一個 shard。依顧客查詢會查所有 shard，但只在調查時使用，可接受 |
+
+稽核紀錄 shard key 的比較：
+
+| Shard key | 優點 | 缺點 |
+|---|---|---|
+| `{ userId: "hashed" }`（建議） | 寫入分散；依使用者查詢只查一個 shard | 依顧客查詢要查所有 shard |
+| `{ _id: "hashed" }` | 分散最平均，設定最簡單 | 依使用者、顧客查詢都要查所有 shard |
+| `{ createdAt: 1 }` | — | 時間遞增，新資料全部寫進同一個 shard。不可使用 |
+
+- 單一使用者的資料量很小（7 年約 5 萬筆、100 MB 左右），不會形成無法拆分的 jumbo chunk。
+- 如果之後要在伺服器保存對話紀錄供使用者回看，該 collection 的資料量會比稽核紀錄大，而且幾乎都是「查自己的對話」，應從一開始就以 `{ userId: "hashed" }` 設計。
+
+### 5.3 shard 時不需要改的地方
+
+- 稽核紀錄只有新增，沒有 unique index，現有的 3 個 index 和 JSON Schema Validation 都可以保留。
+- TTL index 在 sharded collection 上照常運作。
+- 應用程式透過 mongos 連線，程式碼不需修改；`sh.shardCollection` 指令放在平台的 migration（見第 4 節）。
