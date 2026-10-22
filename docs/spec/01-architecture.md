@@ -289,10 +289,12 @@ OPENAI_MODEL=<模型名稱>
 | 元件 | 版本 |
 |---|---|
 | JDK | 25 |
-| Spring Boot | 4.1.x |
+| Spring Boot | 4.1.0（和平台相同） |
+| 依賴版本覆寫 | 照平台 root pom 的 properties：Jackson 2 2.22.1、Jackson 3 3.2.1、MongoDB driver 5.9.2、Log4j2 2.26.1、Tomcat 11.0.25、Netty 4.2.17.Final、Testcontainers 1.21.4、jspecify 1.0.0。平台升級時要同步修改 `backend/pom.xml` |
+| 日誌 | Log4j2（`spring-boot-starter-log4j2`，排除 `spring-boot-starter-logging`），和平台相同；程式只使用 SLF4J API |
 | LangChain4j | 1.22.0（`langchain4j`、`langchain4j-open-ai`），jar 放在 `backend/lib-repo/`（見 7.1） |
 | Node.js | 24 |
-| Vue / Pinia / Vue Router / Vite | 3.5 / 最新穩定版 |
+| 前端套件 | 和平台相同、固定版本（不用 `^`、`~`）：Vue 3.5.33、TypeScript 6.0.3、Vite 7.3.5、axios 1.17.0、Pinia 3.0.4、Vue Router 5.0.6、@vitejs/plugin-vue 6.0.7、Vitest 4.1.5、vue-tsc 3.2.8。平台清單以外的開發工具（@types/node、@vue/test-utils、@vue/tsconfig、jsdom）也固定版本 |
 | MongoDB | 8.x，docker compose 單節點 replica set |
 
 ### 7.1 第三方依賴（lib-repo）
@@ -319,7 +321,7 @@ OPENAI_MODEL=<模型名稱>
 
 注意事項：
 
-- **Jackson 版本**：LangChain4j 使用 Jackson 2（`com.fasterxml.jackson`），Spring Boot 4 預設改用 Jackson 3。LangChain4j 一定需要 Jackson 2，而它不在 `lib-repo` 內，必須由平台的 Maven repository 提供（版本由 Spring Boot 4 管理）；平台若只有 Jackson 3，要先確認 repository 能取得 Jackson 2。
+- **Jackson 版本**：LangChain4j 使用 Jackson 2（`com.fasterxml.jackson`），Spring Boot 4 預設改用 Jackson 3。LangChain4j 一定需要 Jackson 2，而它不在 `lib-repo` 內，由平台的 Maven repository 提供。平台 root pom 以 `jackson.databind.v2.version`（2.22.1）同時管理 `jackson-core` 和 `jackson-databind`，POC 的 pom 照同樣方式設定；core 和 databind 版本不一致時，LangChain4j 可能在呼叫模型、解析 JSON 時才出錯。
 - **Maven mirror**：如果公司的 `settings.xml` 用 `<mirrorOf>*</mirrorOf>` 把所有 repository 導到內部 mirror，`project-local` 也會被導走而找不到 jar。要改成 `<mirrorOf>external:*</mirrorOf>`（不含 file:// 的 repository）或 `<mirrorOf>*,!project-local</mirrorOf>`。見 questions-for-manager.md S13。
 - **Maven Wrapper**：`mvnw` 第一次執行時會從網路下載 Maven。公司環境要改用平台既有的 Maven，或事先把 Maven 放進 `~/.m2/wrapper/`。
 

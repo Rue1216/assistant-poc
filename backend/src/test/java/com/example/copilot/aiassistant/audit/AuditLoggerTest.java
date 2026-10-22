@@ -14,9 +14,12 @@ import com.example.copilot.aiassistant.privacy.CustomerContext;
 import com.example.copilot.aiassistant.tool.ToolOutcome;
 import com.example.copilot.aiassistant.tool.ToolResult;
 import com.example.copilot.aiassistant.tool.ToolStatus;
+import com.example.copilot.testsupport.LogCapture;
 import java.time.Clock;
 import java.util.List;
 import java.util.Set;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.core.LogEvent;
 import org.bson.Document;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -201,21 +204,16 @@ class AuditLoggerTest extends IntegrationTestBase {
         when(broken.insert(any(Document.class), anyString())).thenThrow(new IllegalStateException("db down: secret"));
         AuditLogger logger = new AuditLogger(broken, Clock.systemUTC(), new CredentialMasker());
 
-        ch.qos.logback.classic.Logger target =
-                (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(AuditLogger.class);
-        ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender =
-                new ch.qos.logback.core.read.ListAppender<>();
-        appender.start();
-        target.addAppender(appender);
-        try {
+        List<LogEvent> events;
+        try (LogCapture capture = LogCapture.of(AuditLogger.class)) {
             assertThatCode(() -> logger.record(entry("req-err-1", "q", "a", List.of()))).doesNotThrowAnyException();
-        } finally {
-            target.detachAppender(appender);
+            events = capture.events();
         }
 
-        assertThat(appender.list).hasSize(1);
-        assertThat(appender.list.get(0).getLevel()).isEqualTo(ch.qos.logback.classic.Level.ERROR);
-        assertThat(appender.list.get(0).getFormattedMessage()).contains("req-err-1", "java.lang.IllegalStateException")
+        assertThat(events).hasSize(1);
+        assertThat(events.get(0).getLevel()).isEqualTo(Level.ERROR);
+        assertThat(events.get(0).getMessage().getFormattedMessage())
+                .contains("req-err-1", "java.lang.IllegalStateException")
                 .doesNotContain("db down", "secret");
     }
 }

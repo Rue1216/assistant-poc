@@ -9,7 +9,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.mongodb.MongoDBContainer;
+import org.testcontainers.containers.MongoDBContainer;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -17,8 +17,9 @@ public abstract class IntegrationTestBase {
 
     // Singleton container shared by all subclasses. Spring caches the context across test classes,
     // so the container must outlive any single class (Ryuk removes it when the JVM exits).
+    // Testcontainers 1.x starts MongoDB as a single-node replica set, which transactions need.
     @ServiceConnection
-    static final MongoDBContainer MONGO = new MongoDBContainer("mongo:8").withReplicaSet();
+    static final MongoDBContainer MONGO = new MongoDBContainer("mongo:8");
 
     static {
         MONGO.start();

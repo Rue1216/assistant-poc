@@ -6,7 +6,7 @@
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
-    <version>4.1.1</version>
+    <version>4.1.0</version>
     <relativePath/>
   </parent>
 
@@ -18,7 +18,63 @@
   <properties>
     <java.version>25</java.version>
     <langchain4j.version>1.22.0</langchain4j.version>
+
+    <!-- Same values as the platform root pom (reference.md); keep in sync when the platform upgrades -->
+    <testcontainers.version>1.21.4</testcontainers.version>
+    <jspecify.version>1.0.0</jspecify.version>
+    <log4j2.version>2.26.1</log4j2.version>
+    <tomcat.version>11.0.25</tomcat.version>
+    <netty.version>4.2.17.Final</netty.version>
+    <jackson.databind.v2.version>2.22.1</jackson.databind.v2.version>
+    <jackson.annotations.v2.version>2.22</jackson.annotations.v2.version>
+    <jackson.jsr310.version>2.21.4</jackson.jsr310.version>
+    <jackson.jdk8.version>2.21.2</jackson.jdk8.version>
+    <jackson.databind.v3.version>3.2.1</jackson.databind.v3.version>
+    <mongodb.driver.version>5.9.2</mongodb.driver.version>
+    <mongodb.version>${mongodb.driver.version}</mongodb.version>
   </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <!-- Jackson 2 is used only by LangChain4j -->
+      <dependency>
+        <groupId>com.fasterxml.jackson.core</groupId>
+        <artifactId>jackson-core</artifactId>
+        <version>${jackson.databind.v2.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.fasterxml.jackson.core</groupId>
+        <artifactId>jackson-databind</artifactId>
+        <version>${jackson.databind.v2.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.fasterxml.jackson.core</groupId>
+        <artifactId>jackson-annotations</artifactId>
+        <version>${jackson.annotations.v2.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.fasterxml.jackson.datatype</groupId>
+        <artifactId>jackson-datatype-jsr310</artifactId>
+        <version>${jackson.jsr310.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.fasterxml.jackson.datatype</groupId>
+        <artifactId>jackson-datatype-jdk8</artifactId>
+        <version>${jackson.jdk8.version}</version>
+      </dependency>
+      <!-- Jackson 3 (Spring Boot 4 default); jackson-core v3 follows databind like the v2 pair -->
+      <dependency>
+        <groupId>tools.jackson.core</groupId>
+        <artifactId>jackson-core</artifactId>
+        <version>${jackson.databind.v3.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>tools.jackson.core</groupId>
+        <artifactId>jackson-databind</artifactId>
+        <version>${jackson.databind.v3.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
 
   <repositories>
     <repository>
@@ -28,6 +84,21 @@
   </repositories>
 
   <dependencies>
+    <!-- Log4j2 instead of Logback, as on the platform -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter</artifactId>
+      <exclusions>
+        <exclusion>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-starter-logging</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-log4j2</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-webmvc</artifactId>
@@ -81,7 +152,7 @@
     </dependency>
     <dependency>
       <groupId>org.testcontainers</groupId>
-      <artifactId>testcontainers-mongodb</artifactId>
+      <artifactId>mongodb</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>

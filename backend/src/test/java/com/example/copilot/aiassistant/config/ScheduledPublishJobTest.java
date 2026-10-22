@@ -13,10 +13,7 @@ import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.common.AssistantException;
 import com.example.copilot.aiassistant.common.ErrorCode;
 import com.example.copilot.aiassistant.prompt.PublishedConfigCache;
-import ch.qos.logback.classic.Level;
-import ch.qos.logback.classic.Logger;
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.read.ListAppender;
+import com.example.copilot.testsupport.LogCapture;
 import com.mongodb.MongoException;
 import java.time.Clock;
 import java.time.Duration;
@@ -30,11 +27,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.core.LogEvent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.AdditionalAnswers;
-import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.TransactionSystemException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -219,7 +217,7 @@ class ScheduledPublishJobTest extends IntegrationTestBase {
         assertThat(nameInCache()).isEqualTo("renamed v2");
     }
 
-    private List<ILoggingEvent> publishDueWithFindFailure(RuntimeException failure) {
+    private List<LogEvent> publishDueWithFindFailure(RuntimeException failure) {
         schedule(NOW.plus(Duration.ofMinutes(2)));
         clock.advance(Duration.ofMinutes(3));
         AssistantConfigRepository failing = mock(AssistantConfigRepository.class,
@@ -227,20 +225,13 @@ class ScheduledPublishJobTest extends IntegrationTestBase {
         doThrow(failure).when(failing).findByConfigKeyAndStatus(any(), any());
         ConfigService racing = new ConfigService(failing, mongo, validator, cache, transactionManager, clock,
                 properties);
-        Logger logger = (Logger) LoggerFactory.getLogger(ConfigService.class);
-        Level old = logger.getLevel();
-        ListAppender<ILoggingEvent> appender = new ListAppender<>();
-        appender.start();
-        logger.setLevel(Level.DEBUG);
-        logger.addAppender(appender);
-        try {
+        List<LogEvent> events;
+        try (LogCapture capture = LogCapture.of(ConfigService.class, Level.DEBUG)) {
             assertThat(racing.publishDue()).isZero();
-        } finally {
-            logger.detachAppender(appender);
-            logger.setLevel(old);
+            events = capture.events();
         }
         assertThat(reload(2).getStatus()).isEqualTo(ConfigStatus.SCHEDULED);
-        return appender.list;
+        return events;
     }
 
     private static MongoException labelled(int code, String label) {
@@ -251,19 +242,19 @@ class ScheduledPublishJobTest extends IntegrationTestBase {
 
     @Test
     void writeConflictOnClaimIsLoggedAtDebug() {
-        List<ILoggingEvent> events = publishDueWithFindFailure(
+        List<LogEvent> events = publishDueWithFindFailure(
                 new DataIntegrityViolationException("x", new MongoException(112, "conflict")));
 
-        assertThat(events).extracting(ILoggingEvent::getLevel).containsExactly(Level.DEBUG);
+        assertThat(events).extracting(LogEvent::getLevel).containsExactly(Level.DEBUG);
     }
 
     @Test
     void labelledNonConflictFailureIsLoggedAtWarnWithoutMessage() {
-        List<ILoggingEvent> events = publishDueWithFindFailure(new TransactionSystemException("secret-detail",
+        List<LogEvent> events = publishDueWithFindFailure(new TransactionSystemException("secret-detail",
                 labelled(91, MongoException.TRANSIENT_TRANSACTION_ERROR_LABEL)));
 
-        assertThat(events).extracting(ILoggingEvent::getLevel).containsExactly(Level.WARN);
-        assertThat(events.get(0).getFormattedMessage()).contains(KEY, "TransactionSystemException")
+        assertThat(events).extracting(LogEvent::getLevel).containsExactly(Level.WARN);
+        assertThat(events.get(0).getMessage().getFormattedMessage()).contains(KEY, "TransactionSystemException")
                 .doesNotContain("secret-detail");
     }
 

@@ -8,6 +8,7 @@ import com.example.copilot.aiassistant.port.UserContext;
 import com.example.copilot.aiassistant.privacy.CustomerContext;
 import com.example.copilot.aiassistant.privacy.PiiRedactor;
 import com.example.copilot.aiassistant.tool.testsupport.FakeTool;
+import com.example.copilot.testsupport.LogCapture;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import jakarta.validation.Validation;
 import java.nio.charset.StandardCharsets;
@@ -17,12 +18,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
-import ch.qos.logback.classic.Logger;
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.classic.spi.ThrowableProxyUtil;
-import ch.qos.logback.core.read.ListAppender;
+import org.apache.logging.log4j.core.LogEvent;
 import org.junit.jupiter.api.Test;
-import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -176,21 +173,16 @@ class ToolExecutorTest {
 
     @Test
     void failureLogContainsNoExceptionMessage() {
-        Logger logger = (Logger) LoggerFactory.getLogger(ToolExecutor.class);
-        ListAppender<ILoggingEvent> appender = new ListAppender<>();
-        appender.start();
-        logger.addAppender(appender);
-        try {
+        List<LogEvent> events;
+        try (LogCapture capture = LogCapture.of(ToolExecutor.class)) {
             run(() -> {
                 throw new RuntimeException("王小明 0912-000-111");
             });
-        } finally {
-            logger.detachAppender(appender);
+            events = capture.events();
         }
 
-        assertThat(appender.list).hasSize(1);
-        ILoggingEvent event = appender.list.get(0);
-        String output = event.getFormattedMessage() + ThrowableProxyUtil.asString(event.getThrowableProxy());
+        assertThat(events).hasSize(1);
+        String output = LogCapture.render(events.get(0));
         assertThat(output).contains("tool=probe").contains("java.lang.RuntimeException")
                 .doesNotContain("王小明").doesNotContain("0912");
     }
