@@ -222,9 +222,9 @@ function onInput(e: Event) {
 .pm-preview :deep(mark.pm-diff) {
   padding: 1px 2px;
   border-radius: 3px;
-  background: var(--green-50);
+  background: var(--green-100);
   color: inherit;
-  box-shadow: inset 2px 0 0 var(--color-primary);
+  box-shadow: inset 3px 0 0 var(--color-primary);
 }
 
 .pm-preview-foot {
@@ -242,8 +242,8 @@ function onInput(e: Event) {
   width: 14px;
   height: 10px;
   border-radius: 2px;
-  background: var(--green-50);
-  box-shadow: inset 2px 0 0 var(--color-primary);
+  background: var(--green-100);
+  box-shadow: inset 3px 0 0 var(--color-primary);
 }
 
 .pm-chips-preview {

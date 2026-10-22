@@ -128,4 +128,19 @@ class ConfigValidatorTest {
         String content = instruction() + "\n2330\n";
         assertThat(validator.validate(ConfigType.SYSTEM_INSTRUCTION, content)).isEmpty();
     }
+
+    @Test
+    void forbiddenContentInNameIsReportedWithField() {
+        List<ValidationError> errors = validator.validate(ConfigType.SYSTEM_INSTRUCTION, "A123456789 準備",
+                instruction());
+
+        assertThat(errors).hasSize(1);
+        assertThat(errors.get(0).rule()).isEqualTo("FORBIDDEN_CONTENT");
+        assertThat(errors.get(0).message()).isEqualTo("名稱疑似包含身分證號，請移除");
+    }
+
+    @Test
+    void cleanNameAddsNoErrors() {
+        assertThat(validator.validate(ConfigType.SYSTEM_INSTRUCTION, "聯繫準備", instruction())).isEmpty();
+    }
 }

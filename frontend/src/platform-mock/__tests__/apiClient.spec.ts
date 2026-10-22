@@ -4,7 +4,13 @@ import { AxiosError, CanceledError, type AxiosAdapter, type InternalAxiosRequest
 const show = vi.fn()
 vi.mock('../useToast', () => ({ useToast: () => ({ show }) }))
 
-import { ApiError, apiClient, NETWORK_ERROR_MESSAGE, setUnauthorizedHandler } from '../apiClient'
+import {
+  ApiError,
+  apiClient,
+  NETWORK_ERROR_CODE,
+  NETWORK_ERROR_MESSAGE,
+  setUnauthorizedHandler,
+} from '../apiClient'
 
 const originalAdapter = apiClient.defaults.adapter
 
@@ -74,14 +80,29 @@ describe('apiClient', () => {
       Promise.reject(new AxiosError('timeout of 30000ms exceeded', 'ECONNABORTED', config))
     const err = await apiClient.get('/x').catch((e) => e)
     expect(err).toBeInstanceOf(ApiError)
+    expect(err.status).toBe(0)
+    expect(err.code).toBe(NETWORK_ERROR_CODE)
     expect(err.message).toBe(NETWORK_ERROR_MESSAGE)
     expect(show).toHaveBeenCalledWith('網路連線異常，請稍後再試')
   })
 
-  it('shows network message when the body is not an ApiError', async () => {
+  it('shows the generic error, not the network message, for a proxy 502 with an HTML body', async () => {
     apiClient.defaults.adapter = failWith(502, '<html>Bad Gateway</html>')
-    await apiClient.get('/x').catch(() => undefined)
-    expect(show).toHaveBeenCalledWith('網路連線異常，請稍後再試')
+    const err = await apiClient.get('/x').catch((e) => e)
+    expect(err).toBeInstanceOf(ApiError)
+    expect(err.status).toBe(502)
+    expect(err.code).toBe('AI_INTERNAL_ERROR')
+    expect(err.message).toBe('系統發生錯誤，請稍後再試')
+    expect(show).toHaveBeenCalledWith('系統發生錯誤，請稍後再試')
+    expect(show).not.toHaveBeenCalledWith('網路連線異常，請稍後再試')
+  })
+
+  it('shows the generic error for a CSRF 403 with an HTML body', async () => {
+    apiClient.defaults.adapter = failWith(403, '<html>Forbidden</html>')
+    const err = await apiClient.get('/x').catch((e) => e)
+    expect(err.status).toBe(403)
+    expect(err.code).toBe('AI_INTERNAL_ERROR')
+    expect(show).toHaveBeenCalledWith('系統發生錯誤，請稍後再試')
   })
 
   it('toasts and calls the unauthorized handler once on a non-silent 401', async () => {

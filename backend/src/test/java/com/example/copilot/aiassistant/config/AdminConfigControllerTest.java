@@ -164,6 +164,23 @@ class AdminConfigControllerTest extends IntegrationTestBase {
     }
 
     @Test
+    void nameWithLineBreakOrControlCharacterIs400OnCreateAndSave() throws Exception {
+        call(post(BASE), "{\"configKey\":\"instruction.new-topic\",\"configType\":\"SYSTEM_INSTRUCTION\","
+                + "\"name\":\"新\\n分類\"}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("AI_INPUT_INVALID"))
+                .andExpect(jsonPath("$.details[0].field").value("name"));
+        String draft = createDraft();
+        for (String bad : new String[] {"a\\nb", "a\\rb", "a\\u0000b", "a\\u2028b"}) {
+            call(put(DRAFT_URL), "{\"name\":\"" + bad + "\",\"content\":\"c\",\"saveMode\":\"DRAFT\","
+                    + "\"docVersion\":" + docVersion(draft) + "}")
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("AI_INPUT_INVALID"))
+                    .andExpect(jsonPath("$.details[0].field").value("name"));
+        }
+    }
+
+    @Test
     void saveWithoutSaveModeIs400() throws Exception {
         String draft = createDraft();
         call(put(DRAFT_URL), "{\"name\":\"x\",\"content\":\"c\",\"docVersion\":" + docVersion(draft) + "}")
@@ -250,7 +267,8 @@ class AdminConfigControllerTest extends IntegrationTestBase {
         call(delete(DRAFT_URL).param("docVersion", String.valueOf(doc)), null)
                 .andExpect(status().isNoContent());
         read(VERSIONS_URL).andExpect(jsonPath("$[0].status").value("DISCARDED"));
-        call(delete(DRAFT_URL).param("docVersion", "0"), null).andExpect(status().isNotFound());
+        call(delete(DRAFT_URL).param("docVersion", "0"), null).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("AI_CONFIG_CONFLICT"));
     }
 
     @Test

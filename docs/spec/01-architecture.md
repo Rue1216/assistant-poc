@@ -306,7 +306,7 @@ OPENAI_MODEL=<模型名稱>
 | 引用方式 | pom.xml 宣告一個 id 為 `project-local` 的 file repository（見下方），依賴照一般方式寫 `<dependency>` |
 | 不用 `system` scope | `system` scope 已不建議使用，不處理間接依賴，Spring Boot 打包時預設也不會放進執行檔 |
 | 更新方式 | 在能連網的電腦下載後複製進來，步驟見 [setup.md](../setup.md) 第 6 節 |
-| 授權 | LangChain4j 是 Apache License 2.0，允許重新散布；jar 內已附 LICENSE，不要刪除 |
+| 授權 | LangChain4j 是 Apache License 2.0，允許重新散布；放進 `lib-repo` 的 jar 不含 LICENSE 檔，正式納入平台時依公司規範補上 NOTICE |
 
 ```xml
 <repositories>
@@ -319,7 +319,7 @@ OPENAI_MODEL=<模型名稱>
 
 注意事項：
 
-- **Jackson 版本**：LangChain4j 使用 Jackson 2（`com.fasterxml.jackson`），Spring Boot 4 預設改用 Jackson 3。Jackson 2 要不要放進 `lib-repo`，依 `dependency:tree` 的結果和平台既有依賴決定。
+- **Jackson 版本**：LangChain4j 使用 Jackson 2（`com.fasterxml.jackson`），Spring Boot 4 預設改用 Jackson 3。LangChain4j 一定需要 Jackson 2，而它不在 `lib-repo` 內，必須由平台的 Maven repository 提供（版本由 Spring Boot 4 管理）；平台若只有 Jackson 3，要先確認 repository 能取得 Jackson 2。
 - **Maven mirror**：如果公司的 `settings.xml` 用 `<mirrorOf>*</mirrorOf>` 把所有 repository 導到內部 mirror，`project-local` 也會被導走而找不到 jar。要改成 `<mirrorOf>external:*</mirrorOf>`（不含 file:// 的 repository）或 `<mirrorOf>*,!project-local</mirrorOf>`。見 questions-for-manager.md S13。
 - **Maven Wrapper**：`mvnw` 第一次執行時會從網路下載 Maven。公司環境要改用平台既有的 Maven，或事先把 Maven 放進 `~/.m2/wrapper/`。
 

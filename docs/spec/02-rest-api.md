@@ -364,8 +364,8 @@
 
 - `updatedBy`、`updatedAt` 都更新為操作者與現在時間。排程中按「儲存」視為由此人重新確認排程，到期自動發布時記的是此人。
 - **200**：回傳更新後的版本（`docVersion` 會加 1）
-- **404** `AI_CONFIG_NOT_FOUND`：沒有編輯中版本
-- **409** `AI_CONFIG_CONFLICT`：`docVersion` 不一致，代表已被他人修改（包括排程剛好到期、已被系統發布）
+- **404** `AI_CONFIG_NOT_FOUND`：`configKey` 不存在
+- **409** `AI_CONFIG_CONFLICT`：`docVersion` 不一致，或這個 `configKey` 已沒有編輯中版本，代表已被他人修改（包括排程剛好到期、已被系統發布，或已被他人捨棄、發布）
 - **422** `AI_CONFIG_VALIDATION_FAILED`：已排程版本的內容未通過驗證
 
 ### 3.7 `DELETE /api/ai-assistant/admin/configs/{configKey}/draft?docVersion={n}`
@@ -373,8 +373,8 @@
 捨棄草稿：把 `DRAFT` 改為 `DISCARDED`，**不刪除**，內容保留在版本歷程中，之後仍可比較或套用回來。只能捨棄 `DRAFT`；已排程的版本需先「存成草稿」取消排程。
 
 - **204**
-- **404** `AI_CONFIG_NOT_FOUND`
-- **409** `AI_CONFIG_CONFLICT`
+- **404** `AI_CONFIG_NOT_FOUND`：`configKey` 不存在
+- **409** `AI_CONFIG_CONFLICT`：`docVersion` 不一致，或這個 `configKey` 已沒有編輯中版本（被排程器發布，或被他人捨棄、發布）
 - **409** `AI_CONFIG_INVALID_STATE`：目前是 `SCHEDULED`
 
 ### 3.8 `POST /api/ai-assistant/admin/configs/{configKey}/draft/validate`
@@ -391,6 +391,9 @@
   ]
 }
 ```
+
+- **404** `AI_CONFIG_NOT_FOUND`：`configKey` 不存在
+- **409** `AI_CONFIG_CONFLICT`：這個 `configKey` 已沒有編輯中版本（被排程器發布，或被他人捨棄、發布）
 
 ### 3.9 `POST /api/ai-assistant/admin/configs/{configKey}/publish`
 
@@ -413,8 +416,8 @@
 
 - **200**：回傳發布後或排程後的版本
 - **400** `AI_INPUT_INVALID`：`scheduledAt` 缺少或超出範圍
-- **404** `AI_CONFIG_NOT_FOUND`：沒有編輯中版本
-- **409** `AI_CONFIG_CONFLICT`
+- **404** `AI_CONFIG_NOT_FOUND`：`configKey` 不存在
+- **409** `AI_CONFIG_CONFLICT`：`docVersion` 不一致，或這個 `configKey` 已沒有編輯中版本（被排程器發布，或被他人捨棄、發布）
 - **422** `AI_CONFIG_VALIDATION_FAILED`：`details` 格式同 3.8 的 `errors`
 
 ### 3.10 `POST /api/ai-assistant/admin/configs/{configKey}/versions/{version}/apply`

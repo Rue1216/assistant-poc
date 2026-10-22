@@ -191,6 +191,9 @@ describe('AssistantPanel', () => {
     const item = (w: Awaited<ReturnType<typeof mountPanel>>['wrapper'], label: string) =>
       w.findAll('[role="menuitem"]').find((b) => b.text() === label)!
 
+    const confirmButton = (w: Awaited<ReturnType<typeof mountPanel>>['wrapper'], label: string) =>
+      w.findAll('.ai-confirm button').find((b) => b.text() === label)!
+
     it('opens with three actions; history is disabled for now', async () => {
       const { wrapper } = await mountPanel()
       expect(wrapper.find('[role="menu"]').exists()).toBe(false)
@@ -214,9 +217,38 @@ describe('AssistantPanel', () => {
       await trigger(wrapper).trigger('click')
       expect(item(wrapper, '刪除對話').attributes('disabled')).toBeUndefined()
       await item(wrapper, '刪除對話').trigger('click')
+      await confirmButton(wrapper, '確定刪除').trigger('click')
       expect(store.messages).toEqual([])
       expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('草稿')
       expect(wrapper.find('[role="menu"]').exists()).toBe(false)
+      expect(wrapper.find('.ai-confirm').exists()).toBe(false)
+    })
+
+    it('asks before deleting; cancel keeps the conversation', async () => {
+      chat.mockResolvedValue(answer())
+      const { wrapper, store } = await mountPanel()
+      await store.send('hello')
+      await trigger(wrapper).trigger('click')
+      await item(wrapper, '刪除對話').trigger('click')
+
+      expect(store.messages).not.toEqual([]) // nothing deleted yet
+      expect(wrapper.find('.ai-confirm').text()).toContain('確定要刪除這段對話嗎？')
+
+      await confirmButton(wrapper, '取消').trigger('click')
+      expect(wrapper.find('.ai-confirm').exists()).toBe(false)
+      expect(store.messages).not.toEqual([])
+    })
+
+    it('Escape dismisses the delete confirmation without deleting', async () => {
+      chat.mockResolvedValue(answer())
+      const { wrapper, store } = await mountPanel()
+      await store.send('hello')
+      await trigger(wrapper).trigger('click')
+      await item(wrapper, '刪除對話').trigger('click')
+
+      await wrapper.find('.ai-confirm').trigger('keydown', { key: 'Escape' })
+      expect(wrapper.find('.ai-confirm').exists()).toBe(false)
+      expect(store.messages).not.toEqual([])
     })
 
     it('new chat empties the conversation and the draft', async () => {

@@ -15,6 +15,7 @@ interface TaipeiParts {
   day: string
   hour: string
   minute: string
+  second: string
 }
 
 function taipeiParts(iso: string): TaipeiParts | null {
@@ -27,6 +28,7 @@ function taipeiParts(iso: string): TaipeiParts | null {
     day: pad(d.getUTCDate()),
     hour: pad(d.getUTCHours()),
     minute: pad(d.getUTCMinutes()),
+    second: pad(d.getUTCSeconds()),
   }
 }
 
@@ -55,6 +57,12 @@ export function formatTaipei(iso: string): string {
 export function formatTaipeiShort(iso: string): string {
   const p = taipeiParts(iso)
   return p ? `${p.month}/${p.day} ${p.hour}:${p.minute}` : iso
+}
+
+/** ISO 8601 -> "10/24 09:00:07" in Asia/Taipei (tells apart entries that share a minute). */
+export function formatTaipeiShortSeconds(iso: string): string {
+  const p = taipeiParts(iso)
+  return p ? `${p.month}/${p.day} ${p.hour}:${p.minute}:${p.second}` : iso
 }
 
 /** ISO 8601 -> "14:03" in Asia/Taipei. */

@@ -14,7 +14,8 @@ export function useAssistantChat() {
   const canSend = computed(() => !pending.value && !unavailable.value && draft.value.trim().length > 0)
 
   function setDraft(value: string): void {
-    // UTF-16 code units: same as native maxlength and the backend's Java String.length (R26)
+    // UTF-16 code units, like native maxlength. The backend counts code points of the stripped message
+    // (ChatController uses codePointCount), so this limit is the stricter one and anything accepted here passes there.
     draft.value = value.slice(0, MAX_MESSAGE_LENGTH)
   }
 

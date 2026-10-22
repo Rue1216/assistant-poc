@@ -118,6 +118,31 @@ describe('VersionHistory', () => {
     expect(rows(w)[1]!.find('.pm-ver__from').exists()).toBe(false)
   })
 
+  it('shows seconds only on rows that share a minute', () => {
+    const versions = [
+      item(9140, 'DRAFT', '2026-10-19T12:00:41+08:00'),
+      item(9139, 'PUBLISHED', '2026-10-19T12:00:07+08:00'),
+      item(9138, 'ARCHIVED', '2026-10-19T11:00:00+08:00'),
+    ]
+    const w = mountHistory(versions)
+    const times = rows(w).map((r) => r.find('.pm-ver__time').text())
+    expect(times).toEqual(['10/19 12:00:41', '10/19 12:00:07', '10/19 11:00'])
+    expect(w.findAll('.pm-ver__check')[0]!.attributes('aria-label')).toContain('10/19 12:00:41')
+    expect(w.findAll('.pm-ver__check')[2]!.attributes('aria-label')).toContain('10/19 11:00')
+    expect(w.findAll('.pm-ver__check')[2]!.attributes('aria-label')).not.toContain('11:00:')
+  })
+
+  it('counts hidden discarded rows only once they are shown', async () => {
+    const versions = [
+      item(9140, 'PUBLISHED', '2026-10-19T12:00:41+08:00'),
+      item(9139, 'DISCARDED', '2026-10-19T12:00:07+08:00'),
+    ]
+    const w = mountHistory(versions)
+    expect(rows(w).map((r) => r.find('.pm-ver__time').text())).toEqual(['10/19 12:00'])
+    await w.find('.pm-versions__toggle input').setValue(true)
+    expect(rows(w).map((r) => r.find('.pm-ver__time').text())).toEqual(['10/19 12:00:41', '10/19 12:00:07'])
+  })
+
   it('opens a version when its row is clicked', async () => {
     const w = mountHistory()
     await rows(w)[1]!.find('.pm-ver__main').trigger('click')

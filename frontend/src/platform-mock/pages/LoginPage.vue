@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { ApiError } from '../apiClient'
 import { useAuthStore } from '../useAuthStore'
 
 const DEMO_ACCOUNTS = [
@@ -20,15 +21,18 @@ const router = useRouter()
 const username = ref('')
 const password = ref('poc1234')
 const submitting = ref(false)
+const loginError = ref('')
 
 async function onSubmit() {
   if (submitting.value) return
   submitting.value = true
+  loginError.value = ''
   try {
     await auth.login(username.value.trim(), password.value)
     await router.push('/')
-  } catch {
-    // apiClient already toasted the error
+  } catch (e) {
+    // 401 is silent in apiClient and answered here; every other error was already toasted
+    if (e instanceof ApiError && e.status === 401) loginError.value = '帳號或密碼錯誤'
   } finally {
     submitting.value = false
   }
@@ -56,6 +60,7 @@ async function onSubmit() {
         <span>密碼</span>
         <input v-model="password" type="password" autocomplete="current-password" required />
       </label>
+      <p v-if="loginError" class="error" role="alert">{{ loginError }}</p>
       <button class="primary" type="submit" :disabled="submitting">登入</button>
     </form>
   </div>
@@ -87,6 +92,10 @@ h1 {
 .hint {
   font-size: var(--text-sm);
   color: var(--color-text-muted);
+}
+.error {
+  font-size: var(--text-sm);
+  color: var(--red-600);
 }
 label {
   display: flex;

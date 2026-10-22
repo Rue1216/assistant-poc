@@ -170,12 +170,36 @@ class ScheduledPublishJobTest extends IntegrationTestBase {
                 scheduled.getDocVersion());
         assertThatThrownBy(() -> service.saveWorkingCopy(KEY, stale, "backoffice.admin"))
                 .isInstanceOfSatisfying(AssistantException.class, e -> assertThat(e.code())
-                        .isIn(ErrorCode.AI_CONFIG_NOT_FOUND, ErrorCode.AI_CONFIG_CONFLICT));
+                        .isEqualTo(ErrorCode.AI_CONFIG_CONFLICT));
 
         AssistantConfig after = reload(2);
         assertThat(after.getStatus()).isEqualTo(ConfigStatus.PUBLISHED);
         assertThat(after.getContent()).isEqualTo(published);
         assertThat(after.getName()).isNotEqualTo("late save");
+    }
+
+    @Test
+    void discardAfterJobPublishedReturnsConflict() {
+        AssistantConfig scheduled = schedule(NOW.plus(Duration.ofMinutes(2)));
+        clock.advance(Duration.ofMinutes(3));
+        job.run();
+
+        assertThatThrownBy(() -> service.discardDraft(KEY, scheduled.getDocVersion(), ACTOR))
+                .isInstanceOfSatisfying(AssistantException.class, e -> assertThat(e.code())
+                        .isEqualTo(ErrorCode.AI_CONFIG_CONFLICT));
+        assertThat(reload(2).getStatus()).isEqualTo(ConfigStatus.PUBLISHED);
+    }
+
+    @Test
+    void publishAfterOtherAdminPublishedReturnsConflict() {
+        AssistantConfig draft = service.createDraft(KEY, ACTOR);
+        service.publish(KEY, new PublishCommand(PublishMode.IMMEDIATE, null, draft.getDocVersion()), "admin.a");
+
+        assertThatThrownBy(() -> service.publish(KEY,
+                new PublishCommand(PublishMode.IMMEDIATE, null, draft.getDocVersion()), "admin.b"))
+                .isInstanceOfSatisfying(AssistantException.class, e -> assertThat(e.code())
+                        .isEqualTo(ErrorCode.AI_CONFIG_CONFLICT));
+        assertThat(reload(2).getUpdatedBy()).isEqualTo("admin.a");
     }
 
     @Test

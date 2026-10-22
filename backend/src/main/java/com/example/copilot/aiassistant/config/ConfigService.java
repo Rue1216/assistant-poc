@@ -105,7 +105,7 @@ public class ConfigService {
         if (wc.getStatus() == ConfigStatus.SCHEDULED) {
             if (cmd.saveMode() == SaveMode.KEEP_STATUS) {
                 // The schedule stays, so the new content must still be publishable when it falls due.
-                requireValid(wc.getConfigType(), cmd.content());
+                requireValid(wc.getConfigType(), cmd.name(), cmd.content());
             } else {
                 wc.setStatus(ConfigStatus.DRAFT);
                 wc.setScheduledAt(null);
@@ -120,7 +120,7 @@ public class ConfigService {
 
     /** Soft delete: the DRAFT becomes DISCARDED and stays in the history. */
     public void discardDraft(String configKey, long docVersion, String actor) {
-        AssistantConfig wc = workingCopy(configKey).orElseThrow(ConfigService::notFound);
+        AssistantConfig wc = existingWorkingCopy(configKey);
         if (wc.getStatus() != ConfigStatus.DRAFT) {
             throw new AssistantException(ErrorCode.AI_CONFIG_INVALID_STATE);
         }
@@ -136,7 +136,7 @@ public class ConfigService {
             requireScheduleWindow(cmd.scheduledAt(), now);
         }
         AssistantConfig wc = requireWorkingCopy(configKey, cmd.docVersion());
-        requireValid(wc.getConfigType(), wc.getContent());
+        requireValid(wc.getConfigType(), wc.getName(), wc.getContent());
         touch(wc, actor, now);
         if (cmd.mode() == PublishMode.SCHEDULED) {
             wc.setStatus(ConfigStatus.SCHEDULED);
@@ -243,8 +243,8 @@ public class ConfigService {
     }
 
     public List<ValidationError> validateWorkingCopy(String configKey) {
-        AssistantConfig wc = workingCopy(configKey).orElseThrow(ConfigService::notFound);
-        return validator.validate(wc.getConfigType(), wc.getContent());
+        AssistantConfig wc = existingWorkingCopy(configKey);
+        return validator.validate(wc.getConfigType(), wc.getName(), wc.getContent());
     }
 
     private boolean publishScheduled(AssistantConfig due, Instant now, TransactionStatus status) {
@@ -285,9 +285,24 @@ public class ConfigService {
     }
 
     private AssistantConfig requireWorkingCopy(String configKey, long docVersion) {
-        AssistantConfig wc = workingCopy(configKey).orElseThrow(ConfigService::notFound);
+        AssistantConfig wc = existingWorkingCopy(configKey);
         requireDocVersion(wc, docVersion);
         return wc;
+    }
+
+    /**
+     * An unknown key is NOT_FOUND; a known key without a DRAFT/SCHEDULED copy means the copy the caller saw
+     * was published, discarded or applied over by someone else in the meantime, which is a CONFLICT.
+     */
+    private AssistantConfig existingWorkingCopy(String configKey) {
+        Optional<AssistantConfig> wc = workingCopy(configKey);
+        if (wc.isPresent()) {
+            return wc.get();
+        }
+        if (repository.findTopByConfigKeyOrderByVersionDesc(configKey).isPresent()) {
+            throw new AssistantException(ErrorCode.AI_CONFIG_CONFLICT);
+        }
+        throw notFound();
     }
 
     private static void requireDocVersion(AssistantConfig config, Long expected) {
@@ -296,8 +311,8 @@ public class ConfigService {
         }
     }
 
-    private void requireValid(ConfigType type, String content) {
-        List<ValidationError> errors = validator.validate(type, content);
+    private void requireValid(ConfigType type, String name, String content) {
+        List<ValidationError> errors = validator.validate(type, name, content);
         if (!errors.isEmpty()) {
             throw new AssistantException(ErrorCode.AI_CONFIG_VALIDATION_FAILED, List.copyOf(errors));
         }

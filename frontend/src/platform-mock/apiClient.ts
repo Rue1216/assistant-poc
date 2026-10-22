@@ -4,6 +4,8 @@ import { useToast } from './useToast'
 export const NETWORK_ERROR_MESSAGE = '網路連線異常，請稍後再試'
 export const NETWORK_ERROR_CODE = 'AI_NETWORK_ERROR'
 export const UNAUTHENTICATED_CODE = 'AI_UNAUTHENTICATED'
+export const INTERNAL_ERROR_CODE = 'AI_INTERNAL_ERROR'
+export const INTERNAL_ERROR_MESSAGE = '系統發生錯誤，請稍後再試'
 
 declare module 'axios' {
   interface AxiosRequestConfig {
@@ -63,9 +65,16 @@ apiClient.interceptors.response.use(
 
     const axiosError = error as AxiosError
     const data = axiosError.response?.data
-    const apiError = isErrorBody(data)
-      ? new ApiError(axiosError.response!.status, data.code, data.message, data.requestId, data.details ?? [])
-      : new ApiError(axiosError.response?.status ?? 0, NETWORK_ERROR_CODE, NETWORK_ERROR_MESSAGE)
+    const response = axiosError.response
+    let apiError: ApiError
+    if (response && isErrorBody(data)) {
+      apiError = new ApiError(response.status, data.code, data.message, data.requestId, data.details ?? [])
+    } else if (response) {
+      // the server (or a proxy) answered, but not with an ApiError body: not a connectivity problem
+      apiError = new ApiError(response.status, INTERNAL_ERROR_CODE, INTERNAL_ERROR_MESSAGE)
+    } else {
+      apiError = new ApiError(0, NETWORK_ERROR_CODE, NETWORK_ERROR_MESSAGE)
+    }
 
     const silent = axiosError.config?.meta?.silentCodes?.includes(apiError.code) ?? false
     if (!silent) {

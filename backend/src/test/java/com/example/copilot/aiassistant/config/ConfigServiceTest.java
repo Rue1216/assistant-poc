@@ -339,13 +339,24 @@ class ConfigServiceTest extends IntegrationTestBase {
     }
 
     @Test
-    void operationsWithoutWorkingCopyAreNotFound() {
+    void operationsWithoutWorkingCopyOnExistingKeyAreConflicts() {
         assertError(() -> service.saveWorkingCopy(KEY,
-                new SaveCommand("n", "c", null, SaveMode.KEEP_STATUS, 0), ACTOR), ErrorCode.AI_CONFIG_NOT_FOUND);
+                new SaveCommand("n", "c", null, SaveMode.KEEP_STATUS, 0), ACTOR), ErrorCode.AI_CONFIG_CONFLICT);
         assertError(() -> service.publish(KEY, new PublishCommand(PublishMode.IMMEDIATE, null, 0), ACTOR),
+                ErrorCode.AI_CONFIG_CONFLICT);
+        assertError(() -> service.discardDraft(KEY, 0, ACTOR), ErrorCode.AI_CONFIG_CONFLICT);
+        assertError(() -> service.validateWorkingCopy(KEY), ErrorCode.AI_CONFIG_CONFLICT);
+    }
+
+    @Test
+    void operationsOnUnknownKeyAreNotFound() {
+        String unknown = "instruction.nope";
+        assertError(() -> service.saveWorkingCopy(unknown,
+                new SaveCommand("n", "c", null, SaveMode.KEEP_STATUS, 0), ACTOR), ErrorCode.AI_CONFIG_NOT_FOUND);
+        assertError(() -> service.publish(unknown, new PublishCommand(PublishMode.IMMEDIATE, null, 0), ACTOR),
                 ErrorCode.AI_CONFIG_NOT_FOUND);
-        assertError(() -> service.discardDraft(KEY, 0, ACTOR), ErrorCode.AI_CONFIG_NOT_FOUND);
-        assertError(() -> service.validateWorkingCopy(KEY), ErrorCode.AI_CONFIG_NOT_FOUND);
+        assertError(() -> service.discardDraft(unknown, 0, ACTOR), ErrorCode.AI_CONFIG_NOT_FOUND);
+        assertError(() -> service.validateWorkingCopy(unknown), ErrorCode.AI_CONFIG_NOT_FOUND);
     }
 
     @Test

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, ref } from 'vue'
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
-defineProps<{ customerId: string; hasMessages: boolean }>()
+const props = defineProps<{ customerId: string; hasMessages: boolean }>()
 const emit = defineEmits<{ newChat: []; delete: []; close: [] }>()
 
 const menuOpen = ref(false)
@@ -59,16 +59,46 @@ function onMenuKeydown(e: KeyboardEvent): void {
   items[next]!.focus()
 }
 
-function choose(action: 'newChat' | 'delete'): void {
-  closeMenu(true)
-  if (action === 'newChat') emit('newChat')
-  else emit('delete')
+/** Deleting asks first (inline, under the header); nothing is emitted until it is confirmed. */
+const confirmingDelete = ref(false)
+const confirmDeleteButton = ref<HTMLButtonElement | null>(null)
+
+// nothing left to delete (new chat, customer switch): the question no longer applies
+watch(
+  () => props.hasMessages,
+  (has) => {
+    if (!has) confirmingDelete.value = false
+  },
+)
+
+async function choose(action: 'newChat' | 'delete'): Promise<void> {
+  if (action === 'newChat') {
+    closeMenu(true)
+    emit('newChat')
+    return
+  }
+  closeMenu()
+  confirmingDelete.value = true
+  await nextTick()
+  confirmDeleteButton.value?.focus()
+}
+
+function confirmDelete(): void {
+  confirmingDelete.value = false
+  trigger.value?.focus()
+  emit('delete')
+}
+
+function cancelDelete(): void {
+  confirmingDelete.value = false
+  trigger.value?.focus()
 }
 
 onBeforeUnmount(() => document.removeEventListener('pointerdown', onPointerOutside, true))
 </script>
 
 <template>
+  <div class="ai-header-wrap">
   <header class="ai-header">
     <div class="ai-header__mark" aria-hidden="true">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
@@ -141,9 +171,64 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onPointerOutsi
       </button>
     </div>
   </header>
+  <div
+    v-if="confirmingDelete"
+    class="ai-confirm"
+    role="group"
+    aria-label="確認刪除對話"
+    @keydown.esc.stop="cancelDelete"
+  >
+    <p class="ai-confirm__text">確定要刪除這段對話嗎？刪除後無法復原。</p>
+    <div class="ai-confirm__actions">
+      <button class="ai-confirm__btn" type="button" @click="cancelDelete">取消</button>
+      <button ref="confirmDeleteButton" class="ai-confirm__btn ai-confirm__btn--danger" type="button" @click="confirmDelete">
+        確定刪除
+      </button>
+    </div>
+  </div>
+  </div>
 </template>
 
 <style scoped>
+.ai-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 8px 16px;
+  background: var(--red-50);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+}
+.ai-confirm__text {
+  flex: 1;
+  min-width: 0;
+}
+.ai-confirm__actions {
+  display: flex;
+  flex: none;
+  gap: 6px;
+}
+.ai-confirm__btn {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.ai-confirm__btn--danger {
+  border-color: var(--red-600);
+  background: var(--red-600);
+  color: #fff;
+}
+.ai-confirm__btn:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
 .ai-header {
   display: flex;
   align-items: center;

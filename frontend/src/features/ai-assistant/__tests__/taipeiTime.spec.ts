@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   formatTaipei,
   formatTaipeiShort,
+  formatTaipeiShortSeconds,
   formatTaipeiTime,
   isoToTaipeiDateTime,
   taipeiDateTimeToIso,
@@ -50,6 +51,12 @@ describe('taipeiTime', () => {
     expect(formatTaipei('2026-10-24T01:00:00Z')).toBe('2026/10/24 09:00')
     expect(formatTaipeiShort('2026-10-24T09:00:00+08:00')).toBe('10/24 09:00')
     expect(formatTaipeiTime('2026-10-19T06:03:24Z')).toBe('14:03')
+  })
+
+  it('formats with seconds for telling same-minute entries apart', () => {
+    expect(formatTaipeiShortSeconds('2026-10-19T06:03:24Z')).toBe('10/19 14:03:24')
+    expect(formatTaipeiShortSeconds('2026-10-19T06:03:05.999+00:00')).toBe('10/19 14:03:05')
+    expect(formatTaipeiShortSeconds('not-a-date')).toBe('not-a-date')
   })
 
   it('returns the input unchanged when it is not a date', () => {

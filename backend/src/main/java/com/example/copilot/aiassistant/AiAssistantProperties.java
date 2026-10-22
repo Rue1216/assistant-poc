@@ -9,6 +9,14 @@ public record AiAssistantProperties(Llm llm, Limits limits, Config config, Marke
 
     public record Llm(String provider, String apiKey, String modelName, double temperature,
                       Duration timeout, int maxOutputTokens) {
+
+        /** The API key must never reach a log line or an error message. */
+        @Override
+        public String toString() {
+            return "Llm[provider=" + provider + ", apiKey=***, modelName=" + modelName
+                    + ", temperature=" + temperature + ", timeout=" + timeout
+                    + ", maxOutputTokens=" + maxOutputTokens + "]";
+        }
     }
 
     public record Limits(int messageMaxChars, int historyMaxTurns, int historyMaxChars,

@@ -10,13 +10,19 @@ export interface Me {
 }
 
 export const useAuthStore = defineStore('auth', {
-  state: () => ({ user: null as Me | null }),
+  // loggingOut: set by the layout while it navigates to /login, so the router lets that navigation through
+  state: () => ({ user: null as Me | null, loggingOut: false }),
   actions: {
     hasPermission(p: string): boolean {
       return this.user?.permissions.includes(p) ?? false
     },
     async login(username: string, password: string): Promise<void> {
-      const res = await apiClient.post<Me>('/mock/auth/login', { username, password })
+      // a wrong password is answered inline by the login form, not by a global toast
+      const res = await apiClient.post<Me>(
+        '/mock/auth/login',
+        { username, password },
+        { meta: { silentCodes: [UNAUTHENTICATED_CODE] } },
+      )
       this.user = res.data
     },
     async logout(): Promise<void> {

@@ -19,4 +19,13 @@ class AiAssistantPropertiesTest extends IntegrationTestBase {
         assertThat(props.market().twse().maxResponseBytes()).isEqualTo(2_097_152);
         assertThat(props.config().scheduleMaxLead()).isEqualTo(Duration.ofDays(90));
     }
+
+    @Test
+    void llmToStringMasksApiKey() {
+        AiAssistantProperties.Llm llm = new AiAssistantProperties.Llm("openai", "sk-secret-value-1234567890",
+                "model-x", 0.2, Duration.ofSeconds(30), 800);
+
+        assertThat(llm.toString()).doesNotContain("sk-secret-value-1234567890").contains("apiKey=***")
+                .contains("model-x");
+    }
 }

@@ -48,6 +48,15 @@ public class ConfigValidator {
         this.exampleQuestionParser = exampleQuestionParser;
     }
 
+    /** Validates the content and also keeps forbidden content (spec 04 section 2.5) out of the display name. */
+    public List<ValidationError> validate(ConfigType type, String name, String content) {
+        List<ValidationError> errors = validate(type, content);
+        if (name != null) {
+            checkForbidden("名稱", new String[] {name}, errors, false);
+        }
+        return errors;
+    }
+
     public List<ValidationError> validate(ConfigType type, String content) {
         List<ValidationError> errors = new ArrayList<>();
         if (content == null || content.isBlank()) {
@@ -95,11 +104,18 @@ public class ConfigValidator {
     }
 
     private static void checkForbidden(String[] lines, List<ValidationError> errors) {
+        checkForbidden(null, lines, errors, true);
+    }
+
+    /** {@code field} names a single-line field (e.g. the name); null means the numbered content lines. */
+    private static void checkForbidden(String field, String[] lines, List<ValidationError> errors,
+                                       boolean numbered) {
         for (Forbidden f : FORBIDDEN) {
             for (int i = 0; i < lines.length; i++) {
                 if (f.pattern().matcher(lines[i]).find()) {
+                    String where = numbered ? "第 " + (i + 1) + " 行" : field;
                     errors.add(new ValidationError("FORBIDDEN_CONTENT",
-                            "第 " + (i + 1) + " 行疑似包含" + f.label() + "，請移除"));
+                            where + "疑似包含" + f.label() + "，請移除"));
                     break;
                 }
             }

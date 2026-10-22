@@ -1,11 +1,21 @@
 <script setup lang="ts">
-import { useRouter } from 'vue-router'
+import { isNavigationFailure, NavigationFailureType, useRouter } from 'vue-router'
 import { useAuthStore } from './useAuthStore'
 
 const auth = useAuthStore()
 const router = useRouter()
 
 async function onLogout() {
+  // Leave the current page first so its guard can ask about unsaved edits (once: while loggingOut is
+  // set the router does not bounce /login back to /); a veto stops the logout.
+  auth.loggingOut = true
+  let failure
+  try {
+    failure = await router.push('/login')
+  } finally {
+    auth.loggingOut = false
+  }
+  if (isNavigationFailure(failure, NavigationFailureType.aborted | NavigationFailureType.cancelled)) return
   try {
     await auth.logout()
   } catch {

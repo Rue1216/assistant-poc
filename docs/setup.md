@@ -194,6 +194,8 @@ npm run dev
 
 想回到初始狀態（例如 demo 前）：
 
+> **更新 seed Prompt 後必須重設。** `SeedLoader` 只在資料庫是空的時候寫入 seed；已有資料時不會覆蓋。所以 pull 到新的 seed 檔之後（尤其是 demo 前），要先照下面步驟重設，新的 Prompt 才會生效。
+
 ```powershell
 docker compose down -v             # 連同資料一起刪除
 docker compose up -d               # 重新建立；後端下次啟動會重新寫入 seed

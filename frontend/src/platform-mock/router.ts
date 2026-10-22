@@ -39,7 +39,7 @@ export function createAppRouter(history: RouterHistory = createWebHistory()) {
     const auth = useAuthStore()
     if (!auth.user) await auth.fetchMe()
 
-    if (to.path === '/login') return auth.user ? '/' : true
+    if (to.path === '/login') return auth.user && !auth.loggingOut ? '/' : true
     if (!auth.user) return '/login'
 
     const required = to.meta.permission

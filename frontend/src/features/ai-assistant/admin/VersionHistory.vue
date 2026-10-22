@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { formatTaipeiShort } from '../taipeiTime'
+import { formatTaipeiShort, formatTaipeiShortSeconds } from '../taipeiTime'
 import type { VersionHistoryItem } from '../types'
 import { APPLICABLE, STATUS_LABEL, STATUS_VERB } from './promptLabels'
 
@@ -31,6 +31,24 @@ watch(rows, (visible) => {
   checked.value = checked.value.filter((v) => visible.some((r) => r.version === v))
 })
 
+/** Rows (visible ones) whose minute is shared with another row show seconds as well. */
+const crowdedMinutes = computed(() => {
+  const seen = new Set<string>()
+  const repeated = new Set<string>()
+  for (const row of rows.value) {
+    const minute = formatTaipeiShort(row.updatedAt)
+    if (seen.has(minute)) repeated.add(minute)
+    seen.add(minute)
+  }
+  return repeated
+})
+
+function timeOf(row: VersionHistoryItem): string {
+  return crowdedMinutes.value.has(formatTaipeiShort(row.updatedAt))
+    ? formatTaipeiShortSeconds(row.updatedAt)
+    : formatTaipeiShort(row.updatedAt)
+}
+
 /** `basedOnVersion` is shown by the time of that version, never by its number. */
 function appliedFrom(row: VersionHistoryItem): string | null {
   if (row.basedOnVersion == null) return null
@@ -39,7 +57,7 @@ function appliedFrom(row: VersionHistoryItem): string | null {
 }
 
 function label(row: VersionHistoryItem): string {
-  return `${STATUS_LABEL[row.status]}，${formatTaipeiShort(row.updatedAt)}`
+  return `${STATUS_LABEL[row.status]}，${timeOf(row)}`
 }
 
 /** Not v-model with :value, so the internal version number never lands in a DOM attribute. */
@@ -77,7 +95,7 @@ function onCompare() {
         <button class="pm-ver__main" type="button" @click="emit('view', row.version)">
           <span class="pm-ver__top">
             <span class="pm-ver__status">{{ STATUS_LABEL[row.status] }}</span>
-            <span class="pm-ver__time">{{ formatTaipeiShort(row.updatedAt) }}</span>
+            <span class="pm-ver__time">{{ timeOf(row) }}</span>
           </span>
           <span class="pm-ver__by">{{ row.updatedBy }} {{ STATUS_VERB[row.status] }}</span>
           <span v-if="row.status === 'SCHEDULED' && row.scheduledAt" class="pm-ver__extra">

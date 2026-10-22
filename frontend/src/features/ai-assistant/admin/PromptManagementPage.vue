@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
 import { ApiError } from '../../../platform-mock/apiClient'
 import { useAuthStore } from '../../../platform-mock/useAuthStore'
 import { useToast } from '../../../platform-mock/useToast'
@@ -62,6 +63,44 @@ function onConfirmDiscardEdits() {
   discardEdits.value = null
   action?.()
 }
+
+/** Settles the pending route navigation, if the open dialog came from one. */
+let settleLeave: ((leave: boolean) => void) | null = null
+
+function onCancelDiscardEdits() {
+  discardEdits.value = null
+  settleLeave?.(false)
+  settleLeave = null
+}
+
+// Leaving through the router (menu, logout, back button) asks the same question as switching config.
+onBeforeRouteLeave(() => {
+  if (!admin.dirty.value) return true
+  settleLeave?.(false) // a second navigation replaces the first one's dialog
+  return new Promise<boolean>((resolve) => {
+    settleLeave = resolve
+    discardEdits.value = () => {
+      settleLeave = null
+      resolve(true)
+    }
+  })
+})
+
+// Closing or reloading the tab is not a route change: let the browser show its own prompt.
+function warnBeforeUnload(event: BeforeUnloadEvent) {
+  event.preventDefault()
+  event.returnValue = ''
+}
+
+watch(
+  () => admin.dirty.value,
+  (dirty) => {
+    if (dirty) window.addEventListener('beforeunload', warnBeforeUnload)
+    else window.removeEventListener('beforeunload', warnBeforeUnload)
+  },
+  { immediate: true },
+)
+onBeforeUnmount(() => window.removeEventListener('beforeunload', warnBeforeUnload))
 
 /** ApiErrors were already toasted by apiClient; anything else is surfaced here. */
 function surface(e: unknown) {
@@ -338,7 +377,7 @@ async function onCreateInstruction(keySuffix: string, name: string) {
       title="放棄尚未儲存的修改？"
       confirm-label="放棄修改"
       @confirm="onConfirmDiscardEdits"
-      @cancel="discardEdits = null"
+      @cancel="onCancelDiscardEdits"
     >
       <p class="dialog__text">有尚未儲存的修改，確定要放棄嗎？</p>
     </ConfirmDialog>

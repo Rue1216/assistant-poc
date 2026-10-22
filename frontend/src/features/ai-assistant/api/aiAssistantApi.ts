@@ -103,7 +103,9 @@ export const aiAssistantApi = {
 
   /** 3.8 */
   async validateDraft(configKey: string): Promise<ValidationReport> {
-    const res = await apiClient.post<ValidationReport>(`${configPath(configKey)}/draft/validate`)
+    const res = await apiClient.post<ValidationReport>(`${configPath(configKey)}/draft/validate`, undefined, {
+      meta: { silentCodes: [CONFLICT] },
+    })
     return res.data
   },
 

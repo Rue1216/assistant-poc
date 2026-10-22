@@ -1,6 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { h } from 'vue'
+import { createMemoryHistory, createRouter, RouterView, type Router } from 'vue-router'
 import type { ConfigStatus, ConfigSummary, ConfigVersion, VersionHistoryItem } from '../../types'
 
 const api = vi.hoisted(() => ({
@@ -22,7 +24,8 @@ vi.mock('../../api/aiAssistantApi', async (importOriginal) => ({
 const toast = vi.hoisted(() => vi.fn())
 vi.mock('../../../../platform-mock/useToast', () => ({ useToast: () => ({ show: toast }) }))
 
-import { ApiError } from '../../../../platform-mock/apiClient'
+import { ApiError, apiClient } from '../../../../platform-mock/apiClient'
+import { createAppRouter } from '../../../../platform-mock/router'
 import { useAuthStore } from '../../../../platform-mock/useAuthStore'
 import PromptManagementPage from '../PromptManagementPage.vue'
 
@@ -95,10 +98,27 @@ async function mountPage() {
     roleName: 'IT 管理',
     permissions: ['AI_CONFIG_READ', 'AI_CONFIG_EDIT', 'AI_CONFIG_PUBLISH'],
   }
-  const wrapper = mount(PromptManagementPage, { global: { plugins: [pinia] } })
+  router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/prompt', component: PromptManagementPage },
+      { path: '/other', component: { render: () => h('p', '其他頁面') } },
+    ],
+  })
+  await router.push('/prompt')
+  const wrapper = mount({ render: () => h(RouterView) }, { global: { plugins: [pinia, router] } })
+  mounted.push(wrapper)
   await flushPromises()
   return wrapper
 }
+
+/** Unmounted after each test so a page left dirty cannot keep its beforeunload listener. */
+const mounted: VueWrapper[] = []
+afterEach(() => {
+  mounted.splice(0).forEach((w) => w.unmount())
+})
+
+let router: Router
 
 const byText = (w: VueWrapper, selector: string, text: string) => w.findAll(selector).find((e) => e.text().includes(text))!
 const textarea = (w: VueWrapper) => w.find('textarea').element as HTMLTextAreaElement
@@ -315,6 +335,127 @@ describe('PromptManagementPage', () => {
     await byText(w, '[role="dialog"] button', '放棄修改').trigger('click')
     await flushPromises()
     expect(api.discardDraft).toHaveBeenCalledWith('system.main', 5)
+  })
+
+  describe('leaving the page with unsaved edits', () => {
+    const beforeUnload = () => {
+      const event = new Event('beforeunload', { cancelable: true })
+      window.dispatchEvent(event)
+      return event
+    }
+
+    it('asks first; cancel keeps the user on the page and the edits', async () => {
+      const w = await mountPage()
+      await w.find('textarea').setValue('我的未儲存內容')
+
+      const navigation = router.push('/other') // settles only once the dialog is answered
+      await flushPromises()
+      expect(router.currentRoute.value.path).toBe('/prompt')
+      expect(w.find('[role="dialog"]').text()).toContain('有尚未儲存的修改，確定要放棄嗎？')
+
+      await byText(w, '[role="dialog"] button', '取消').trigger('click')
+      await navigation
+      await flushPromises()
+      expect(router.currentRoute.value.path).toBe('/prompt')
+      expect(w.find('[role="dialog"]').exists()).toBe(false)
+      expect(textarea(w).value).toBe('我的未儲存內容')
+    })
+
+    it('confirming leaves the page', async () => {
+      const w = await mountPage()
+      await w.find('textarea').setValue('我的未儲存內容')
+
+      const navigation = router.push('/other')
+      await flushPromises()
+      await byText(w, '[role="dialog"] button', '放棄修改').trigger('click')
+      await navigation
+      await flushPromises()
+
+      expect(router.currentRoute.value.path).toBe('/other')
+      expect(w.text()).toContain('其他頁面')
+    })
+
+    it('leaves without asking when the form is clean', async () => {
+      const w = await mountPage()
+
+      await router.push('/other')
+      await flushPromises()
+
+      expect(router.currentRoute.value.path).toBe('/other')
+      expect(w.find('[role="dialog"]').exists()).toBe(false)
+    })
+
+    it('registers the beforeunload prompt only while the form is dirty', async () => {
+      const w = await mountPage()
+      expect(beforeUnload().defaultPrevented).toBe(false)
+
+      await w.find('textarea').setValue('我的未儲存內容')
+      expect(beforeUnload().defaultPrevented).toBe(true)
+
+      await w.find('textarea').setValue('內容：DRAFT') // back to the saved text
+      expect(beforeUnload().defaultPrevented).toBe(false)
+
+      await w.find('textarea').setValue('又改了')
+      expect(beforeUnload().defaultPrevented).toBe(true)
+      w.unmount()
+      expect(beforeUnload().defaultPrevented).toBe(false)
+    })
+  })
+
+  describe('logout with unsaved edits (real router, real layout)', () => {
+    async function mountApp() {
+      const pinia = createPinia()
+      setActivePinia(pinia)
+      const auth = useAuthStore()
+      auth.user = {
+        username: 'it.admin',
+        displayName: 'IT',
+        roleKey: 'IT_ADMIN',
+        roleName: 'IT 管理',
+        permissions: ['AI_CONFIG_READ', 'AI_CONFIG_EDIT', 'AI_CONFIG_PUBLISH'],
+      }
+      const logoutCall = vi.spyOn(apiClient, 'post').mockResolvedValue({ data: null })
+      const appRouter = createAppRouter(createMemoryHistory())
+      await appRouter.push('/setting/prompt-management')
+      const wrapper = mount({ render: () => h(RouterView) }, { global: { plugins: [pinia, appRouter] } })
+      mounted.push(wrapper)
+      await flushPromises()
+      await wrapper.find('textarea').setValue('我的未儲存內容')
+      return { wrapper, appRouter, auth, logoutCall }
+    }
+
+    it('asks once; confirming logs out and lands on /login', async () => {
+      const { wrapper, appRouter, auth, logoutCall } = await mountApp()
+
+      await wrapper.find('button.logout').trigger('click')
+      await flushPromises()
+      expect(wrapper.findAll('[role="dialog"]')).toHaveLength(1)
+
+      await byText(wrapper, '[role="dialog"] button', '放棄修改').trigger('click')
+      await flushPromises()
+
+      // the lazy-loaded login route takes a real moment to resolve
+      await vi.waitFor(() => expect(logoutCall).toHaveBeenCalledWith('/mock/auth/logout'))
+      await flushPromises()
+      expect(wrapper.find('[role="dialog"]').exists()).toBe(false) // no second question
+      expect(auth.user).toBeNull()
+      expect(appRouter.currentRoute.value.path).toBe('/login')
+    })
+
+    it('cancelling keeps the user logged in on the page with the edits', async () => {
+      const { wrapper, appRouter, auth, logoutCall } = await mountApp()
+
+      await wrapper.find('button.logout').trigger('click')
+      await flushPromises()
+      await byText(wrapper, '[role="dialog"] button', '取消').trigger('click')
+      await flushPromises()
+
+      expect(logoutCall).not.toHaveBeenCalled()
+      expect(auth.user).not.toBeNull()
+      expect(appRouter.currentRoute.value.path).toBe('/setting/prompt-management')
+      expect(textarea(wrapper).value).toBe('我的未儲存內容')
+      expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+    })
   })
 
   it('filters the list by name or key', async () => {

@@ -2,11 +2,13 @@ package com.example.copilot.aiassistant.common;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.validation.method.ParameterErrors;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
@@ -47,8 +49,11 @@ public class AssistantExceptionHandler {
 
     @ExceptionHandler(HandlerMethodValidationException.class)
     ResponseEntity<ApiError> handleMethodValidation(HandlerMethodValidationException e) {
+        // A validated body reports its bad fields; a bare parameter (path variable, query) reports its own name.
         List<Object> details = e.getParameterValidationResults().stream()
-                .map(r -> r.getMethodParameter().getParameterName())
+                .flatMap(r -> r instanceof ParameterErrors pe && !pe.getFieldErrors().isEmpty()
+                        ? pe.getFieldErrors().stream().map(fe -> fe.getField())
+                        : Stream.of(r.getMethodParameter().getParameterName()))
                 .filter(n -> n != null)
                 .distinct()
                 .map(n -> (Object) Map.of("field", n))

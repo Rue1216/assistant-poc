@@ -63,4 +63,9 @@ describe('aiAssistantApi admin functions', () => {
     expect(http.post.mock.calls[1]![0]).toBe(`${BASE}/draft`)
     expect(http.post.mock.calls[2]![0]).toBe(`${BASE}/draft/validate`)
   })
+
+  it('keeps a validate conflict silent so only the conflict banner shows', async () => {
+    await aiAssistantApi.validateDraft('instruction.contact-prep')
+    expect(http.post.mock.calls[0]![2]).toEqual({ meta: { silentCodes: ['AI_CONFIG_CONFLICT'] } })
+  })
 })

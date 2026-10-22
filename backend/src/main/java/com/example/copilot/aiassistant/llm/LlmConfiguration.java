@@ -20,6 +20,8 @@ public class LlmConfiguration {
                 .timeout(llm.timeout())
                 .maxCompletionTokens(llm.maxOutputTokens())
                 .maxRetries(0) // timeouts and rate limits are reported to the user, not retried here
+                .logRequests(false) // request/response bodies hold prompts and tool results
+                .logResponses(false)
                 .build();
     }
 }
