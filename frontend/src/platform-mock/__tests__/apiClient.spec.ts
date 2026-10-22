@@ -68,7 +68,7 @@ describe('apiClient', () => {
   })
 
   it('does not toast on abort', async () => {
-    apiClient.defaults.adapter = (config) => Promise.reject(new CanceledError('canceled', config))
+    apiClient.defaults.adapter = () => Promise.reject(new CanceledError('canceled'))
     const err = await apiClient.get('/x').catch((e) => e)
     expect(err).toBeInstanceOf(CanceledError)
     expect(err).not.toBeInstanceOf(ApiError)

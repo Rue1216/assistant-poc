@@ -116,6 +116,8 @@ async function mountPage() {
 const mounted: VueWrapper[] = []
 afterEach(() => {
   mounted.splice(0).forEach((w) => w.unmount())
+  // Re-spying an already spied method reuses the spy (and its calls) on Vitest 4
+  vi.restoreAllMocks()
 })
 
 let router: Router
