@@ -14,7 +14,7 @@ ai-assistant:
     model-name: ${OPENAI_MODEL}
     temperature: 0.2
     timeout: 30s
-    max-output-tokens: 1000
+    max-output-tokens: 1500
   limits:
     message-max-chars: 1000
     history-max-turns: 10
@@ -31,6 +31,8 @@ ai-assistant:
     schedule-check-interval: 30s     # 預約發布的檢查頻率
     schedule-min-lead: 1m            # 預約時間至少在 1 分鐘後
     schedule-max-lead: 90d           # 預約時間最多在 90 天內
+  audit:
+    store-tool-results: false         # true 時稽核文件才保存工具回傳資料（含顧客資料），預設關閉
   market.twse:
     base-url: https://openapi.twse.com.tw/v1
     allowed-hosts: [openapi.twse.com.tw]

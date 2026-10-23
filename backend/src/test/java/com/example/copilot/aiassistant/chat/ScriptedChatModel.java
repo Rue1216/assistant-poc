@@ -16,9 +16,14 @@ import java.util.Arrays;
 import java.util.Deque;
 import java.util.List;
 import java.util.function.Function;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 /** A {@link ChatModel} that answers with pre-arranged responses in order and records every request it receives. */
 public class ScriptedChatModel implements ChatModel {
+
+    private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private final Deque<Function<ChatRequest, ChatResponse>> script = new ArrayDeque<>();
     private final List<ChatRequest> requests = new ArrayList<>();
@@ -55,6 +60,32 @@ public class ScriptedChatModel implements ChatModel {
 
     public static ChatResponse text(String text, int totalTokens) {
         return ChatResponse.builder().aiMessage(AiMessage.from(text)).tokenUsage(new TokenUsage(totalTokens)).build();
+    }
+
+    /** A final answer in the answer schema: one paragraph block without sources per paragraph. */
+    public static ChatResponse answer(int totalTokens, String... paragraphs) {
+        return text(blocks(Arrays.stream(paragraphs).map(p -> block("paragraph", p)).toArray(String[]::new)),
+                totalTokens);
+    }
+
+    /** The answer-schema JSON {@code {"blocks": [...]}} built from {@link #block} strings. */
+    public static String blocks(String... blockJson) {
+        ObjectNode root = JSON.createObjectNode();
+        ArrayNode blocks = root.putArray("blocks");
+        for (String block : blockJson) {
+            blocks.add(JSON.readTree(block));
+        }
+        return JSON.writeValueAsString(root);
+    }
+
+    /** One answer-schema block; {@code sources} are citation ids such as S1. */
+    public static String block(String type, String text, String... sources) {
+        ObjectNode block = JSON.createObjectNode();
+        block.put("type", type);
+        block.put("text", text);
+        ArrayNode ids = block.putArray("sources");
+        Arrays.stream(sources).forEach(ids::add);
+        return JSON.writeValueAsString(block);
     }
 
     public static ChatResponse toolCalls(int totalTokens, ToolExecutionRequest... calls) {

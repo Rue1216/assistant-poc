@@ -1,6 +1,7 @@
 package com.example.copilot.aiassistant.llm;
 
 import com.example.copilot.aiassistant.AiAssistantProperties;
+import dev.langchain4j.model.chat.Capability;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import org.springframework.context.annotation.Bean;
@@ -19,6 +20,8 @@ public class LlmConfiguration {
                 .temperature(llm.temperature())
                 .timeout(llm.timeout())
                 .maxCompletionTokens(llm.maxOutputTokens())
+                .supportedCapabilities(Capability.RESPONSE_FORMAT_JSON_SCHEMA) // answers are JSON blocks (answer-citations 2.2)
+                .strictJsonSchema(true)
                 .maxRetries(0) // timeouts and rate limits are reported to the user, not retried here
                 .logRequests(false) // request/response bodies hold prompts and tool results
                 .logResponses(false)

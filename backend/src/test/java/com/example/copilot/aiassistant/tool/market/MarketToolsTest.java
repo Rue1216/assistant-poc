@@ -9,6 +9,7 @@ import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.port.AccessLevel;
 import com.example.copilot.aiassistant.port.UserContext;
 import com.example.copilot.aiassistant.privacy.CustomerContext;
+import com.example.copilot.aiassistant.tool.CitationDetail;
 import com.example.copilot.aiassistant.tool.NoArgs;
 import com.example.copilot.aiassistant.tool.ToolContext;
 import com.example.copilot.aiassistant.tool.ToolResult;
@@ -265,5 +266,46 @@ class MarketToolsTest {
 
         assertThat(result.status()).isEqualTo(ToolStatus.SUCCESS);
         assertThat(((AnnouncementsData) result.data()).announcements()).isEmpty();
+    }
+
+    @Test
+    void stockQuoteCitationSummarisesQuote() throws IOException {
+        TwseClient client = fixtureClient();
+
+        assertThat(new GetStockQuoteTool(client).execute(new StockArgs("2330"), CONTEXT).citation())
+                .isEqualTo(new CitationDetail("上市個股行情", "台積電 2330",
+                        "收盤 2420、漲跌 -20、本益比 28.05、殖利率 0.91%", null, 1));
+        CitationDetail noValuation = new GetStockQuoteTool(client).execute(new StockArgs("0050"), CONTEXT)
+                .citation();
+        assertThat(noValuation.excerpt()).startsWith("收盤 190.8");
+        assertThat(noValuation.excerpt()).doesNotContain("本益比", "殖利率");
+    }
+
+    @Test
+    void marketIndexCitationListsThreeItems() throws IOException {
+        CitationDetail citation = new GetMarketIndexTool(fixtureClient()).execute(new NoArgs(), CONTEXT).citation();
+
+        assertThat(citation.title()).isEqualTo("大盤指數");
+        assertThat(citation.target()).isNull();
+        assertThat(citation.resultCount()).isEqualTo(5);
+        assertThat(citation.excerpt()).startsWith("加權指數 47111.26（漲跌 +141.39）、");
+        assertThat(citation.excerpt().split("、")).hasSize(3);
+    }
+
+    @Test
+    void announcementsCitationUsesSubjectsAndDataTime() throws IOException {
+        TwseClient client = fixtureClient();
+
+        ToolResult some = new GetCompanyAnnouncementsTool(client).execute(new AnnouncementArgs("2072", null), CONTEXT);
+        assertThat(some.citation().title()).isEqualTo("上市公司重大訊息");
+        assertThat(some.citation().target()).isEqualTo("世紀風電 2072");
+        assertThat(some.citation().resultCount()).isEqualTo(1);
+        assertThat(some.citation().excerpt()).startsWith("公告本公司名稱由");
+        assertThat(some.citation().excerpt().codePointCount(0, some.citation().excerpt().length())).isEqualTo(60);
+
+        ToolResult none = new GetCompanyAnnouncementsTool(client).execute(new AnnouncementArgs("2330", 3), CONTEXT);
+        assertThat(none.citation()).isEqualTo(
+                new CitationDetail("上市公司重大訊息", "2330", "查無重大訊息", null, 0));
+        assertThat(none.sources().get(0).dataTime()).isNull();
     }
 }

@@ -1,6 +1,7 @@
 package com.example.copilot.aiassistant.llm;
 
 import com.example.copilot.aiassistant.common.ErrorCode;
+import dev.langchain4j.exception.ContentFilteredException;
 import dev.langchain4j.exception.RateLimitException;
 import java.net.SocketTimeoutException;
 import java.net.http.HttpTimeoutException;
@@ -20,6 +21,10 @@ public class LlmErrorMapper {
                     || current instanceof HttpTimeoutException
                     || current instanceof SocketTimeoutException) {
                 return ErrorCode.AI_LLM_TIMEOUT;
+            }
+            // OpenAI refusals arrive as a content filter exception.
+            if (current instanceof ContentFilteredException) {
+                return ErrorCode.AI_ANSWER_FORMAT_INVALID;
             }
             if (current instanceof RateLimitException) {
                 return ErrorCode.AI_LLM_RATE_LIMITED;

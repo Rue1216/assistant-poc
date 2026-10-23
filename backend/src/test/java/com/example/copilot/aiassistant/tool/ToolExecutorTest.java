@@ -33,22 +33,30 @@ class ToolExecutorTest {
     private ToolExecutor executorFor(AssistantTool<?> tool, Duration ceiling) {
         AiAssistantProperties props = new AiAssistantProperties(null,
                 new AiAssistantProperties.Limits(1000, 10, 8000, 5, 3, Duration.ofSeconds(60), 16000,
-                        ceiling, 4096, 10), null, null);
+                        ceiling, 4096, 10), null, null, null);
         ToolGuard guard = new ToolGuard(new ToolRegistry(List.of(tool)),
                 Validation.buildDefaultValidatorFactory().getValidator(), mapper);
         return new ToolExecutor(guard, new PiiRedactor(), mapper, props);
     }
 
     private ToolOutcome run(Duration toolTimeout, Duration ceiling, Supplier<ToolResult> body) {
+        return run(toolTimeout, ceiling, body, new CitationIds());
+    }
+
+    private ToolOutcome run(Duration toolTimeout, Duration ceiling, Supplier<ToolResult> body, CitationIds ids) {
         FakeTool<NoArgs> tool = new FakeTool<>("probe", NoArgs.class, AccessLevel.LIMITED, toolTimeout,
                 (a, c) -> body.get());
         return executorFor(tool, ceiling).execute(
                 ToolExecutionRequest.builder().id("1").name("probe").arguments("{}").build(), context,
-                Set.of("probe"));
+                Set.of("probe"), ids);
     }
 
     private ToolOutcome run(Supplier<ToolResult> body) {
         return run(Duration.ofSeconds(2), Duration.ofSeconds(5), body);
+    }
+
+    private ToolOutcome run(Supplier<ToolResult> body, CitationIds ids) {
+        return run(Duration.ofSeconds(2), Duration.ofSeconds(5), body, ids);
     }
 
     private static ToolResult sleepThenSucceed() {
@@ -110,7 +118,7 @@ class ToolExecutorTest {
                 (a, c) -> ToolResult.success(null, null));
         ToolOutcome outcome = executorFor(tool, Duration.ofSeconds(5)).execute(
                 ToolExecutionRequest.builder().id("1").name("probe").arguments("{\"x\":1}").build(), context,
-                Set.of("probe"));
+                Set.of("probe"), new CitationIds());
         assertThat(outcome.result().status()).isEqualTo(ToolStatus.DENIED);
         assertThat(outcome.payloadForModel()).contains("\"status\":\"DENIED\"").contains("TOOL_ARGUMENT_INVALID");
     }
@@ -166,7 +174,7 @@ class ToolExecutorTest {
                 (a, c) -> ToolResult.success(null, null));
         ToolOutcome outcome = executorFor(tool, Duration.ofSeconds(5)).execute(
                 ToolExecutionRequest.builder().id("1").name("x".repeat(500)).arguments("{}").build(), context,
-                Set.of("probe"));
+                Set.of("probe"), new CitationIds());
         assertThat(outcome.toolName()).hasSize(64);
         assertThat(outcome.purpose()).isEqualTo("未知工具");
     }
@@ -185,5 +193,53 @@ class ToolExecutorTest {
         String output = LogCapture.render(events.get(0));
         assertThat(output).contains("tool=probe").contains("java.lang.RuntimeException")
                 .doesNotContain("王小明").doesNotContain("0912");
+    }
+
+    @Test
+    void successGetsCitationIdInPayloadAndOutcome() {
+        CitationIds ids = new CitationIds();
+        ToolOutcome first = run(() -> ToolResult.success(Map.of("a", 1), null), ids);
+        ToolOutcome second = run(() -> ToolResult.success(Map.of("a", 1), null), ids);
+
+        assertThat(first.citationId()).isEqualTo("S1");
+        assertThat(second.citationId()).isEqualTo("S2");
+        assertThat(first.payloadForModel()).startsWith(
+                "{\"untrustedData\":true,\"status\":\"SUCCESS\",\"citationId\":\"S1\",\"data\":");
+        assertThat(ids.issued()).containsExactly("S1", "S2");
+    }
+
+    @Test
+    void failuresGetNoCitationId() {
+        CitationIds ids = new CitationIds();
+        ToolOutcome error = run(() -> {
+            throw new RuntimeException("boom");
+        }, ids);
+        ToolOutcome timeout = run(Duration.ofMillis(100), Duration.ofSeconds(5), ToolExecutorTest::sleepThenSucceed,
+                ids);
+        FakeTool<NoArgs> tool = new FakeTool<>("probe", NoArgs.class, AccessLevel.LIMITED, Duration.ofSeconds(1),
+                (a, c) -> ToolResult.success(null, null));
+        ToolExecutor executor = executorFor(tool, Duration.ofSeconds(5));
+        ToolOutcome denied = executor.execute(
+                ToolExecutionRequest.builder().id("1").name("probe").arguments("{\"x\":1}").build(), context,
+                Set.of("probe"), ids);
+        ToolOutcome limit = executor.limitReached(
+                ToolExecutionRequest.builder().id("1").name("probe").arguments("{}").build(), context);
+
+        for (ToolOutcome outcome : List.of(error, timeout, denied, limit)) {
+            assertThat(outcome.citationId()).isNull();
+            assertThat(outcome.payloadForModel()).doesNotContain("citationId");
+        }
+        assertThat(ids.issued()).isEmpty();
+    }
+
+    @Test
+    void oversizedResultDoesNotConsumeAnId() {
+        CitationIds ids = new CitationIds();
+        ToolOutcome tooBig = run(() -> ToolResult.success("x".repeat(5000), null), ids);
+        ToolOutcome after = run(() -> ToolResult.success(Map.of("a", 1), null), ids);
+
+        assertThat(tooBig.citationId()).isNull();
+        assertThat(after.citationId()).isEqualTo("S1");
+        assertThat(ids.issued()).containsExactly("S1");
     }
 }

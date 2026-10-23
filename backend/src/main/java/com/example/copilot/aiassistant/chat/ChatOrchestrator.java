@@ -1,10 +1,14 @@
 package com.example.copilot.aiassistant.chat;
 
 import com.example.copilot.aiassistant.AiAssistantProperties;
+import com.example.copilot.aiassistant.answer.AnswerAssembler;
+import com.example.copilot.aiassistant.answer.AnswerSchema;
+import com.example.copilot.aiassistant.answer.AssembledAnswer;
+import com.example.copilot.aiassistant.answer.BlockType;
 import com.example.copilot.aiassistant.audit.AuditEntry;
 import com.example.copilot.aiassistant.audit.AuditLogger;
 import com.example.copilot.aiassistant.chat.ChatCommand.HistoryMessage;
-import com.example.copilot.aiassistant.chat.ChatResult.SourceView;
+import com.example.copilot.aiassistant.chat.ChatResult.CitationView;
 import com.example.copilot.aiassistant.chat.ChatResult.ToolCallSummary;
 import com.example.copilot.aiassistant.common.AssistantException;
 import com.example.copilot.aiassistant.common.ErrorCode;
@@ -12,15 +16,17 @@ import com.example.copilot.aiassistant.common.RequestIdFilter;
 import com.example.copilot.aiassistant.llm.LlmErrorMapper;
 import com.example.copilot.aiassistant.port.UserContext;
 import com.example.copilot.aiassistant.privacy.CustomerContext;
+import com.example.copilot.aiassistant.privacy.CustomerDeidentifier;
 import com.example.copilot.aiassistant.privacy.PiiRedactor;
 import com.example.copilot.aiassistant.prompt.PromptAssembler;
 import com.example.copilot.aiassistant.tool.AssistantTool;
+import com.example.copilot.aiassistant.tool.CitationDetail;
+import com.example.copilot.aiassistant.tool.CitationIds;
 import com.example.copilot.aiassistant.tool.Source;
 import com.example.copilot.aiassistant.tool.ToolContext;
 import com.example.copilot.aiassistant.tool.ToolExecutor;
 import com.example.copilot.aiassistant.tool.ToolOutcome;
 import com.example.copilot.aiassistant.tool.ToolRegistry;
-import com.example.copilot.aiassistant.tool.ToolStatus;
 import com.example.copilot.aiassistant.tool.market.MarketTool;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
@@ -38,13 +44,11 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
@@ -54,17 +58,13 @@ import org.springframework.stereotype.Component;
 /**
  * The tool-calling loop (01 section 3). Every text that reaches the model is either the assembled system message,
  * a {@link PiiRedactor}-processed user/assistant text, or a payload built by {@link ToolExecutor}; the customer is
- * never named. The application log carries counters only, never question, answer or tool data (05 section 5).
+ * never named. Every model request carries the answer schema; {@link AnswerAssembler} turns the final JSON into
+ * blocks and citations (answer-citations spec 2). The application log carries counters only, never question,
+ * answer, raw model output or tool data (05 section 5).
  */
 @Component
 public class ChatOrchestrator {
 
-    static final String MARKET_DISCLAIMER = "資訊僅供內部經營參考，不構成投資建議";
-    private static final String SELF_WORDING = "本顧客";
-    private static final String DECORATION = "[\\s\\u3000>*_\\-（）().。：:※\\u26A0\\uFE0F]*";
-    private static final Pattern HORIZONTAL_RULE = Pattern.compile("\\s*([-*_])\\1{2,}\\s*");
-    private static final Pattern DISCLAIMER_ONLY = Pattern.compile(
-            DECORATION + Pattern.quote(MARKET_DISCLAIMER) + DECORATION);
     private static final String USER_ROLE = "user";
     private static final String ASSISTANT_ROLE = "assistant";
 
@@ -74,20 +74,23 @@ public class ChatOrchestrator {
     private final ToolRegistry registry;
     private final ToolExecutor executor;
     private final PiiRedactor redactor;
-    private final PromptAssembler assembler;
+    private final PromptAssembler promptAssembler;
+    private final AnswerAssembler answerAssembler;
     private final AuditLogger auditLogger;
     private final LlmErrorMapper errorMapper;
     private final AiAssistantProperties.Limits limits;
     private final Clock clock;
 
     public ChatOrchestrator(ChatModel chatModel, ToolRegistry registry, ToolExecutor executor, PiiRedactor redactor,
-                            PromptAssembler assembler, AuditLogger auditLogger, LlmErrorMapper errorMapper,
-                            AiAssistantProperties props, Clock clock) {
+                            PromptAssembler promptAssembler, AnswerAssembler answerAssembler,
+                            AuditLogger auditLogger, LlmErrorMapper errorMapper, AiAssistantProperties props,
+                            Clock clock) {
         this.chatModel = chatModel;
         this.registry = registry;
         this.executor = executor;
         this.redactor = redactor;
-        this.assembler = assembler;
+        this.promptAssembler = promptAssembler;
+        this.answerAssembler = answerAssembler;
         this.auditLogger = auditLogger;
         this.errorMapper = errorMapper;
         this.limits = props.limits();
@@ -99,10 +102,13 @@ public class ChatOrchestrator {
         Turn turn = new Turn(user, customer);
         try {
             ChatResult result = turn.result(turn.answer(command));
-            turn.audit(result.answer(), "ANSWERED", null);
-            log.info("chat answered requestId={} userId={} durationMs={} modelCalls={} toolCalls={} totalTokens={}",
-                    turn.requestId, user.userId(), turn.elapsedMs(), turn.modelCalls, turn.executed.size(),
-                    turn.totalTokens);
+            turn.audit(turn.assembled, "ANSWERED", null);
+            long citedBlocks = result.blocks().stream()
+                    .filter(b -> b.type() != BlockType.HEADING && !b.citations().isEmpty()).count();
+            log.info("chat answered requestId={} userId={} durationMs={} modelCalls={} toolCalls={} totalTokens={} "
+                            + "blocks={} citedBlocks={} peakOutputTokens={}", turn.requestId, user.userId(),
+                    turn.elapsedMs(), turn.modelCalls, turn.executed.size(), turn.totalTokens, result.blocks().size(),
+                    citedBlocks, turn.peakOutputTokens);
             return result;
         } catch (AssistantException e) {
             turn.fail(e.code());
@@ -120,6 +126,7 @@ public class ChatOrchestrator {
     private final class Turn {
 
         private final String requestId = RequestIdFilter.current();
+        private final CitationIds citationIds = new CitationIds();
         private final Instant started = clock.instant();
         private final Instant deadline = started.plus(limits.requestTimeout());
         private final UserContext user;
@@ -131,6 +138,9 @@ public class ChatOrchestrator {
         private String redactedQuestion;
         private int modelCalls;
         private long totalTokens;
+        private int peakOutputTokens;
+        /** Set once the final answer passed validation; the audit's answer and citation data come from here. */
+        private AssembledAnswer assembled;
 
         Turn(UserContext user, CustomerContext customer) {
             this.user = user;
@@ -138,11 +148,14 @@ public class ChatOrchestrator {
             this.toolContext = new ToolContext(user, customer);
         }
 
-        /** Runs the loop and returns the redacted answer. */
+        /**
+         * Runs the loop and returns the model's raw final text (answer-schema JSON, not yet redacted). Never log
+         * it or put it in an exception: {@link AnswerAssembler} validates and redacts it.
+         */
         String answer(ChatCommand command) {
             redactedQuestion = redact(command.message());
             List<ChatMessage> messages = new ArrayList<>();
-            messages.add(SystemMessage.from(assembler.systemMessage()));
+            messages.add(SystemMessage.from(promptAssembler.systemMessage()));
             messages.addAll(history(command.history()));
             messages.add(UserMessage.from(redactedQuestion));
 
@@ -157,11 +170,8 @@ public class ChatOrchestrator {
                         && executed.size() < limits.maxToolCalls();
                 AiMessage reply = callModel(messages, offerTools ? specifications : List.of());
                 if (!offerTools || !reply.hasToolExecutionRequests()) {
-                    String text = reply.text();
-                    if (text == null || text.isBlank()) {
-                        throw new AssistantException(ErrorCode.AI_LLM_UNAVAILABLE);
-                    }
-                    return redact(text);
+                    // No text is left to the assembler, which reports it as AI_ANSWER_FORMAT_INVALID.
+                    return reply.text() == null ? "" : reply.text();
                 }
                 toolRounds++;
                 runTools(reply, messages, offered);
@@ -191,10 +201,12 @@ public class ChatOrchestrator {
             return List.copyOf(kept);
         }
 
+        /** Any round may be the last, so each one carries the schema with the citation ids issued so far. */
         private AiMessage callModel(List<ChatMessage> messages, List<ToolSpecification> specifications) {
             checkDeadline();
             ChatRequest request = ChatRequest.builder().messages(List.copyOf(messages))
-                    .toolSpecifications(specifications).build();
+                    .toolSpecifications(specifications)
+                    .responseFormat(AnswerSchema.responseFormat(citationIds.issued())).build();
             modelCalls++;
             ChatResponse response;
             try {
@@ -206,6 +218,7 @@ public class ChatOrchestrator {
                 throw new AssistantException(code);
             }
             totalTokens += tokens(response.tokenUsage());
+            peakOutputTokens = Math.max(peakOutputTokens, outputTokens(response.tokenUsage()));
             if (totalTokens > limits.tokenBudget()) {
                 throw new AssistantException(ErrorCode.AI_TOKEN_BUDGET_EXCEEDED);
             }
@@ -230,7 +243,7 @@ public class ChatOrchestrator {
                     outcome = executor.limitReached(safe, toolContext);
                     skipped.add(outcome);
                 } else {
-                    outcome = executor.execute(safe, toolContext, offered);
+                    outcome = executor.execute(safe, toolContext, offered, citationIds);
                     executed.add(new ExecutedTool(outcome, clock.instant()));
                 }
                 echoed.add(safe);
@@ -252,32 +265,48 @@ public class ChatOrchestrator {
             }
         }
 
-        /** Builds the response from the redacted answer; the shown (and audited) answer is finalised here. */
-        ChatResult result(String redactedAnswer) {
+        /** Validates the raw answer and builds the response; the shown (and audited) answer is finalised here. */
+        ChatResult result(String rawAnswer) {
             Instant queriedAt = clock.instant();
             List<ToolCallSummary> toolCalls = Stream.concat(executed.stream().map(ExecutedTool::outcome), skipped.stream())
                     .map(o -> new ToolCallSummary(o.toolName(), o.purpose(), o.result().status().name(),
                             o.durationMs()))
                     .toList();
-            Map<Source, Instant> sources = new LinkedHashMap<>();
+            // Only SUCCESS calls carry a citation id (ToolExecutor).
+            Map<String, ExecutedTool> successful = new LinkedHashMap<>();
             boolean marketData = false;
             for (ExecutedTool tool : executed) {
-                if (tool.outcome().result().status() != ToolStatus.SUCCESS) {
+                if (tool.outcome().citationId() == null) {
                     continue;
                 }
-                tool.outcome().result().sources().forEach(s -> sources.putIfAbsent(s, tool.queriedAt()));
+                successful.put(tool.outcome().citationId(), tool);
                 marketData |= registry.find(tool.outcome().toolName()).filter(MarketTool.class::isInstance)
                         .isPresent();
             }
-            List<SourceView> sourceViews = sources.entrySet().stream()
-                    .map(e -> new SourceView(e.getKey().name(), e.getKey().url(), e.getKey().dataTime(),
-                            e.getValue()))
+            String disclaimer = marketData ? AnswerAssembler.MARKET_DISCLAIMER : null;
+            assembled = answerAssembler.assemble(rawAnswer,
+                    successful.values().stream().map(ExecutedTool::outcome).toList(), customer, disclaimer != null);
+            List<CitationView> citations = assembled.citationNumbers().entrySet().stream()
+                    .map(e -> citation(e.getValue(), successful.get(e.getKey()),
+                            assembled.cited().contains(e.getKey())))
                     .toList();
-            String disclaimer = marketData ? MARKET_DISCLAIMER : null;
-            String shown = disclaimer == null ? redactedAnswer : stripTrailingDisclaimer(redactedAnswer);
-            // Last, after the redaction pass: the token is for the model's input, people read plain wording.
-            shown = shown.replace(PiiRedactor.SELF, SELF_WORDING);
-            return new ChatResult(requestId, shown, sourceViews, queriedAt, disclaimer, toolCalls);
+            return new ChatResult(requestId, assembled.blocks(), assembled.answer(), citations, queriedAt,
+                    disclaimer, toolCalls);
+        }
+
+        /** Tool-provided texts may echo anything, so they go through the same redaction as the answer. */
+        private CitationView citation(int id, ExecutedTool tool, boolean cited) {
+            ToolOutcome outcome = tool.outcome();
+            CitationDetail detail = outcome.result().citation();
+            List<Source> sources = outcome.result().sources();
+            Source source = sources.isEmpty() ? null : sources.get(0);
+            return new CitationView(id, outcome.toolName(),
+                    detail == null ? outcome.purpose() : shown(detail.title()),
+                    detail == null ? null : shown(detail.target()),
+                    detail == null ? null : shown(detail.excerpt()),
+                    detail == null ? null : shown(detail.description()),
+                    source == null ? null : source.name(), source == null ? null : source.url(),
+                    source == null ? null : source.dataTime(), tool.queriedAt(), cited);
         }
 
         void fail(ErrorCode code) {
@@ -287,10 +316,15 @@ public class ChatOrchestrator {
                     executed.size(), totalTokens);
         }
 
-        void audit(String answer, String outcome, String errorCode) {
+        /** {@code answer} is null for a failed question: no answer text and no citation data are audited. */
+        void audit(AssembledAnswer answer, String outcome, String errorCode) {
             List<ToolOutcome> outcomes = executed.stream().map(ExecutedTool::outcome).toList();
-            auditLogger.record(new AuditEntry(requestId, user, customer, redactedQuestion, answer, outcome,
-                    errorCode, outcomes, elapsedMs()));
+            auditLogger.record(answer == null
+                    ? new AuditEntry(requestId, user, customer, redactedQuestion, null, false, outcome, errorCode,
+                            outcomes, Map.of(), List.of(), elapsedMs())
+                    : new AuditEntry(requestId, user, customer, redactedQuestion, answer.annotatedAnswer(),
+                            answer.truncated(), outcome, errorCode, outcomes, answer.citationNumbers(),
+                            answer.unverifiedNumbers(), elapsedMs()));
         }
 
         long elapsedMs() {
@@ -300,38 +334,19 @@ public class ChatOrchestrator {
         private String redact(String text) {
             return redactor.redact(text, customer);
         }
-    }
 
-    /**
-     * The UI shows the disclaimer itself, so a last line that only repeats it (possibly with markdown or punctuation
-     * around it) is dropped. A line that carries any other content is kept.
-     */
-    static String stripTrailingDisclaimer(String answer) {
-        String[] lines = answer.split("\n", -1);
-        int last = lines.length - 1;
-        while (last >= 0 && lines[last].isBlank()) {
-            last--;
-        }
-        if (last < 0 || !DISCLAIMER_ONLY.matcher(lines[last]).matches()) {
-            return answer;
-        }
-        List<String> kept = new ArrayList<>(Arrays.asList(lines).subList(0, last));
-        trimTrailingBlanks(kept);
-        if (!kept.isEmpty() && HORIZONTAL_RULE.matcher(kept.get(kept.size() - 1)).matches()) {
-            kept.remove(kept.size() - 1);
-            trimTrailingBlanks(kept);
-        }
-        // Nothing but the disclaimer: keep the answer rather than return an empty one.
-        return kept.isEmpty() ? answer : String.join("\n", kept);
-    }
-
-    private static void trimTrailingBlanks(List<String> lines) {
-        while (!lines.isEmpty() && lines.get(lines.size() - 1).isBlank()) {
-            lines.remove(lines.size() - 1);
+        /** Redacted, then the self token becomes plain wording, as in the answer text. */
+        private String shown(String text) {
+            return text == null ? null
+                    : redact(text).replace(PiiRedactor.SELF, CustomerDeidentifier.SUBJECT);
         }
     }
 
     private static long tokens(TokenUsage usage) {
         return usage == null || usage.totalTokenCount() == null ? 0 : usage.totalTokenCount();
+    }
+
+    private static int outputTokens(TokenUsage usage) {
+        return usage == null || usage.outputTokenCount() == null ? 0 : usage.outputTokenCount();
     }
 }

@@ -66,12 +66,26 @@ class PromptAssemblerTest extends IntegrationTestBase {
         String message = assembler.systemMessage();
 
         assertThat(message).doesNotContain("## 安全規則");
-        assertThat(message).endsWith(SafetyRules.TEXT);
+        assertThat(message).endsWith(SafetyRules.TEXT + "\n\n" + AnswerFormatRules.TEXT);
     }
 
     @Test
     void safetyRulesContainAllSevenRules() {
         assertThat(SafetyRules.TEXT).startsWith("# 不可覆寫的安全規則");
         assertThat(SafetyRules.TEXT.lines().filter(l -> l.startsWith("- "))).hasSize(7);
+    }
+
+    @Test
+    void formatRulesFollowSafetyRulesAtTheEnd() {
+        cache.invalidate();
+        String message = assembler.systemMessage();
+
+        assertThat(message).endsWith(SafetyRules.TEXT + "\n\n" + AnswerFormatRules.TEXT);
+    }
+
+    @Test
+    void formatRulesText() {
+        assertThat(AnswerFormatRules.TEXT).startsWith("# 回答格式規則");
+        assertThat(AnswerFormatRules.TEXT.lines().filter(l -> l.startsWith("- "))).hasSize(5);
     }
 }

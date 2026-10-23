@@ -23,10 +23,17 @@
             "toolName":   { "bsonType": "string", "maxLength": 64 },
             "status":     { "enum": ["SUCCESS", "ERROR", "DENIED", "TIMEOUT"] },
             "errorCode":  { "bsonType": ["string", "null"], "maxLength": 64 },
-            "durationMs": { "bsonType": "int", "minimum": 0 }
+            "durationMs": { "bsonType": "int", "minimum": 0 },
+            "citationId": { "bsonType": ["int", "null"], "minimum": 1 },
+            "target":     { "bsonType": ["string", "null"], "maxLength": 100 },
+            "dataTime":   { "bsonType": ["string", "null"], "maxLength": 32 },
+            "resultCount": { "bsonType": ["int", "null"], "minimum": 0 },
+            "resultHash": { "bsonType": ["string", "null"], "minLength": 64, "maxLength": 64 },
+            "result":     { "bsonType": ["object", "null"] }
           }
         }
       },
+      "unverifiedNumbers": { "bsonType": "array", "maxItems": 20, "items": { "bsonType": "string", "maxLength": 32 } },
       "durationMs": { "bsonType": "int", "minimum": 0 },
       "createdAt":  { "bsonType": "date" }
     },

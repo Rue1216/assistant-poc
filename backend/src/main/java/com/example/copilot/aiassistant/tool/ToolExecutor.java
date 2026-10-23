@@ -49,25 +49,26 @@ public class ToolExecutor {
         this.maxBytes = props.limits().toolResultMaxBytes();
     }
 
-    public ToolOutcome execute(ToolExecutionRequest request, ToolContext context, Set<String> offeredToolNames) {
+    public ToolOutcome execute(ToolExecutionRequest request, ToolContext context, Set<String> offeredToolNames,
+                               CitationIds ids) {
         long start = System.nanoTime();
         ToolGuard.GuardResult checked = guard.check(request, offeredToolNames);
         if (checked instanceof ToolGuard.Rejected rejected) {
-            return outcome(safeName(request.name()), UNKNOWN_PURPOSE, rejected.result(), context, start);
+            return outcome(safeName(request.name()), UNKNOWN_PURPOSE, rejected.result(), context, start, ids);
         }
         ToolGuard.Accepted accepted = (ToolGuard.Accepted) checked;
         AssistantTool<?> tool = accepted.tool();
         ToolResult result = run(tool, accepted.args(), context);
-        return outcome(tool.name(), tool.purpose(), result, context, start);
+        return outcome(tool.name(), tool.purpose(), result, context, start, ids);
     }
 
     /** The answer for a call beyond the per-question cap: not executed, but the model still gets a result for it. */
     public ToolOutcome limitReached(ToolExecutionRequest request, ToolContext context) {
         String purpose = guard.purposeOf(request.name()).orElse(UNKNOWN_PURPOSE);
         ToolResult result = ToolResult.failure(ToolStatus.DENIED, "TOOL_CALL_LIMIT_REACHED", "已達本次查詢次數上限，未執行");
-        ToolOutcome built = outcome(safeName(request.name()), purpose, result, context, System.nanoTime());
+        ToolOutcome built = outcome(safeName(request.name()), purpose, result, context, System.nanoTime(), null);
         // Not executed, so no duration to measure.
-        return new ToolOutcome(built.toolName(), built.purpose(), built.result(), built.payloadForModel(), 0);
+        return new ToolOutcome(built.toolName(), built.purpose(), built.result(), built.payloadForModel(), 0, null);
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -122,19 +123,27 @@ public class ToolExecutor {
         return ToolResult.failure(ToolStatus.ERROR, "TOOL_EXECUTION_FAILED", "查詢失敗");
     }
 
-    private ToolOutcome outcome(String name, String purpose, ToolResult result, ToolContext context, long start) {
+    /** {@code ids} may be null (call not executed): no citation id is issued then. */
+    private ToolOutcome outcome(String name, String purpose, ToolResult result, ToolContext context, long start,
+                                CitationIds ids) {
+        // The id is only consumed once the payload was built, so a failed payload does not leave a gap.
+        String citationId = ids != null && result.status() == ToolStatus.SUCCESS ? ids.peek() : null;
         String payload;
         try {
-            payload = payload(result, context);
+            payload = payload(result, context, citationId);
         } catch (RuntimeException e) {
             logFailure("could not build model payload", name, e);
             result = executionFailed();
-            payload = payload(result, context);
+            citationId = null;
+            payload = payload(result, context, null);
         }
-        return new ToolOutcome(name, purpose, result, payload, (System.nanoTime() - start) / 1_000_000);
+        if (citationId != null) {
+            ids.next();
+        }
+        return new ToolOutcome(name, purpose, result, payload, (System.nanoTime() - start) / 1_000_000, citationId);
     }
 
-    private String payload(ToolResult result, ToolContext context) {
+    private String payload(ToolResult result, ToolContext context, String citationId) {
         ObjectNode root = mapper.createObjectNode();
         root.put("untrustedData", true);
         root.put("status", result.status().name());
@@ -142,6 +151,9 @@ public class ToolExecutor {
             root.put("errorCode", result.errorCode());
             root.put("message", redactor.redact(result.message(), context.customer()));
             return mapper.writeValueAsString(root);
+        }
+        if (citationId != null) {
+            root.put("citationId", citationId);
         }
         JsonNode data = redactStrings(mapper.valueToTree(result.data()), context);
         root.set("data", data);

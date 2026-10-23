@@ -10,6 +10,7 @@ import dev.langchain4j.agent.tool.ToolSpecification;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.Map;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -54,8 +55,14 @@ public class GetCustomerProfileTool extends AbstractCustomerTool<NoArgs> {
     public ToolResult execute(NoArgs args, ToolContext context) {
         LocalDate today = LocalDate.now(clock.withZone(TAIPEI));
         return customer(context)
-                .map(r -> ToolResult.success(
-                        CustomerDeidentifier.profile(r, context.customer().accessLevel(), today), SOURCES))
+                .map(r -> profileResult(CustomerDeidentifier.profile(r, context.customer().accessLevel(), today)))
                 .orElseGet(AbstractCustomerTool::unavailable);
+    }
+
+    private static ToolResult profileResult(Map<String, Object> profile) {
+        // "subject" and "accessNote" are labels, not profile fields.
+        int fields = (int) profile.keySet().stream()
+                .filter(k -> !k.equals("subject") && !k.equals("accessNote")).count();
+        return ToolResult.success(profile, SOURCES, citation("顧客概況", fields + " 個欄位", fields));
     }
 }

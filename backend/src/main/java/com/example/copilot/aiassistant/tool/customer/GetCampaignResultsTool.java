@@ -51,6 +51,7 @@ public class GetCampaignResultsTool extends AbstractCustomerTool<NoArgs> {
                     row.put("response", c.response());
                     return row;
                 }).toList();
-        return ToolResult.success(Map.of("campaigns", rows), SOURCES);
+        return ToolResult.success(Map.of("campaigns", rows), SOURCES,
+                citation("行銷活動反應", rows.size() + " 筆", rows.size()));
     }
 }

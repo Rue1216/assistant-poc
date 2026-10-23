@@ -5,7 +5,8 @@ import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "ai-assistant")
-public record AiAssistantProperties(Llm llm, Limits limits, Config config, Market market) {
+public record AiAssistantProperties(Llm llm, Limits limits, Config config, Market market,
+                                    Audit audit) {
 
     public record Llm(String provider, String apiKey, String modelName, double temperature,
                       Duration timeout, int maxOutputTokens) {
@@ -30,6 +31,10 @@ public record AiAssistantProperties(Llm llm, Limits limits, Config config, Marke
     }
 
     public record Market(Twse twse) {
+    }
+
+    /** {@code storeToolResults}: keep each successful tool result in the audit document (default off). */
+    public record Audit(boolean storeToolResults) {
     }
 
     public record Twse(String baseUrl, List<String> allowedHosts, Duration connectTimeout,

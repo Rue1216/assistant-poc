@@ -52,6 +52,7 @@ public class GetCustomerHoldingsTool extends AbstractCustomerTool<NoArgs> {
             row.put("weightRange", CustomerDeidentifier.weightRange(h.weight()));
             return row;
         }).toList();
-        return ToolResult.success(Map.of("holdings", holdings), SOURCES);
+        return ToolResult.success(Map.of("holdings", holdings), SOURCES,
+                citation("顧客持有商品", holdings.size() + " 筆", holdings.size()));
     }
 }

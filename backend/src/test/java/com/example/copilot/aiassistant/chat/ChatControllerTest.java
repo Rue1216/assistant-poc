@@ -30,7 +30,7 @@ class ChatControllerTest extends IntegrationTestBase {
 
     @BeforeEach
     void modelAnswers() {
-        when(chatModel.chat(any(ChatRequest.class))).thenReturn(ScriptedChatModel.text("本顧客概況如下", 100));
+        when(chatModel.chat(any(ChatRequest.class))).thenReturn(ScriptedChatModel.answer(100, "本顧客概況如下"));
     }
 
     private ResultActions chat(String customerId, RequestPostProcessor who, String body) throws Exception {
@@ -49,9 +49,13 @@ class ChatControllerTest extends IntegrationTestBase {
                 .andExpect(jsonPath("$.requestId").isNotEmpty())
                 .andExpect(jsonPath("$.answer").value("本顧客概況如下"))
                 .andExpect(jsonPath("$.queriedAt").value(endsWith("+08:00")))
+                .andExpect(jsonPath("$.blocks.length()").value(1))
+                .andExpect(jsonPath("$.blocks[0].type").value("paragraph"))
+                .andExpect(jsonPath("$.blocks[0].text").value("本顧客概況如下"))
+                .andExpect(jsonPath("$.citations.length()").value(0))
                 .andExpect(jsonPath("$.toolCalls.length()").value(0))
                 .andExpect(jsonPath("$.keys()").value(org.hamcrest.Matchers.containsInAnyOrder(
-                        "requestId", "answer", "sources", "queriedAt", "disclaimer", "toolCalls")));
+                        "requestId", "blocks", "answer", "citations", "queriedAt", "disclaimer", "toolCalls")));
     }
 
     @Test

@@ -4,6 +4,7 @@ import com.example.copilot.aiassistant.port.AccessLevel;
 import com.example.copilot.aiassistant.port.CustomerDataPort;
 import com.example.copilot.aiassistant.port.CustomerRecord;
 import com.example.copilot.aiassistant.tool.AssistantTool;
+import com.example.copilot.aiassistant.tool.CitationDetail;
 import com.example.copilot.aiassistant.tool.Source;
 import com.example.copilot.aiassistant.tool.ToolContext;
 import com.example.copilot.aiassistant.tool.ToolResult;
@@ -45,6 +46,11 @@ abstract class AbstractCustomerTool<A extends Record> implements AssistantTool<A
 
     protected Optional<CustomerRecord> customer(ToolContext context) {
         return port.findCustomer(context.customer().customerId());
+    }
+
+    /** Internal data: the citation carries only a title and a count, never an excerpt. */
+    static CitationDetail citation(String title, String description, int count) {
+        return new CitationDetail(title, null, null, description, count);
     }
 
     protected static ToolResult unavailable() {

@@ -2,11 +2,13 @@ package com.example.copilot.aiassistant.tool.market;
 
 import com.example.copilot.aiassistant.port.AccessLevel;
 import com.example.copilot.aiassistant.tool.AssistantTool;
+import com.example.copilot.aiassistant.tool.CitationDetail;
 import com.example.copilot.aiassistant.tool.Source;
 import com.example.copilot.aiassistant.tool.ToolResult;
 import com.example.copilot.aiassistant.tool.ToolStatus;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.model.chat.request.json.JsonObjectSchema;
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.List;
@@ -65,6 +67,22 @@ abstract class AbstractMarketTool<A extends Record> implements AssistantTool<A>,
 
     static String companyName(String text) {
         return shorten(text, MAX_NAME_CHARS);
+    }
+
+    /** Plain decimal text without trailing zeros: 2420.00 becomes 2420. */
+    static String plain(BigDecimal value) {
+        return value.stripTrailingZeros().toPlainString();
+    }
+
+    /** Like {@link #plain}, with an explicit + on positive values (a change). */
+    static String signed(BigDecimal value) {
+        String text = plain(value);
+        return value.signum() > 0 ? "+" + text : text;
+    }
+
+    /** External-data citation; target and excerpt are untrusted text, shown as plain text only. */
+    static CitationDetail citation(String title, String target, String excerpt, int count) {
+        return new CitationDetail(title, target, excerpt, null, count);
     }
 
     static String isoDate(LocalDate date) {

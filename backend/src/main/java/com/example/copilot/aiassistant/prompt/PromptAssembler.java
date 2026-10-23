@@ -6,7 +6,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-/** Builds the system message: system.main, then instructions, then the code-only safety rules (01 section 4). */
+/**
+ * Builds the system message: system.main, then instructions, then the code-only safety rules (01 section 4) and
+ * answer format rules (answer-citations spec 5).
+ */
 @Component
 public class PromptAssembler {
 
@@ -32,7 +35,7 @@ public class PromptAssembler {
             sb.append("## ").append(instruction.getName()).append('\n')
                     .append(instruction.getContent().strip()).append("\n\n");
         }
-        sb.append(SafetyRules.TEXT);
+        sb.append(SafetyRules.TEXT).append("\n\n").append(AnswerFormatRules.TEXT);
         return sb.toString();
     }
 }

@@ -8,14 +8,21 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.example.copilot.IntegrationTestBase;
+import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.port.AccessLevel;
 import com.example.copilot.aiassistant.port.UserContext;
 import com.example.copilot.aiassistant.privacy.CustomerContext;
+import com.example.copilot.aiassistant.privacy.PiiRedactor;
+import com.example.copilot.aiassistant.tool.CitationDetail;
+import com.example.copilot.aiassistant.tool.Source;
 import com.example.copilot.aiassistant.tool.ToolOutcome;
 import com.example.copilot.aiassistant.tool.ToolResult;
 import com.example.copilot.aiassistant.tool.ToolStatus;
 import com.example.copilot.testsupport.LogCapture;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Clock;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Set;
 import org.apache.logging.log4j.Level;
@@ -32,7 +39,7 @@ class AuditLoggerTest extends IntegrationTestBase {
     private static final String COLL = "COLL_ICRM_AI_ASSISTANT_AUDIT";
     private static final Set<String> DOC_KEYS = Set.of("_id", "requestId", "userId", "roleKey", "customerId",
             "accessLevel", "question", "answer", "answerTruncated", "outcome", "errorCode", "toolCalls",
-            "durationMs", "createdAt");
+            "durationMs", "createdAt", "unverifiedNumbers");
 
     @Autowired AuditLogger auditLogger;
     @Autowired MongoTemplate mongo;
@@ -45,11 +52,36 @@ class AuditLoggerTest extends IntegrationTestBase {
         ToolResult result = status == ToolStatus.SUCCESS
                 ? ToolResult.success(java.util.Map.of("secret", "RESULT-DATA"), List.of())
                 : ToolResult.failure(status, code, "msg");
-        return new ToolOutcome(name, "PURPOSE-TEXT", result, "PAYLOAD-FOR-MODEL", ms);
+        return new ToolOutcome(name, "PURPOSE-TEXT", result, "PAYLOAD-FOR-MODEL", ms,
+                status == ToolStatus.SUCCESS ? "S1" : null);
+    }
+
+    private static AiAssistantProperties propsWith(boolean storeToolResults) {
+        return new AiAssistantProperties(null, null, null, null, new AiAssistantProperties.Audit(storeToolResults));
+    }
+
+    private static String sha256Hex(String s) throws Exception {
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(s.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    private static final String PAYLOAD = "{\"untrustedData\":true,\"status\":\"SUCCESS\",\"citationId\":\"S1\","
+            + "\"data\":{\"close\":2420}}";
+
+    private static ToolOutcome citedTool() {
+        ToolResult result = ToolResult.success(java.util.Map.of("close", 2420),
+                List.of(new Source("TWSE", "https://openapi.twse.com.tw", "2026-10-16")),
+                new CitationDetail("上市個股行情", "台積電 2330", "收盤 2420", null, 1));
+        return new ToolOutcome("getStockQuote", "PURPOSE-TEXT", result, PAYLOAD, 7, "S1");
+    }
+
+    private AuditEntry citedEntry(String requestId, boolean truncated, String answer, List<String> unverified) {
+        return new AuditEntry(requestId, USER, CUSTOMER, "q", answer, truncated, "ANSWERED", null,
+                List.of(citedTool()), java.util.Map.of("S1", 1), unverified, 10);
     }
 
     private AuditEntry entry(String requestId, String question, String answer, List<ToolOutcome> tools) {
-        return new AuditEntry(requestId, USER, CUSTOMER, question, answer, "ANSWERED", null, tools, 2840);
+        return new AuditEntry(requestId, USER, CUSTOMER, question, answer, false, "ANSWERED", null, tools,
+                java.util.Map.of(), List.of(), 2840);
     }
 
     private Document find(String requestId) {
@@ -87,7 +119,8 @@ class AuditLoggerTest extends IntegrationTestBase {
 
         Document doc = find("req-tools-1");
         for (Document call : doc.getList("toolCalls", Document.class)) {
-            assertThat(call.keySet()).containsExactlyInAnyOrder("toolName", "status", "errorCode", "durationMs");
+            assertThat(call.keySet()).containsExactlyInAnyOrder("toolName", "status", "errorCode", "durationMs",
+                    "citationId", "target", "dataTime", "resultCount", "resultHash");
             assertThat(call.get("durationMs")).isInstanceOf(Integer.class);
         }
         assertThat(doc.toJson()).doesNotContain("RESULT-DATA", "PAYLOAD-FOR-MODEL", "PURPOSE-TEXT", "王小明",
@@ -95,6 +128,67 @@ class AuditLoggerTest extends IntegrationTestBase {
         Document second = doc.getList("toolCalls", Document.class).get(1);
         assertThat(second.getString("status")).isEqualTo("DENIED");
         assertThat(second.getString("errorCode")).isEqualTo("AI_TOOL_DENIED");
+    }
+
+    @Test
+    void successfulCallsCarryCitationFields() throws Exception {
+        auditLogger.record(citedEntry("req-cite-1", false, "a [1]", List.of("3000")));
+        Document doc = find("req-cite-1");
+        Document call = doc.getList("toolCalls", Document.class).get(0);
+        assertThat(call.getInteger("citationId")).isEqualTo(1);
+        assertThat(call.getString("target")).isEqualTo("台積電 2330");
+        assertThat(call.getString("dataTime")).isEqualTo("2026-10-16");
+        assertThat(call.getInteger("resultCount")).isEqualTo(1);
+        assertThat(call.getString("resultHash")).isEqualTo(sha256Hex(PAYLOAD)).hasSize(64);
+        assertThat(call.containsKey("result")).isFalse();
+        assertThat(doc.getList("unverifiedNumbers", String.class)).containsExactly("3000");
+        assertThat(doc.toJson()).doesNotContain("2420");
+    }
+
+    @Test
+    void citationTargetIsRedacted() {
+        ToolResult result = ToolResult.success(java.util.Map.of("close", 1), List.of(),
+                new CitationDetail("t", "王小明 0912-000-111", "e", null, 1));
+        ToolOutcome o = new ToolOutcome("getStockQuote", "p", result, PAYLOAD, 7, "S1");
+        auditLogger.record(new AuditEntry("req-cite-7", USER, CUSTOMER, "q", "a", false, "ANSWERED", null,
+                List.of(o), java.util.Map.of("S1", 1), List.of(), 10));
+        String target = find("req-cite-7").getList("toolCalls", Document.class).get(0).getString("target");
+        assertThat(target).doesNotContain("王小明", "0912", "【本顧客】").contains("本顧客");
+    }
+
+    @Test
+    void failedCallsHaveNullCitationFields() {
+        auditLogger.record(entry("req-cite-2", "q", "a",
+                List.of(tool("getCampaignResults", ToolStatus.ERROR, "AI_TOOL_ERROR", 9))));
+        Document call = find("req-cite-2").getList("toolCalls", Document.class).get(0);
+        for (String key : List.of("citationId", "target", "dataTime", "resultCount", "resultHash")) {
+            assertThat(call.containsKey(key)).isTrue();
+            assertThat(call.get(key)).isNull();
+        }
+    }
+
+    @Test
+    void toolResultStoredOnlyWhenEnabled() {
+        AuditLogger enabled = new AuditLogger(mongo, Clock.systemUTC(), new CredentialMasker(), propsWith(true), new PiiRedactor());
+        enabled.record(citedEntry("req-cite-3", false, "a", List.of()));
+        Document call = find("req-cite-3").getList("toolCalls", Document.class).get(0);
+        assertThat(call.get("result", Document.class).getInteger("close")).isEqualTo(2420);
+
+        auditLogger.record(citedEntry("req-cite-4", false, "a", List.of()));
+        assertThat(find("req-cite-4").getList("toolCalls", Document.class).get(0).containsKey("result")).isFalse();
+    }
+
+    @Test
+    void answerTruncatedFromAssemblerIsKept() {
+        auditLogger.record(citedEntry("req-cite-5", true, "short", List.of()));
+        assertThat(find("req-cite-5").getBoolean("answerTruncated")).isTrue();
+    }
+
+    @Test
+    void unverifiedNumbersCappedAtTwenty() {
+        List<String> many = java.util.stream.IntStream.range(0, 25).mapToObj(i -> "n" + (100 + i)).toList();
+        auditLogger.record(citedEntry("req-cite-6", false, "a", many));
+        assertThat(find("req-cite-6").getList("unverifiedNumbers", String.class)).hasSize(20);
     }
 
     @Test
@@ -165,8 +259,8 @@ class AuditLoggerTest extends IntegrationTestBase {
     @Test
     void overlongIdentifiersAreClippedAndNullsTolerated() {
         ToolOutcome t = tool("n".repeat(100), ToolStatus.ERROR, "E".repeat(100), 1);
-        auditLogger.record(new AuditEntry("r".repeat(100), USER, CUSTOMER, null, "a", "FAILED", "X".repeat(100),
-                List.of(t), 5));
+        auditLogger.record(new AuditEntry("r".repeat(100), USER, CUSTOMER, null, "a", false, "FAILED",
+                "X".repeat(100), List.of(t), java.util.Map.of(), List.of(), 5));
         Document doc = mongo.getCollection(COLL).find(new Document("requestId", "r".repeat(64))).first();
         assertThat(doc).isNotNull();
         assertThat(doc.getString("question")).isEmpty();
@@ -180,7 +274,8 @@ class AuditLoggerTest extends IntegrationTestBase {
     void overlongUserRoleAndCustomerAreClipped() {
         UserContext user = new UserContext("u".repeat(100), "Officer", "R".repeat(50), Set.of());
         CustomerContext customer = new CustomerContext("C".repeat(50), AccessLevel.LIMITED, Set.of(), Set.of());
-        auditLogger.record(new AuditEntry("req-clip-1", user, customer, "q", "a", "ANSWERED", null, List.of(), 1));
+        auditLogger.record(new AuditEntry("req-clip-1", user, customer, "q", "a", false, "ANSWERED", null,
+                List.of(), java.util.Map.of(), List.of(), 1));
         Document doc = find("req-clip-1");
         assertThat(doc.getString("userId")).hasSize(64);
         assertThat(doc.getString("roleKey")).hasSize(32);
@@ -189,8 +284,8 @@ class AuditLoggerTest extends IntegrationTestBase {
 
     @Test
     void failedEntryStoresNullAnswerAndErrorCode() {
-        auditLogger.record(new AuditEntry("req-fail-1", USER, CUSTOMER, "q", null, "FAILED", "AI_LLM_TIMEOUT",
-                List.of(), 100));
+        auditLogger.record(new AuditEntry("req-fail-1", USER, CUSTOMER, "q", null, false, "FAILED",
+                "AI_LLM_TIMEOUT", List.of(), java.util.Map.of(), List.of(), 100));
         Document doc = find("req-fail-1");
         assertThat(doc.get("answer")).isNull();
         assertThat(doc.getBoolean("answerTruncated")).isFalse();
@@ -202,7 +297,7 @@ class AuditLoggerTest extends IntegrationTestBase {
     void writeFailureDoesNotThrow() {
         MongoTemplate broken = mock(MongoTemplate.class);
         when(broken.insert(any(Document.class), anyString())).thenThrow(new IllegalStateException("db down: secret"));
-        AuditLogger logger = new AuditLogger(broken, Clock.systemUTC(), new CredentialMasker());
+        AuditLogger logger = new AuditLogger(broken, Clock.systemUTC(), new CredentialMasker(), propsWith(false), new PiiRedactor());
 
         List<LogEvent> events;
         try (LogCapture capture = LogCapture.of(AuditLogger.class)) {

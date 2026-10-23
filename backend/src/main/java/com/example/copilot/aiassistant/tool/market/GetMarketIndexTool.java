@@ -14,7 +14,9 @@ import org.springframework.stereotype.Component;
 @Component
 public class GetMarketIndexTool extends AbstractMarketTool<NoArgs> {
 
-    private static final List<String> INDEX_NAMES = List.of("發行量加權股價指數", "臺灣50指數", "寶島股價指數",
+    private static final String TAIEX = "發行量加權股價指數";
+    private static final int EXCERPT_ITEMS = 3;
+    private static final List<String> INDEX_NAMES = List.of(TAIEX, "臺灣50指數", "寶島股價指數",
             "電子工業類指數", "金融保險類指數");
 
     public record IndexItem(String name, BigDecimal close, BigDecimal change, BigDecimal changePercent) {
@@ -70,7 +72,22 @@ public class GetMarketIndexTool extends AbstractMarketTool<NoArgs> {
                 }
             }
         }
-        return ToolResult.success(new MarketIndexData(isoDate(dataDate), items), sources(dataDate));
+        return ToolResult.success(new MarketIndexData(isoDate(dataDate), items), sources(dataDate),
+                citation("大盤指數", null, excerpt(items), items.size()));
+    }
+
+    /** The first {@value #EXCERPT_ITEMS} indices, e.g. "加權指數 47111.26（漲跌 +141.39）". */
+    private static String excerpt(List<IndexItem> items) {
+        List<String> parts = new ArrayList<>();
+        for (IndexItem item : items.subList(0, Math.min(EXCERPT_ITEMS, items.size()))) {
+            String name = TAIEX.equals(item.name()) ? "加權指數" : item.name();
+            String text = item.close() == null ? name : name + " " + plain(item.close());
+            if (item.close() != null && item.change() != null) {
+                text += "（漲跌 " + signed(item.change()) + "）";
+            }
+            parts.add(text);
+        }
+        return parts.isEmpty() ? null : String.join("、", parts);
     }
 
     private static BigDecimal signedChange(Map<String, String> row) {

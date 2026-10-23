@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.copilot.aiassistant.common.ErrorCode;
 import dev.langchain4j.exception.AuthenticationException;
+import dev.langchain4j.exception.ContentFilteredException;
 import dev.langchain4j.exception.HttpException;
 import dev.langchain4j.exception.InternalServerException;
 import dev.langchain4j.exception.RateLimitException;
@@ -39,5 +40,12 @@ class LlmErrorMapperTest {
         assertThat(mapper.map(new InternalServerException("500"))).isEqualTo(ErrorCode.AI_LLM_UNAVAILABLE);
         assertThat(mapper.map(new HttpException(502, "bad gateway"))).isEqualTo(ErrorCode.AI_LLM_UNAVAILABLE);
         assertThat(mapper.map(new IllegalStateException("boom"))).isEqualTo(ErrorCode.AI_LLM_UNAVAILABLE);
+    }
+
+    @Test
+    void refusalIsFormatInvalid() {
+        assertThat(mapper.map(new ContentFilteredException("refused"))).isEqualTo(ErrorCode.AI_ANSWER_FORMAT_INVALID);
+        assertThat(mapper.map(new RuntimeException(new ContentFilteredException("refused"))))
+                .isEqualTo(ErrorCode.AI_ANSWER_FORMAT_INVALID);
     }
 }

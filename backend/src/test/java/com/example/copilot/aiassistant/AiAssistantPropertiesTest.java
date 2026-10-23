@@ -21,6 +21,11 @@ class AiAssistantPropertiesTest extends IntegrationTestBase {
     }
 
     @Test
+    void auditStoreToolResultsDefaultsToFalse() {
+        assertThat(props.audit().storeToolResults()).isFalse();
+    }
+
+    @Test
     void llmToStringMasksApiKey() {
         AiAssistantProperties.Llm llm = new AiAssistantProperties.Llm("openai", "sk-secret-value-1234567890",
                 "model-x", 0.2, Duration.ofSeconds(30), 800);

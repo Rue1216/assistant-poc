@@ -1,18 +1,25 @@
 package com.example.copilot.aiassistant.chat;
 
+import static com.example.copilot.aiassistant.chat.ScriptedChatModel.answer;
+import static com.example.copilot.aiassistant.chat.ScriptedChatModel.block;
+import static com.example.copilot.aiassistant.chat.ScriptedChatModel.blocks;
 import static com.example.copilot.aiassistant.chat.ScriptedChatModel.call;
 import static com.example.copilot.aiassistant.chat.ScriptedChatModel.text;
 import static com.example.copilot.aiassistant.chat.ScriptedChatModel.toolCalls;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import com.example.copilot.aiassistant.AiAssistantProperties;
+import com.example.copilot.aiassistant.answer.AnswerAssembler;
+import com.example.copilot.aiassistant.answer.AnswerBlock;
+import com.example.copilot.aiassistant.answer.BlockType;
 import com.example.copilot.aiassistant.audit.AuditEntry;
 import com.example.copilot.aiassistant.audit.AuditLogger;
 import com.example.copilot.aiassistant.chat.ChatCommand.HistoryMessage;
-import com.example.copilot.aiassistant.chat.ChatResult.SourceView;
+import com.example.copilot.aiassistant.chat.ChatResult.CitationView;
 import com.example.copilot.aiassistant.chat.ChatResult.ToolCallSummary;
 import com.example.copilot.aiassistant.common.AssistantException;
 import com.example.copilot.aiassistant.common.ErrorCode;
@@ -24,9 +31,11 @@ import com.example.copilot.aiassistant.port.UserContext;
 import com.example.copilot.aiassistant.privacy.CustomerContext;
 import com.example.copilot.aiassistant.privacy.PiiRedactor;
 import com.example.copilot.aiassistant.prompt.PromptAssembler;
+import com.example.copilot.aiassistant.tool.CitationDetail;
 import com.example.copilot.aiassistant.tool.ToolExecutor;
 import com.example.copilot.aiassistant.tool.ToolGuard;
 import com.example.copilot.aiassistant.tool.ToolRegistry;
+import com.example.copilot.aiassistant.tool.ToolResult;
 import com.example.copilot.aiassistant.tool.customer.GetCampaignResultsTool;
 import com.example.copilot.aiassistant.tool.customer.GetCustomerHoldingsTool;
 import com.example.copilot.aiassistant.tool.customer.GetCustomerProfileTool;
@@ -35,9 +44,9 @@ import com.example.copilot.aiassistant.tool.market.GetCompanyAnnouncementsTool;
 import com.example.copilot.aiassistant.tool.market.GetMarketIndexTool;
 import com.example.copilot.aiassistant.tool.market.GetStockQuoteTool;
 import com.example.copilot.aiassistant.tool.market.TwseClient;
+import com.example.copilot.aiassistant.tool.testsupport.FakeTool;
 import com.example.copilot.mockplatform.customer.MockCustomerData;
 import com.example.copilot.mockplatform.customer.MockCustomerDataAdapter;
-import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -46,6 +55,13 @@ import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.exception.RateLimitException;
 import dev.langchain4j.model.chat.request.ChatRequest;
+import dev.langchain4j.model.chat.request.json.JsonArraySchema;
+import dev.langchain4j.model.chat.request.json.JsonEnumSchema;
+import dev.langchain4j.model.chat.request.json.JsonObjectSchema;
+import dev.langchain4j.model.chat.request.json.JsonSchemaElement;
+import dev.langchain4j.model.chat.request.json.JsonStringSchema;
+import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.output.TokenUsage;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import java.io.IOException;
@@ -57,6 +73,7 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
@@ -78,6 +95,7 @@ class ChatOrchestratorTest {
     private static final String SYSTEM = "測試用系統訊息";
     private static final String DISCLAIMER = "資訊僅供內部經營參考，不構成投資建議";
     private static final String TWSE_BASE = "https://openapi.twse.com.tw/v1";
+    private static final String TWSE_SOURCE = "臺灣證券交易所 OpenAPI";
     private static final String REQUEST_ID = "req00001";
     private static final Instant NOW = Instant.parse("2026-10-20T04:00:00Z");
     private static final Validator VALIDATOR = Validation.buildDefaultValidatorFactory().getValidator();
@@ -89,12 +107,16 @@ class ChatOrchestratorTest {
 
     private final MutableClock clock = new MutableClock(NOW);
     private final JsonMapper mapper = JsonMapper.builder().build();
+    private final PiiRedactor redactor = new PiiRedactor();
     private final AiAssistantProperties props = new AiAssistantProperties(null,
             new AiAssistantProperties.Limits(1000, 10, 8000, 5, 3, Duration.ofSeconds(60), 16000,
-                    Duration.ofSeconds(5), 4096, 10), null, null);
+                    Duration.ofSeconds(5), 4096, 10), null, null, null);
     private final ScriptedChatModel model = new ScriptedChatModel();
     private final List<AuditEntry> audits = new ArrayList<>();
     private ChatOrchestrator orchestrator;
+
+    private record NoArgs() {
+    }
 
     private static CustomerContext c001(AccessLevel level) {
         return new CustomerContext("C001", level, Set.of("C001", "王小明"),
@@ -105,12 +127,14 @@ class ChatOrchestratorTest {
     void setUp() throws IOException {
         MDC.put(RequestIdFilter.MDC_KEY, REQUEST_ID);
         CustomerDataPort port = new MockCustomerDataAdapter(new MockCustomerData());
-        PiiRedactor redactor = new PiiRedactor();
         TwseClient twse = twseClient();
-        ToolRegistry registry = new ToolRegistry(List.of(new GetCustomerProfileTool(port, clock),
+        orchestrator = orchestrator(new ToolRegistry(List.of(new GetCustomerProfileTool(port, clock),
                 new GetCustomerHoldingsTool(port), new GetRecentInteractionsTool(port, redactor),
                 new GetCampaignResultsTool(port), new GetMarketIndexTool(twse), new GetStockQuoteTool(twse),
-                new GetCompanyAnnouncementsTool(twse)));
+                new GetCompanyAnnouncementsTool(twse))));
+    }
+
+    private ChatOrchestrator orchestrator(ToolRegistry registry) {
         ToolExecutor executor = new ToolExecutor(new ToolGuard(registry, VALIDATOR, mapper), redactor, mapper, props);
         PromptAssembler assembler = new PromptAssembler(null) {
             @Override
@@ -118,14 +142,14 @@ class ChatOrchestratorTest {
                 return SYSTEM;
             }
         };
-        AuditLogger auditLogger = new AuditLogger(null, clock, null) {
+        AuditLogger auditLogger = new AuditLogger(null, clock, null, null, null) {
             @Override
             public void record(AuditEntry entry) {
                 audits.add(entry);
             }
         };
-        orchestrator = new ChatOrchestrator(model, registry, executor, redactor, assembler, auditLogger,
-                new LlmErrorMapper(), props, clock);
+        return new ChatOrchestrator(model, registry, executor, redactor, assembler,
+                new AnswerAssembler(redactor, mapper), auditLogger, new LlmErrorMapper(), props, clock);
     }
 
     @AfterEach
@@ -174,6 +198,18 @@ class ChatOrchestratorTest {
         return text.codePointCount(0, text.length());
     }
 
+    /** The item schema of {@code blocks[].sources} in the request's response format. */
+    private static JsonSchemaElement sourcesItems(ChatRequest request) {
+        JsonObjectSchema root = (JsonObjectSchema) request.responseFormat().jsonSchema().rootElement();
+        JsonObjectSchema block = (JsonObjectSchema) ((JsonArraySchema) root.properties().get("blocks")).items();
+        return ((JsonArraySchema) block.properties().get("sources")).items();
+    }
+
+    private static String toolResultText(ChatRequest request) {
+        return request.messages().stream().filter(ToolExecutionResultMessage.class::isInstance)
+                .map(m -> ((ToolExecutionResultMessage) m).text()).findFirst().orElseThrow();
+    }
+
     private AuditEntry singleAudit() {
         assertThat(audits).hasSize(1);
         return audits.get(0);
@@ -181,14 +217,15 @@ class ChatOrchestratorTest {
 
     @Test
     void answersWithoutTools() {
-        model.reply(text("本顧客為 VIP 客群。", 120));
+        model.reply(answer(120, "本顧客為 VIP 客群。"));
 
         ChatResult result = ask("幫我整理這位顧客的概況");
 
         assertThat(result.requestId()).isEqualTo(REQUEST_ID);
         assertThat(result.answer()).isEqualTo("本顧客為 VIP 客群。");
+        assertThat(result.blocks()).containsExactly(new AnswerBlock(BlockType.PARAGRAPH, "本顧客為 VIP 客群。", List.of()));
         assertThat(result.toolCalls()).isEmpty();
-        assertThat(result.sources()).isEmpty();
+        assertThat(result.citations()).isEmpty();
         assertThat(result.disclaimer()).isNull();
         assertThat(result.queriedAt()).isEqualTo(NOW);
         assertThat(model.requests()).singleElement().satisfies(request -> {
@@ -202,13 +239,16 @@ class ChatOrchestratorTest {
         assertThat(audit.requestId()).isEqualTo(REQUEST_ID);
         assertThat(audit.redactedQuestion()).isEqualTo("幫我整理這位顧客的概況");
         assertThat(audit.answer()).isEqualTo("本顧客為 VIP 客群。");
+        assertThat(audit.answerTruncated()).isFalse();
+        assertThat(audit.citationNumbers()).isEmpty();
+        assertThat(audit.unverifiedNumbers()).isEmpty();
         assertThat(audit.toolCalls()).isEmpty();
     }
 
     @Test
     void singleToolRoundTrip() {
         model.reply(toolCalls(100, call("call_1", "getCustomerProfile", "{}")))
-                .reply(text("本顧客為穩健型。", 200));
+                .reply(answer(200, "本顧客為穩健型。"));
 
         ChatResult result = ask("這位顧客的風險屬性？");
 
@@ -229,47 +269,184 @@ class ChatOrchestratorTest {
             assertThat(c.status()).isEqualTo("SUCCESS");
             assertThat(c.durationMs()).isNotNegative();
         });
-        assertThat(result.sources()).containsExactly(new SourceView("平台顧客資料（模擬）", null, null, NOW));
+        assertThat(result.citations()).singleElement().satisfies(c -> {
+            assertThat(c.id()).isEqualTo(1);
+            assertThat(c.title()).isEqualTo("顧客概況");
+            assertThat(c.target()).isNull();
+            assertThat(c.excerpt()).isNull();
+            assertThat(c.description()).endsWith("個欄位");
+            assertThat(c.sourceName()).isEqualTo("平台顧客資料（模擬）");
+            assertThat(c.url()).isNull();
+            assertThat(c.dataTime()).isNull();
+            assertThat(c.queriedAt()).isEqualTo(NOW);
+            assertThat(c.cited()).isFalse();
+        });
         assertThat(result.disclaimer()).isNull();
         assertThat(singleAudit().toolCalls()).singleElement()
                 .satisfies(o -> assertThat(o.toolName()).isEqualTo("getCustomerProfile"));
     }
 
     @Test
-    void marketToolAddsDisclaimerAndSource() {
+    void everyRequestCarriesSchemaWithIssuedIds() {
+        model.reply(toolCalls(100, call("call_1", "getCustomerProfile", "{}")))
+                .reply(answer(200, "本顧客為穩健型。"));
+
+        ask("這位顧客的風險屬性？");
+
+        assertThat(sourcesItems(model.requests().get(0))).isInstanceOf(JsonStringSchema.class);
+        assertThat(((JsonEnumSchema) sourcesItems(model.requests().get(1))).enumValues()).containsExactly("S1");
+        assertThat(toolResultText(model.requests().get(1))).contains("\"citationId\":\"S1\"");
+    }
+
+    @Test
+    void forcedFinalRoundAlsoCarriesSchema() {
+        model.reply(toolCalls(100, call("c1", "getCustomerProfile", "{}"), call("c2", "getCustomerHoldings", "{}"),
+                        call("c3", "getCampaignResults", "{}")))
+                .reply(toolCalls(100, call("c4", "getRecentInteractions", "{}"), call("c5", "getMarketIndex", "{}")))
+                .reply(answer(100, "依現有資料整理。"));
+
+        ask("全部整理");
+
+        ChatRequest last = model.requests().get(2);
+        assertThat(last.toolSpecifications()).isNullOrEmpty();
+        assertThat(((JsonEnumSchema) sourcesItems(last)).enumValues()).containsExactly("S1", "S2", "S3", "S4", "S5");
+    }
+
+    @Test
+    void marketToolAddsDisclaimerAndCitation() {
         model.reply(toolCalls(100, call("call_1", "getStockQuote", "{\"stockCode\":\"2330\"}")))
-                .reply(text("台積電收盤 2420 元。", 200));
+                .reply(text(blocks(block("paragraph", "台積電收盤 2420 元。", "S1")), 200));
 
         ChatResult result = ask("台積電今天收多少？");
 
         assertThat(result.disclaimer()).isEqualTo(DISCLAIMER);
-        assertThat(result.sources()).containsExactly(
-                new SourceView("臺灣證券交易所 OpenAPI", "https://openapi.twse.com.tw/", "2026-10-16", NOW));
+        assertThat(result.citations()).extracting(CitationView::sourceName, CitationView::url,
+                        CitationView::dataTime, CitationView::queriedAt, CitationView::cited)
+                .containsExactly(tuple(TWSE_SOURCE, "https://openapi.twse.com.tw/", "2026-10-16", NOW, true));
         assertThat(result.toolCalls()).extracting(ToolCallSummary::status).containsExactly("SUCCESS");
+    }
+
+    @Test
+    void blocksAndCitationsInResult() {
+        model.reply(toolCalls(100, call("c1", "getStockQuote", "{\"stockCode\":\"2330\"}"),
+                        call("c2", "getCustomerHoldings", "{}")))
+                .reply(text(blocks(block("heading", "持有標的近況"),
+                        block("bullet", "台積電收盤 2420 元", "S1"),
+                        block("paragraph", "可留意後續走勢")), 200));
+
+        ChatResult r = ask("持有標的近況？");
+
+        assertThat(r.blocks()).extracting(AnswerBlock::type)
+                .containsExactly(BlockType.HEADING, BlockType.BULLET, BlockType.PARAGRAPH);
+        assertThat(r.blocks()).extracting(AnswerBlock::citations).containsExactly(List.of(), List.of(1), List.of());
+        assertThat(r.citations()).extracting(CitationView::id, CitationView::toolName, CitationView::cited)
+                .containsExactly(tuple(1, "getStockQuote", true), tuple(2, "getCustomerHoldings", false));
+        CitationView quote = r.citations().get(0);
+        assertThat(quote.title()).isEqualTo("上市個股行情");
+        assertThat(quote.target()).isEqualTo("台積電 2330");
+        assertThat(quote.excerpt()).startsWith("收盤 2420");
+        assertThat(quote.description()).isNull();
+        assertThat(quote.sourceName()).isEqualTo(TWSE_SOURCE);
+        assertThat(quote.dataTime()).isEqualTo("2026-10-16");
+        assertThat(quote.queriedAt()).isEqualTo(NOW);
+        assertThat(r.citations().get(1).title()).isEqualTo("顧客持有商品");
+        assertThat(r.answer()).isEqualTo("### 持有標的近況\n\n- 台積電收盤 2420 元\n\n可留意後續走勢")
+                .doesNotContain("[1]");
+        AuditEntry audit = singleAudit();
+        assertThat(audit.answer()).contains(" [1]");
+        assertThat(audit.citationNumbers()).containsEntry("S1", 1).containsEntry("S2", 2);
+        assertThat(audit.toolCalls()).hasSize(2);
+    }
+
+    @Test
+    void sameToolTwiceGivesTwoCitations() {
+        model.reply(toolCalls(100, call("c1", "getStockQuote", "{\"stockCode\":\"2330\"}"),
+                        call("c2", "getStockQuote", "{\"stockCode\":\"2317\"}")))
+                .reply(text(blocks(block("bullet", "台積電收盤 2420 元", "S1"),
+                        block("bullet", "鴻海收盤 211 元", "S2")), 200));
+
+        ChatResult r = ask("台積電和鴻海？");
+
+        assertThat(r.citations()).extracting(CitationView::id, CitationView::toolName, CitationView::target,
+                        CitationView::cited)
+                .containsExactly(tuple(1, "getStockQuote", "台積電 2330", true),
+                        tuple(2, "getStockQuote", "鴻海 2317", true));
+    }
+
+    @Test
+    void citationFieldsAreRedacted() {
+        FakeTool<NoArgs> probe = new FakeTool<>("probe", NoArgs.class, AccessLevel.LIMITED, Duration.ofSeconds(1),
+                (args, context) -> ToolResult.success(Map.of(), List.of(),
+                        new CitationDetail("測試", "王小明", "聯絡 0912-000-111", "【本顧客】資料", 1)));
+        ChatOrchestrator withProbe = orchestrator(new ToolRegistry(List.of(probe)));
+        model.reply(toolCalls(100, call("c1", "probe", "{}")))
+                .reply(text(blocks(block("paragraph", "已查詢", "S1")), 100));
+
+        ChatResult r = withProbe.chat(new ChatCommand("查詢", List.of()), USER, C001_FULL);
+
+        assertThat(r.citations()).singleElement().satisfies(c -> {
+            assertThat(c.title()).isEqualTo("測試");
+            assertThat(c.target()).isEqualTo("本顧客");
+            assertThat(c.excerpt()).isEqualTo("聯絡 【已遮蔽】");
+            assertThat(c.description()).isEqualTo("本顧客資料");
+            assertThat(c.sourceName()).isNull();
+            assertThat(c.url()).isNull();
+            assertThat(c.dataTime()).isNull();
+        });
+    }
+
+    @Test
+    void citationTitleFallsBackToPurpose() {
+        FakeTool<NoArgs> probe = new FakeTool<>("probe", NoArgs.class, AccessLevel.LIMITED, Duration.ofSeconds(1),
+                (args, context) -> ToolResult.success(Map.of(), List.of()));
+        ChatOrchestrator withProbe = orchestrator(new ToolRegistry(List.of(probe)));
+        model.reply(toolCalls(100, call("c1", "probe", "{}"))).reply(answer(100, "已查詢"));
+
+        ChatResult r = withProbe.chat(new ChatCommand("查詢", List.of()), USER, C001_FULL);
+
+        assertThat(r.citations()).singleElement().satisfies(c -> {
+            assertThat(c.title()).isEqualTo("測試 probe");
+            assertThat(c.target()).isNull();
+            assertThat(c.excerpt()).isNull();
+            assertThat(c.description()).isNull();
+        });
     }
 
     @Test
     void failedMarketToolAddsNoDisclaimer() {
         model.reply(toolCalls(100, call("call_1", "getStockQuote", "{\"stockCode\":\"9999\"}")))
-                .reply(text("查無此股票。", 200));
+                .reply(answer(200, "查無此股票。"));
 
         ChatResult result = ask("9999 今天收多少？");
 
         assertThat(result.toolCalls()).extracting(ToolCallSummary::status).containsExactly("ERROR");
         assertThat(result.disclaimer()).isNull();
-        assertThat(result.sources()).isEmpty();
     }
 
     @Test
-    void sourcesAreDeduplicated() {
+    void failedToolHasNoCitation() {
+        model.reply(toolCalls(100, call("call_1", "getStockQuote", "{\"stockCode\":\"9999\"}")))
+                .reply(text(blocks(block("paragraph", "查無此股票。", "S1")), 200));
+
+        ChatResult result = ask("9999 今天收多少？");
+
+        assertThat(result.citations()).isEmpty();
+        assertThat(result.blocks()).singleElement().satisfies(b -> assertThat(b.citations()).isEmpty());
+        assertThat(result.toolCalls()).extracting(ToolCallSummary::status).containsExactly("ERROR");
+        assertThat(singleAudit().citationNumbers()).isEmpty();
+    }
+
+    @Test
+    void eachSuccessfulCallHasItsOwnCitation() {
         model.reply(toolCalls(100, call("call_1", "getCustomerProfile", "{}"),
                         call("call_2", "getCustomerHoldings", "{}")))
-                .reply(text("整理如下。", 200));
+                .reply(answer(200, "整理如下。"));
 
         ChatResult result = ask("概況與持有商品？");
 
         assertThat(result.toolCalls()).hasSize(2);
-        assertThat(result.sources()).containsExactly(new SourceView("平台顧客資料（模擬）", null, null, NOW));
+        assertThat(result.citations()).extracting(CitationView::id, CitationView::toolName, CitationView::cited)
+                .containsExactly(tuple(1, "getCustomerProfile", false), tuple(2, "getCustomerHoldings", false));
     }
 
     @Test
@@ -278,7 +455,7 @@ class ChatOrchestratorTest {
                         call("c3", "getCampaignResults", "{}")))
                 .reply(toolCalls(100, call("c4", "getRecentInteractions", "{}"), call("c5", "getMarketIndex", "{}"),
                         call("c6", "getCustomerProfile", "{}")))
-                .reply(text("依現有資料整理。", 100));
+                .reply(answer(100, "依現有資料整理。"));
 
         ChatResult result = ask("全部整理");
 
@@ -308,65 +485,78 @@ class ChatOrchestratorTest {
     }
 
     @Test
-    void stripsTrailingDisclaimerLineWhenDisclaimerSet() {
-        for (String line : List.of(DISCLAIMER, "*" + DISCLAIMER + "*", "> " + DISCLAIMER + "。",
-                "_（" + DISCLAIMER + "）_", "※ " + DISCLAIMER, "⚠️ " + DISCLAIMER, "　" + DISCLAIMER)) {
-            audits.clear();
-            model.reply(toolCalls(100, call("call_1", "getStockQuote", "{\"stockCode\":\"2330\"}")))
-                    .reply(text("台積電收盤 2420 元。\n\n" + line + "\n\n", 200));
-
-            ChatResult result = ask("台積電今天收多少？");
-
-            assertThat(result.answer()).isEqualTo("台積電收盤 2420 元。");
-            assertThat(result.disclaimer()).isEqualTo(DISCLAIMER);
-            assertThat(singleAudit().answer()).isEqualTo("台積電收盤 2420 元。");
-        }
-    }
-
-    @Test
-    void stripsHorizontalRuleLeftBehindByTheDisclaimer() {
+    void disclaimerBlockDroppedForMarketAnswer() {
         model.reply(toolCalls(100, call("call_1", "getStockQuote", "{\"stockCode\":\"2330\"}")))
-                .reply(text("台積電收盤 2420 元。\n\n---\n" + DISCLAIMER + "\n", 200));
+                .reply(text(blocks(block("paragraph", "台積電收盤 2420 元。", "S1"),
+                        block("paragraph", "*" + DISCLAIMER + "*")), 200));
 
-        assertThat(ask("台積電今天收多少？").answer()).isEqualTo("台積電收盤 2420 元。");
+        ChatResult result = ask("台積電今天收多少？");
+
+        assertThat(result.blocks()).hasSize(1);
+        assertThat(result.answer()).isEqualTo("台積電收盤 2420 元。");
+        assertThat(result.disclaimer()).isEqualTo(DISCLAIMER);
+        assertThat(singleAudit().answer()).isEqualTo("台積電收盤 2420 元。 [1]");
     }
 
     @Test
-    void keepsAnswerWhenItIsOnlyTheDisclaimer() {
-        model.reply(toolCalls(100, call("call_1", "getStockQuote", "{\"stockCode\":\"2330\"}")))
-                .reply(text("> " + DISCLAIMER, 200));
-
-        assertThat(ask("台積電今天收多少？").answer()).isEqualTo("> " + DISCLAIMER);
-    }
-
-    @Test
-    void keepsDisclaimerSentenceEmbeddedInOtherText() {
-        String answer = "台積電收盤 2420 元。\n注意：" + DISCLAIMER + "，請自行判斷。";
-        model.reply(toolCalls(100, call("call_1", "getStockQuote", "{\"stockCode\":\"2330\"}")))
-                .reply(text(answer, 200));
-
-        assertThat(ask("台積電今天收多少？").answer()).isEqualTo(answer);
-    }
-
-    @Test
-    void doesNotStripWhenNoMarketTool() {
-        String answer = "本顧客為 VIP 客群。\n" + DISCLAIMER;
-        model.reply(text(answer, 100));
+    void doesNotDropDisclaimerWhenNoMarketTool() {
+        model.reply(answer(100, "本顧客為 VIP 客群。", DISCLAIMER));
 
         ChatResult result = ask("幫我整理這位顧客的概況");
 
         assertThat(result.disclaimer()).isNull();
-        assertThat(result.answer()).isEqualTo(answer);
+        assertThat(result.blocks()).hasSize(2);
+        assertThat(result.answer()).isEqualTo("本顧客為 VIP 客群。\n\n" + DISCLAIMER);
     }
 
     @Test
     void answerShowsPlainSelfReference() {
-        model.reply(text("王小明偏好電話聯絡，【本顧客】近期無新活動。", 100));
+        model.reply(answer(100, "王小明偏好電話聯絡，【本顧客】近期無新活動。"));
 
         ChatResult result = ask("聯絡方式？");
 
         assertThat(result.answer()).contains("本顧客").doesNotContain("王小明", "【本顧客】");
+        assertThat(result.blocks().get(0).text()).isEqualTo(result.answer());
         assertThat(singleAudit().answer()).isEqualTo(result.answer());
+    }
+
+    @Test
+    void invalidJsonAnswerFailsAndAudits() {
+        model.reply(text("純文字回答", 100));
+
+        assertThatThrownBy(() -> ask("概況？")).isInstanceOfSatisfying(AssistantException.class,
+                e -> assertThat(e.code()).isEqualTo(ErrorCode.AI_ANSWER_FORMAT_INVALID));
+
+        AuditEntry audit = singleAudit();
+        assertThat(audit.outcome()).isEqualTo("FAILED");
+        assertThat(audit.errorCode()).isEqualTo("AI_ANSWER_FORMAT_INVALID");
+        assertThat(audit.answer()).isNull();
+        assertThat(audit.answerTruncated()).isFalse();
+        assertThat(audit.citationNumbers()).isEmpty();
+        assertThat(audit.unverifiedNumbers()).isEmpty();
+    }
+
+    @Test
+    void forcedFinalRoundWithoutTextIsFormatInvalid() {
+        // after three tool rounds the model asks for yet another tool instead of answering: no text at all
+        model.reply(toolCalls(100, call("c1", "getCustomerProfile", "{}")))
+                .reply(toolCalls(100, call("c2", "getCustomerHoldings", "{}")))
+                .reply(toolCalls(100, call("c3", "getCampaignResults", "{}")))
+                .reply(toolCalls(100, call("c4", "getRecentInteractions", "{}")));
+
+        assertThatThrownBy(() -> ask("概況？")).isInstanceOfSatisfying(AssistantException.class,
+                e -> assertThat(e.code()).isEqualTo(ErrorCode.AI_ANSWER_FORMAT_INVALID));
+        assertThat(singleAudit().outcome()).isEqualTo("FAILED");
+    }
+
+    @Test
+    void unverifiedNumbersReachAudit() {
+        model.reply(toolCalls(100, call("call_1", "getStockQuote", "{\"stockCode\":\"2330\"}")))
+                .reply(text(blocks(block("paragraph", "收盤 2420 元，目標價 3000 元", "S1")), 200));
+
+        ask("台積電今天收多少？");
+
+        assertThat(singleAudit().unverifiedNumbers()).containsExactly("3000");
     }
 
     @Test
@@ -374,9 +564,9 @@ class ChatOrchestratorTest {
         model.reply(toolCalls(100, call("c1", "getCustomerProfile", "{}"), call("c2", "getCustomerHoldings", "{}"),
                         call("c3", "getCampaignResults", "{}"), call("c4", "getRecentInteractions", "{}"),
                         call("c5", "getMarketIndex", "{}"), call("c6", "getStockQuote", "{\"stockCode\":\"2330\"}")))
-                .reply(text("依現有資料整理。", 100));
+                .reply(answer(100, "依現有資料整理。"));
 
-        ask("全部整理");
+        ChatResult result = ask("全部整理");
 
         List<String> callIds = new ArrayList<>();
         List<String> resultIds = new ArrayList<>();
@@ -395,8 +585,9 @@ class ChatOrchestratorTest {
         assertThat(resultIds).containsExactly("c1", "c2", "c3", "c4", "c5", "c6");
         assertThat(sixth).isNotNull();
         assertThat(sixth.text()).contains("\"status\":\"DENIED\"", "TOOL_CALL_LIMIT_REACHED",
-                "已達本次查詢次數上限，未執行");
+                "已達本次查詢次數上限，未執行").doesNotContain("citationId");
         assertThat(singleAudit().toolCalls()).hasSize(5);
+        assertThat(result.citations()).extracting(CitationView::toolName).doesNotContain("getStockQuote");
     }
 
     @Test
@@ -405,7 +596,7 @@ class ChatOrchestratorTest {
                         call("c3", "getCampaignResults", "{}"), call("c4", "getRecentInteractions", "{}"),
                         call("c5", "getMarketIndex", "{}"), call("c6", "getStockQuote", "{\"stockCode\":\"2330\"}"),
                         call("c7", "deleteCustomer", "{}")))
-                .reply(text("依現有資料整理。", 100));
+                .reply(answer(100, "依現有資料整理。"));
 
         ChatResult result = ask("全部整理");
 
@@ -427,7 +618,7 @@ class ChatOrchestratorTest {
         model.reply(toolCalls(100, call("c1", "getCustomerProfile", "{}")))
                 .reply(toolCalls(100, call("c2", "getCustomerHoldings", "{}")))
                 .reply(toolCalls(100, call("c3", "getCampaignResults", "{}")))
-                .reply(text("依現有資料整理。", 100));
+                .reply(answer(100, "依現有資料整理。"));
 
         ChatResult result = ask("全部整理");
 
@@ -442,7 +633,7 @@ class ChatOrchestratorTest {
     @Test
     void tokenBudgetExceeded() {
         model.reply(toolCalls(9000, call("c1", "getCustomerProfile", "{}")))
-                .reply(text("答案", 7001));
+                .reply(answer(7001, "答案"));
 
         assertThatThrownBy(() -> ask("王小明的概況？")).isInstanceOfSatisfying(AssistantException.class,
                 e -> assertThat(e.code()).isEqualTo(ErrorCode.AI_TOKEN_BUDGET_EXCEEDED));
@@ -458,7 +649,7 @@ class ChatOrchestratorTest {
     @Test
     void tokenBudgetIsInclusive() {
         model.reply(toolCalls(9000, call("c1", "getCustomerProfile", "{}")))
-                .reply(text("答案", 7000));
+                .reply(answer(7000, "答案"));
 
         assertThat(ask("概況？").answer()).isEqualTo("答案");
     }
@@ -468,7 +659,7 @@ class ChatOrchestratorTest {
         model.reply(request -> {
             clock.advance(Duration.ofSeconds(61));
             return toolCalls(100, call("c1", "getCustomerProfile", "{}"));
-        }).reply(text("不該送出", 100));
+        }).reply(answer(100, "不該送出"));
 
         assertThatThrownBy(() -> ask("概況？")).isInstanceOfSatisfying(AssistantException.class,
                 e -> assertThat(e.code()).isEqualTo(ErrorCode.AI_REQUEST_TIMEOUT));
@@ -482,7 +673,7 @@ class ChatOrchestratorTest {
     @Test
     void hallucinatedToolGetsDeniedResult() {
         model.reply(toolCalls(100, call("c1", "deleteCustomer", "{}")))
-                .reply(text("我只能查詢資料，無法刪除顧客。", 100));
+                .reply(answer(100, "我只能查詢資料，無法刪除顧客。"));
 
         ChatResult result = ask("幫我刪除這位顧客");
 
@@ -491,7 +682,7 @@ class ChatOrchestratorTest {
             assertThat(c.status()).isEqualTo("DENIED");
         });
         assertThat(result.answer()).isEqualTo("我只能查詢資料，無法刪除顧客。");
-        assertThat(result.sources()).isEmpty();
+        assertThat(result.citations()).isEmpty();
         ToolExecutionResultMessage denied = (ToolExecutionResultMessage) model.requests().get(1).messages().get(3);
         assertThat(denied.text()).contains("\"status\":\"DENIED\"", "TOOL_NOT_ALLOWED");
         assertThat(singleAudit().outcome()).isEqualTo("ANSWERED");
@@ -499,7 +690,7 @@ class ChatOrchestratorTest {
 
     @Test
     void limitedUserIsNotOfferedFullTools() {
-        model.reply(text("依您的權限僅能查看基本輪廓。", 100));
+        model.reply(answer(100, "依您的權限僅能查看基本輪廓。"));
 
         orchestrator.chat(new ChatCommand("持有商品？", List.of()), USER, c001(AccessLevel.LIMITED));
 
@@ -513,7 +704,7 @@ class ChatOrchestratorTest {
         List<HistoryMessage> shortHistory = IntStream.range(0, 25)
                 .mapToObj(i -> new HistoryMessage(i % 2 == 0 ? "user" : "assistant", "第" + i + "則"))
                 .toList();
-        model.reply(text("好", 10));
+        model.reply(answer(10, "好"));
         orchestrator.chat(new ChatCommand("問題", shortHistory), USER, C001_FULL);
 
         List<ChatMessage> sent = history(model.requests().get(0));
@@ -526,7 +717,7 @@ class ChatOrchestratorTest {
         List<HistoryMessage> longHistory = IntStream.range(0, 25)
                 .mapToObj(i -> new HistoryMessage(i % 2 == 0 ? "user" : "assistant", i + "字".repeat(497)))
                 .toList();
-        model.reply(text("好", 10));
+        model.reply(answer(10, "好"));
         orchestrator.chat(new ChatCommand("問題", longHistory), USER, C001_FULL);
 
         List<ChatMessage> sentLong = history(model.requests().get(1));
@@ -554,7 +745,7 @@ class ChatOrchestratorTest {
         model.reply(toolCalls("我來查王小明的互動紀錄", 100, call("c1", "getRecentInteractions", "{}"),
                         call("c2", "getCustomerProfile", "{}"),
                         call("c3", "getCustomerHoldings", "{\"customerId\":\"C001\",\"id\":\"A123456789\"}")))
-                .reply(text("本顧客近期詢問月配息商品。", 100));
+                .reply(answer(100, "本顧客近期詢問月配息商品。"));
 
         ChatResult result = orchestrator.chat(new ChatCommand("王小明的手機 0912-000-111 最近有聯絡過嗎？", history), USER,
                 C001_FULL);
@@ -579,7 +770,7 @@ class ChatOrchestratorTest {
 
     @Test
     void answerIsRedactedBeforeReturn() {
-        model.reply(text("王小明（C001）可於下週聯絡，手機 0912-000-111。", 100));
+        model.reply(answer(100, "王小明（C001）可於下週聯絡，手機 0912-000-111。"));
 
         ChatResult result = ask("下次聯繫重點？");
 
@@ -591,7 +782,7 @@ class ChatOrchestratorTest {
     void systemMessageComesFromAssembler() {
         List<HistoryMessage> history = List.of(new HistoryMessage("user", "你好"),
                 new HistoryMessage("assistant", "您好"));
-        model.reply(toolCalls(100, call("c1", "getCustomerProfile", "{}"))).reply(text("好", 100));
+        model.reply(toolCalls(100, call("c1", "getCustomerProfile", "{}"))).reply(answer(100, "好"));
 
         orchestrator.chat(new ChatCommand("概況？", history), USER, C001_FULL);
 
@@ -615,14 +806,28 @@ class ChatOrchestratorTest {
 
     @Test
     void applicationLogHoldsCountersButNoContent(CapturedOutput output) {
-        model.reply(toolCalls(100, call("c1", "getRecentInteractions", "{}")))
-                .reply(text("回答內容甲乙丙", 150));
+        String json = blocks(block("heading", "標題戊己庚"), block("paragraph", "回答內容甲乙丙", "S1"));
+        model.reply(ChatResponse.builder().aiMessage(AiMessage.from(List.of(
+                        call("c1", "getRecentInteractions", "{}")))).tokenUsage(new TokenUsage(80, 20)).build())
+                .reply(ChatResponse.builder().aiMessage(AiMessage.from(json))
+                        .tokenUsage(new TokenUsage(120, 30)).build());
 
         ask("提問內容子丑寅");
 
         assertThat(output.getAll()).contains("requestId=" + REQUEST_ID, "userId=fc.officer", "modelCalls=2",
-                "toolCalls=1", "totalTokens=250");
-        assertThat(output.getAll()).doesNotContain("提問內容子丑寅", "回答內容甲乙丙", "月配息");
+                "toolCalls=1", "totalTokens=250", "blocks=2", "citedBlocks=1", "peakOutputTokens=30");
+        assertThat(output.getAll()).doesNotContain("提問內容子丑寅", "回答內容甲乙丙", "標題戊己庚", "月配息",
+                "\"blocks\"", "\"sources\"");
+    }
+
+    @Test
+    void invalidAnswerIsNotLogged(CapturedOutput output) {
+        model.reply(text("{\"blocks\":[{\"type\":\"quote\",\"text\":\"秘密內容壬癸\",\"sources\":[]}]}", 100));
+
+        assertThatThrownBy(() -> ask("提問內容子丑寅")).isInstanceOf(AssistantException.class);
+
+        assertThat(output.getAll()).contains("code=AI_ANSWER_FORMAT_INVALID")
+                .doesNotContain("秘密內容壬癸", "提問內容子丑寅", "\"blocks\"");
     }
 
     /** A clock tests can move forward. */

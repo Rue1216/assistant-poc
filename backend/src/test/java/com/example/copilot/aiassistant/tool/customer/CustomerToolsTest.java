@@ -10,6 +10,8 @@ import com.example.copilot.aiassistant.port.InteractionRecord;
 import com.example.copilot.aiassistant.port.UserContext;
 import com.example.copilot.aiassistant.privacy.CustomerContext;
 import com.example.copilot.aiassistant.privacy.PiiRedactor;
+import com.example.copilot.aiassistant.tool.CitationDetail;
+import com.example.copilot.aiassistant.tool.CitationIds;
 import com.example.copilot.aiassistant.tool.NoArgs;
 import com.example.copilot.aiassistant.tool.ToolContext;
 import com.example.copilot.aiassistant.tool.ToolExecutor;
@@ -205,7 +207,7 @@ class CustomerToolsTest {
     void serializedOutputContainsNoIdentifiers() {
         AiAssistantProperties props = new AiAssistantProperties(null,
                 new AiAssistantProperties.Limits(1000, 10, 8000, 5, 3, Duration.ofSeconds(60), 16000,
-                        Duration.ofSeconds(5), 4096, 10), null, null);
+                        Duration.ofSeconds(5), 4096, 10), null, null, null);
         ToolGuard guard = new ToolGuard(
                 new ToolRegistry(List.of(profileTool, holdingsTool, interactionsTool, campaignsTool)),
                 Validation.buildDefaultValidatorFactory().getValidator(), mapper);
@@ -216,7 +218,7 @@ class CustomerToolsTest {
 
         for (String tool : offered) {
             ToolOutcome outcome = executor.execute(
-                    ToolExecutionRequest.builder().id("1").name(tool).arguments("{}").build(), ctx, offered);
+                    ToolExecutionRequest.builder().id("1").name(tool).arguments("{}").build(), ctx, offered, new CitationIds());
             assertThat(outcome.result().status()).as(tool).isEqualTo(ToolStatus.SUCCESS);
             if (tool.equals("getRecentInteractions")) {
                 assertThat(outcome.payloadForModel()).contains("【本顧客】詢問月配息商品");
@@ -226,5 +228,40 @@ class CustomerToolsTest {
                             "xiaoming.wang@example.com", "0123456789012", "1968-03-14", "忠孝西路",
                             "宏達電子");
         }
+    }
+
+    @Test
+    void toolsDeclareCitationDetail() {
+        ToolContext full = context("C001", AccessLevel.FULL);
+
+        assertThat(profileTool.execute(new NoArgs(), full).citation())
+                .isEqualTo(new CitationDetail("顧客概況", null, null, "8 個欄位", 8));
+        assertThat(profileTool.execute(new NoArgs(), context("C001", AccessLevel.LIMITED)).citation())
+                .isEqualTo(new CitationDetail("顧客概況", null, null, "3 個欄位", 3));
+        assertThat(holdingsTool.execute(new NoArgs(), full).citation())
+                .isEqualTo(new CitationDetail("顧客持有商品", null, null, "3 筆", 3));
+        ToolResult interactions = interactionsTool.execute(new GetRecentInteractionsTool.InteractionArgs(null), full);
+        assertThat(interactions.citation().title()).isEqualTo("近期互動紀錄");
+        assertThat(interactions.citation().description()).matches("\\d+ 筆，最近一筆 \\d{2}/\\d{2}");
+        assertThat(interactions.citation().description()).isEqualTo("2 筆，最近一筆 10/02");
+        assertThat(interactions.citation().resultCount()).isEqualTo(2);
+        assertThat(interactions.citation().target()).isNull();
+        assertThat(interactions.citation().excerpt()).isNull();
+        assertThat(campaignsTool.execute(new NoArgs(), full).citation())
+                .isEqualTo(new CitationDetail("行銷活動反應", null, null, "2 筆", 2));
+    }
+
+    @Test
+    void emptyInteractionsDescribeZeroRows() {
+        CustomerDataPort empty = new MockCustomerDataAdapter(new MockCustomerData()) {
+            @Override
+            public List<InteractionRecord> findRecentInteractions(String customerId, int limit) {
+                return List.of();
+            }
+        };
+        ToolResult result = new GetRecentInteractionsTool(empty, new PiiRedactor())
+                .execute(new GetRecentInteractionsTool.InteractionArgs(null), context("C001", AccessLevel.FULL));
+
+        assertThat(result.citation()).isEqualTo(new CitationDetail("近期互動紀錄", null, null, "0 筆", 0));
     }
 }

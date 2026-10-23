@@ -1,12 +1,14 @@
 package com.example.copilot.aiassistant.tool.customer;
 
 import com.example.copilot.aiassistant.port.CustomerDataPort;
+import com.example.copilot.aiassistant.port.InteractionRecord;
 import com.example.copilot.aiassistant.privacy.PiiRedactor;
 import com.example.copilot.aiassistant.tool.ToolContext;
 import com.example.copilot.aiassistant.tool.ToolResult;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +19,7 @@ public class GetRecentInteractionsTool extends AbstractCustomerTool<GetRecentInt
 
     static final int DEFAULT_LIMIT = 5;
     static final int SUMMARY_MAX_CHARS = 100;
+    private static final DateTimeFormatter LATEST_DATE = DateTimeFormatter.ofPattern("MM/dd");
 
     public record InteractionArgs(@Min(1) @Max(10) Integer limit) {
     }
@@ -55,8 +58,8 @@ public class GetRecentInteractionsTool extends AbstractCustomerTool<GetRecentInt
             return unavailable();
         }
         int limit = args.limit() == null ? DEFAULT_LIMIT : args.limit();
-        List<Map<String, Object>> rows = port.findRecentInteractions(context.customer().customerId(), limit)
-                .stream().map(i -> {
+        List<InteractionRecord> records = port.findRecentInteractions(context.customer().customerId(), limit);
+        List<Map<String, Object>> rows = records.stream().map(i -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("date", i.date().toString());
                     row.put("channel", i.channel());
@@ -65,7 +68,10 @@ public class GetRecentInteractionsTool extends AbstractCustomerTool<GetRecentInt
                     row.put("outcome", i.outcome());
                     return row;
                 }).toList();
-        return ToolResult.success(Map.of("interactions", rows), SOURCES);
+        String description = records.isEmpty() ? "0 筆"
+                : records.size() + " 筆，最近一筆 " + records.get(0).date().format(LATEST_DATE);
+        return ToolResult.success(Map.of("interactions", rows), SOURCES,
+                citation("近期互動紀錄", description, rows.size()));
     }
 
     private static String truncate(String text) {

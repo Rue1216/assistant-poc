@@ -11,6 +11,7 @@ import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -18,6 +19,8 @@ public class GetCompanyAnnouncementsTool extends AbstractMarketTool<GetCompanyAn
 
     private static final int DEFAULT_LIMIT = 3;
     private static final int MAX_SUBJECT_CHARS = 200;
+    private static final int EXCERPT_ITEMS = 3;
+    private static final int EXCERPT_SUBJECT_CHARS = 60;
 
     public record AnnouncementArgs(@NotNull @Pattern(regexp = "^\\d{4,6}$") String stockCode,
                                    @Min(1) @Max(5) Integer limit) {
@@ -73,7 +76,17 @@ public class GetCompanyAnnouncementsTool extends AbstractMarketTool<GetCompanyAn
         String companyName = mine.isEmpty() ? null : companyName(get(mine.get(0), "公司名稱"));
         LocalDate dataDate = mine.isEmpty() ? null : TwseParsing.rocDate(get(mine.get(0), "發言日期"));
         List<Announcement> items = mine.stream().map(GetCompanyAnnouncementsTool::announcement).toList();
-        return ToolResult.success(new AnnouncementsData(args.stockCode(), companyName, items), sources(dataDate));
+        String target = companyName == null ? args.stockCode() : companyName + " " + args.stockCode();
+        return ToolResult.success(new AnnouncementsData(args.stockCode(), companyName, items), sources(dataDate),
+                citation("上市公司重大訊息", target, excerpt(items), items.size()));
+    }
+
+    private static String excerpt(List<Announcement> items) {
+        if (items.isEmpty()) {
+            return "查無重大訊息";
+        }
+        return items.stream().limit(EXCERPT_ITEMS).map(a -> shorten(a.subject(), EXCERPT_SUBJECT_CHARS))
+                .collect(Collectors.joining("；"));
     }
 
     private static Announcement announcement(Map<String, String> row) {

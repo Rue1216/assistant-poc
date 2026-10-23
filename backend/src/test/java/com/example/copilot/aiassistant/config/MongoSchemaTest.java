@@ -103,6 +103,32 @@ class MongoSchemaTest extends IntegrationTestBase {
                 .isInstanceOf(DuplicateKeyException.class);
     }
 
+    private Document auditDoc(String requestId, String resultHash) {
+        Document call = new Document("toolName", "getStockQuote").append("status", "SUCCESS")
+                .append("errorCode", null).append("durationMs", 5).append("citationId", 1)
+                .append("target", "台積電 2330").append("dataTime", "2026-10-16").append("resultCount", 1)
+                .append("resultHash", resultHash).append("result", new Document("close", 2420));
+        return new Document("requestId", requestId).append("userId", "u").append("roleKey", "r")
+                .append("customerId", "C001").append("accessLevel", "FULL").append("question", "q")
+                .append("answer", "a [1]").append("answerTruncated", false).append("outcome", "ANSWERED")
+                .append("errorCode", null).append("toolCalls", java.util.List.of(call))
+                .append("unverifiedNumbers", java.util.List.of("3000")).append("durationMs", 5)
+                .append("createdAt", new Date());
+    }
+
+    @Test
+    void auditValidatorAcceptsCitationFields() {
+        mongo.getCollection(AUDIT).insertOne(auditDoc("schema-ok-1", "a".repeat(64)));
+        assertThat(mongo.getCollection(AUDIT).countDocuments(new Document("requestId", "schema-ok-1")))
+                .isEqualTo(1);
+    }
+
+    @Test
+    void auditValidatorRejectsLongResultHash() {
+        assertThatThrownBy(() -> mongo.getCollection(AUDIT).insertOne(auditDoc("schema-bad-1", "a".repeat(65))))
+                .isInstanceOf(MongoWriteException.class);
+    }
+
     @Test
     void indexNamesMatchSpec() {
         Set<String> config = mongo.indexOps(CONFIG).getIndexInfo().stream()
