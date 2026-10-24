@@ -64,7 +64,7 @@ defineExpose({ reveal })
                 <span class="ai-citation__time">查詢 {{ formatTaipeiTime(c.queriedAt) }}</span>
                 <template v-if="c.sourceName">
                   <a v-if="isHttp(c.url)" class="ai-citation__link" :href="c.url" target="_blank" rel="noopener noreferrer">{{ c.sourceName }} ↗</a>
-                  <span v-else class="ai-citation__time">{{ c.sourceName }}</span>
+                  <span v-else class="ai-citation__source">{{ c.sourceName }}</span>
                 </template>
               </div>
             </details>
@@ -100,7 +100,7 @@ defineExpose({ reveal })
   border-radius: var(--radius-sm);
   background: var(--gray-50);
   color: var(--color-text);
-  transition: background var(--duration-base, 200ms);
+  transition: background var(--duration-normal);
 }
 .ai-citation__summary {
   font-weight: 600;
@@ -121,6 +121,11 @@ defineExpose({ reveal })
 }
 .ai-citation__time {
   color: var(--color-text-subtle);
+  white-space: nowrap;
+}
+.ai-citation__source {
+  color: var(--color-text-subtle);
+  overflow-wrap: anywhere;
 }
 .ai-citation__link {
   color: var(--green-700);

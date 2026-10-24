@@ -9,6 +9,7 @@ import dev.langchain4j.agent.tool.ToolSpecification;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -69,7 +70,8 @@ public class GetRecentInteractionsTool extends AbstractCustomerTool<GetRecentInt
                     return row;
                 }).toList();
         String description = records.isEmpty() ? "0 筆"
-                : records.size() + " 筆，最近一筆 " + records.get(0).date().format(LATEST_DATE);
+                : records.size() + " 筆，最近一筆 " + records.stream().map(InteractionRecord::date)
+                        .max(Comparator.naturalOrder()).orElseThrow().format(LATEST_DATE);
         return ToolResult.success(Map.of("interactions", rows), SOURCES,
                 citation("近期互動紀錄", description, rows.size()));
     }

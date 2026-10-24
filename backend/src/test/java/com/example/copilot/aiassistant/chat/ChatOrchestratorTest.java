@@ -47,6 +47,7 @@ import com.example.copilot.aiassistant.tool.market.TwseClient;
 import com.example.copilot.aiassistant.tool.testsupport.FakeTool;
 import com.example.copilot.mockplatform.customer.MockCustomerData;
 import com.example.copilot.mockplatform.customer.MockCustomerDataAdapter;
+import com.example.copilot.testsupport.LogCapture;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -76,20 +77,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.IntStream;
+import org.apache.logging.log4j.Level;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.MDC;
-import org.springframework.boot.test.system.CapturedOutput;
-import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.ExpectedCount;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.json.JsonMapper;
 
-@ExtendWith(OutputCaptureExtension.class)
 class ChatOrchestratorTest {
 
     private static final String SYSTEM = "測試用系統訊息";
@@ -805,29 +803,40 @@ class ChatOrchestratorTest {
     }
 
     @Test
-    void applicationLogHoldsCountersButNoContent(CapturedOutput output) {
+    void applicationLogHoldsCountersButNoContent() {
         String json = blocks(block("heading", "標題戊己庚"), block("paragraph", "回答內容甲乙丙", "S1"));
         model.reply(ChatResponse.builder().aiMessage(AiMessage.from(List.of(
                         call("c1", "getRecentInteractions", "{}")))).tokenUsage(new TokenUsage(80, 20)).build())
                 .reply(ChatResponse.builder().aiMessage(AiMessage.from(json))
                         .tokenUsage(new TokenUsage(120, 30)).build());
 
-        ask("提問內容子丑寅");
+        List<String> lines;
+        try (LogCapture capture = LogCapture.of(ChatOrchestrator.class, Level.INFO)) {
+            ask("提問內容子丑寅");
+            lines = capture.events().stream().map(LogCapture::render).toList();
+        }
 
-        assertThat(output.getAll()).contains("requestId=" + REQUEST_ID, "userId=fc.officer", "modelCalls=2",
-                "toolCalls=1", "totalTokens=250", "blocks=2", "citedBlocks=1", "peakOutputTokens=30");
-        assertThat(output.getAll()).doesNotContain("提問內容子丑寅", "回答內容甲乙丙", "標題戊己庚", "月配息",
-                "\"blocks\"", "\"sources\"");
+        assertThat(lines).anySatisfy(line -> assertThat(line).contains("chat answered", "requestId=" + REQUEST_ID,
+                "userId=fc.officer", "modelCalls=2", "toolCalls=1", "totalTokens=250", "blocks=2", "citedBlocks=1",
+                "peakOutputTokens=30"));
+        assertThat(lines).allSatisfy(line -> assertThat(line).doesNotContain("提問內容子丑寅", "回答內容甲乙丙",
+                "標題戊己庚", "月配息", "\"blocks\"", "\"sources\""));
     }
 
     @Test
-    void invalidAnswerIsNotLogged(CapturedOutput output) {
+    void invalidAnswerIsNotLogged() {
         model.reply(text("{\"blocks\":[{\"type\":\"quote\",\"text\":\"秘密內容壬癸\",\"sources\":[]}]}", 100));
 
-        assertThatThrownBy(() -> ask("提問內容子丑寅")).isInstanceOf(AssistantException.class);
+        List<String> lines;
+        try (LogCapture capture = LogCapture.of(ChatOrchestrator.class, Level.INFO)) {
+            assertThatThrownBy(() -> ask("提問內容子丑寅")).isInstanceOf(AssistantException.class);
+            lines = capture.events().stream().map(LogCapture::render).toList();
+        }
 
-        assertThat(output.getAll()).contains("code=AI_ANSWER_FORMAT_INVALID")
-                .doesNotContain("秘密內容壬癸", "提問內容子丑寅", "\"blocks\"");
+        assertThat(lines).anySatisfy(line -> assertThat(line).contains("chat failed",
+                "requestId=" + REQUEST_ID, "code=AI_ANSWER_FORMAT_INVALID", "modelCalls=1", "toolCalls=0"));
+        assertThat(lines).allSatisfy(line -> assertThat(line).doesNotContain("秘密內容壬癸", "提問內容子丑寅",
+                "\"blocks\"", "quote"));
     }
 
     /** A clock tests can move forward. */

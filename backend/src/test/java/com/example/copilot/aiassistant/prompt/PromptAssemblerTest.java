@@ -86,6 +86,7 @@ class PromptAssemblerTest extends IntegrationTestBase {
     @Test
     void formatRulesText() {
         assertThat(AnswerFormatRules.TEXT).startsWith("# 回答格式規則");
-        assertThat(AnswerFormatRules.TEXT.lines().filter(l -> l.startsWith("- "))).hasSize(5);
+        assertThat(AnswerFormatRules.TEXT.lines().filter(l -> l.startsWith("- "))).hasSize(6);
+        assertThat(AnswerFormatRules.TEXT).contains("不可只照抄套版文字");
     }
 }

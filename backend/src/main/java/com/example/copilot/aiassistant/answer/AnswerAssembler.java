@@ -35,7 +35,12 @@ public class AnswerAssembler {
     private static final Pattern DISCLAIMER_ONLY = Pattern.compile(
             DECORATION + Pattern.quote(MARKET_DISCLAIMER) + DECORATION);
 
-    private static final Pattern MARKER = Pattern.compile("[\\[【(（](S\\d+)[\\]】)）]");
+    // [S1], [S1, S2], 【S1，S2】, （S1、S2）, （來源：S1）, (來源: S1)
+    private static final Pattern MARKER = Pattern.compile(
+            "[\\[【(（]\\s*(?:來源\\s*[:：]\\s*)?S\\d+(?:\\s*[,，、]\\s*S\\d+)*\\s*[\\]】)）]");
+    private static final Pattern MARKER_ID = Pattern.compile("S\\d+");
+    private static final Pattern SPACE_BEFORE_PUNCTUATION = Pattern.compile("\\s+(?=[，。、；：！？,.;:!?])");
+    private static final Pattern DOUBLE_SPACE = Pattern.compile(" {2,}");
     private static final Pattern HEADING_PREFIX = Pattern.compile("^#+\\s*");
     private static final Pattern BULLET_PREFIX = Pattern.compile("^[-*+•]\\s+");
     private static final Pattern NUMBERED_PREFIX = Pattern.compile("^\\d+[.)、](?!\\d)\\s*");
@@ -148,10 +153,19 @@ public class AnswerAssembler {
     private static Draft clean(BlockType type, String raw, List<String> sources) {
         List<String> all = new ArrayList<>(sources);
         Matcher m = MARKER.matcher(raw);
+        boolean found = false;
         while (m.find()) {
-            all.add(m.group(1));
+            found = true;
+            Matcher id = MARKER_ID.matcher(m.group());
+            while (id.find()) {
+                all.add(id.group());
+            }
         }
-        String text = MARKER.matcher(raw).replaceAll("").strip();
+        String text = MARKER.matcher(raw).replaceAll("");
+        if (found) {
+            text = DOUBLE_SPACE.matcher(SPACE_BEFORE_PUNCTUATION.matcher(text).replaceAll("")).replaceAll(" ");
+        }
+        text = text.strip();
         text = switch (type) {
             case HEADING -> HEADING_PREFIX.matcher(text).replaceFirst("");
             case BULLET -> BULLET_PREFIX.matcher(text).replaceFirst("");

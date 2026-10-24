@@ -137,12 +137,23 @@
 | 欄位 | 型別 | 說明 |
 |---|---|---|
 | `requestId` | string | 追蹤用 |
-| `answer` | string | Markdown 格式的回答，前端必須用 `SafeMarkdown` 渲染；以「本顧客」稱呼顧客 |
-| `sources` | array | 本次回答使用的資料來源，由 Java 依工具結果產生 |
-| `sources[].name` | string | 來源名稱 |
-| `sources[].url` | string \| null | 只有公開外部來源才有，內部來源一律為 `null` |
-| `sources[].dataTime` | string \| null | 資料本身的時間（例如收盤日） |
-| `sources[].queriedAt` | string | 查詢時間 |
+| `blocks` | array | 回答的區塊，前端依序渲染；文字已去識別化，以「本顧客」稱呼顧客。最多 40 個區塊，文字合計最多 8000 字 |
+| `blocks[].type` | string | `heading`、`paragraph`、`bullet`、`numbered` |
+| `blocks[].text` | string | 區塊文字，只含行內格式（粗體、連結），不含標題或清單符號，也不含 `[S1]` 這類標註 |
+| `blocks[].citations` | number[] | 支持這個區塊的引用編號（1 起算），對應 `citations[].id`；`heading` 或沒有依據時為空陣列 |
+| `answer` | string | 由 `blocks` 扁平化的 Markdown（不含引用編號），供對話歷史與複製使用；前端不直接渲染它 |
+| `citations` | array | 本次每一次成功的工具呼叫各一筆；被回答引用的在前（依首次出現順序），未被引用的依呼叫順序接在後面 |
+| `citations[].id` | number | 引用編號，1 起算 |
+| `citations[].toolName` | string | 工具名稱 |
+| `citations[].title` | string | 引用標題（例如「上市個股行情」）；工具沒有提供時為該工具的中文用途 |
+| `citations[].target` | string \| null | 查詢對象（例如「台積電 2330」），只有外部資料工具有 |
+| `citations[].excerpt` | string \| null | 外部資料的原文摘錄，前端只以純文字顯示 |
+| `citations[].description` | string \| null | 內部資料的說明（例如「3 筆」），不含顧客資料內容 |
+| `citations[].sourceName` | string \| null | 來源名稱 |
+| `citations[].url` | string \| null | 只有公開外部來源才有，內部來源一律為 `null` |
+| `citations[].dataTime` | string \| null | 資料本身的時間（例如收盤日） |
+| `citations[].queriedAt` | string | 查詢時間 |
+| `citations[].cited` | boolean | 回答是否引用了這筆；`false` 表示只是查過 |
 | `queriedAt` | string | 本次提問的處理時間 |
 | `disclaimer` | string \| null | 用到市場工具時為「資訊僅供內部經營參考，不構成投資建議」 |
 | `toolCalls` | array | 本次的工具呼叫摘要，沒有呼叫工具時為空陣列 |
@@ -153,12 +164,26 @@
 
 `toolCalls` **不包含**參數、工具結果、顧客個資、內部網址、錯誤細節。
 
+> 原本的 `sources` 欄位已移除，由 `citations` 取代。`citations[].title`、`target`、`excerpt`、`description` 與回答文字一樣經過 `PiiRedactor` 處理。各工具的引用內容見 [03-tool-catalog.md](03-tool-catalog.md) 第 1.9 節。
+
 ```json
 {
   "requestId": "a1b2c3d4",
-  "answer": "### 近期互動\n- 10/02 電話：本顧客詢問月配息商品，希望每月現金流約 3 萬，已約定 10 月下旬面談\n……\n### 下次聯繫重點\n1. ……",
-  "sources": [
-    { "name": "平台顧客資料（模擬）", "url": null, "dataTime": null, "queriedAt": "2026-10-19T14:03:22+08:00" }
+  "blocks": [
+    { "type": "heading", "text": "近期互動", "citations": [] },
+    { "type": "bullet", "text": "10/02 電話：本顧客詢問月配息商品，希望每月現金流約 3 萬，已約定 10 月下旬面談", "citations": [1] },
+    { "type": "bullet", "text": "近期活動反應：……", "citations": [2] },
+    { "type": "heading", "text": "下次聯繫重點", "citations": [] },
+    { "type": "numbered", "text": "……", "citations": [] }
+  ],
+  "answer": "### 近期互動\n\n- 10/02 電話：本顧客詢問月配息商品，希望每月現金流約 3 萬，已約定 10 月下旬面談\n- 近期活動反應：……\n\n### 下次聯繫重點\n\n1. ……",
+  "citations": [
+    { "id": 1, "toolName": "getRecentInteractions", "title": "近期互動紀錄", "target": null, "excerpt": null,
+      "description": "3 筆，最近一筆 10/02", "sourceName": "平台顧客資料（模擬）", "url": null,
+      "dataTime": null, "queriedAt": "2026-10-19T14:03:22+08:00", "cited": true },
+    { "id": 2, "toolName": "getCampaignResults", "title": "行銷活動反應", "target": null, "excerpt": null,
+      "description": "2 筆", "sourceName": "平台顧客資料（模擬）", "url": null,
+      "dataTime": null, "queriedAt": "2026-10-19T14:03:23+08:00", "cited": true }
   ],
   "queriedAt": "2026-10-19T14:03:24+08:00",
   "disclaimer": null,
@@ -179,6 +204,7 @@
 | 404 | `AI_CUSTOMER_NOT_FOUND` | 顧客不存在，或不在使用者的範圍內 |
 | 422 | `AI_TOKEN_BUDGET_EXCEEDED` | 超過 token 預算 |
 | 429 | `AI_RATE_LIMITED` | 超過限流 |
+| 502 | `AI_ANSWER_FORMAT_INVALID` | 模型的最終回答格式不符、回答為空，或模型拒絕回答 |
 | 503 | `AI_LLM_RATE_LIMITED` / `AI_LLM_UNAVAILABLE` | GPT 限流 / 不可用 |
 | 504 | `AI_LLM_TIMEOUT` / `AI_REQUEST_TIMEOUT` | GPT 逾時 / 整體逾時 |
 

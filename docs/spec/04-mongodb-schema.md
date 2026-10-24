@@ -237,7 +237,7 @@ stateDiagram-v2
 
 ## 3. `COLL_ICRM_AI_ASSISTANT_AUDIT`
 
-每次提問寫入一份 document，記錄使用者、提問、回答，以及本次所有工具呼叫的執行結果。
+每次提問寫入一份 document，記錄使用者、提問、回答（含各段的引用標註），以及本次所有工具呼叫的執行結果與引用資訊。
 
 ### 3.1 Document
 
@@ -250,7 +250,7 @@ stateDiagram-v2
 | `customerId` | string | 本次對話的顧客編號（只存在稽核紀錄，從不送進 LLM） |
 | `accessLevel` | string | `FULL` 或 `LIMITED` |
 | `question` | string | 使用者本次提問，**存的是經過 `PiiRedactor` 處理後、實際送給 LLM 的版本**（最多 1000 字）；並再遮罩疑似憑證 |
-| `answer` | string \| null | 模型最終回答（Markdown）；超過 8000 字截斷並設 `answerTruncated`；失敗時為 null |
+| `answer` | string \| null | 模型最終回答（Markdown），**每個有引用的區塊後加 ` [n]` 標註**（多個引用並列，如 ` [1][2]`；`n` 為引用編號，對應 `toolCalls[].citationId`），可對照每段的依據；超過 8000 字截斷並設 `answerTruncated`；失敗時為 null |
 | `answerTruncated` | bool | |
 | `outcome` | string | `ANSWERED`、`FAILED` |
 | `errorCode` | string \| null | 對話層級錯誤碼，例如 `AI_LLM_TIMEOUT`（見 05 第 2.2 節） |
@@ -259,15 +259,23 @@ stateDiagram-v2
 | `toolCalls[].status` | string | `SUCCESS`、`ERROR`、`DENIED`、`TIMEOUT` |
 | `toolCalls[].errorCode` | string \| null | 工具錯誤碼 |
 | `toolCalls[].durationMs` | int | |
+| `toolCalls[].citationId` | int \| null | 對應回答中的引用編號（1 起算）；沒有配發引用編號（呼叫失敗、無權限、逾時，或整題回答失敗（FAILED））時為 null |
+| `toolCalls[].target` | string \| null | 工具宣告的非敏感查詢對象（例如「台積電 2330」），經 `PiiRedactor` 處理後最多 100 字；顧客工具一律為 null |
+| `toolCalls[].dataTime` | string \| null | 資料日期（例如收盤日），最多 32 字 |
+| `toolCalls[].resultCount` | int \| null | 結果筆數 |
+| `toolCalls[].resultHash` | string \| null | 送給模型的去識別化結果（整段 payload）的 SHA-256，64 位十六進位 |
+| `toolCalls[].result` | object \| null | 送給模型的 `data`；只有 `ai-assistant.audit.store-tool-results: true` 時才寫入，預設不寫入（欄位不存在） |
+| `unverifiedNumbers` | string[] | 回答中在本次工具結果裡找不到依據的數字，去重，最多 20 個、每個最多 32 字 |
 | `durationMs` | int | 整次提問的處理時間 |
 | `createdAt` | date | |
 
-**不記錄**：工具參數、工具結果、先前的對話歷史、API key。
+**不記錄**：工具參數（只記錄工具自行宣告的非敏感查詢對象 `target`）、先前的對話歷史、API key。工具結果只在 `ai-assistant.audit.store-tool-results: true` 時記錄，預設為 `false`，開啟前需 M36 法遵同意；平時只留 `resultHash` 供事後核對。
 
 處理規則：
 
 - `question` 存去識別化後的版本，再套用 2.5 節「API key / token」「密碼」樣式，命中的片段以 `[REDACTED]` 取代。
-- `answer` 回傳前已經過 `PiiRedactor` 再檢查一次，稽核存的是同一份內容。
+- `answer` 回傳前已經過 `PiiRedactor` 再檢查一次；稽核存的是同一份內容加上引用標註。`target` 同樣經過 `PiiRedactor`（再把「本顧客」代稱換成文字）才寫入。
+- `unverifiedNumbers` 是後端核對的結果，只寫入稽核、不影響回答；模型自行換算的數字（例如「約占 3 成」）也會被記入。
 - 稽核紀錄可以透過 `customerId` 追溯「誰在什麼時候問了哪位顧客的什麼問題」，但 LLM 端完全不知道顧客是誰。
 - 提問與回答**只寫入這個 collection**，不寫入應用程式 log（見 05 第 5 節）。
 - 使用者在前端按「取消」時，後端照常完成並寫入，`outcome` 依實際結果記錄。
@@ -283,14 +291,19 @@ stateDiagram-v2
   "customerId": "C001",
   "accessLevel": "FULL",
   "question": "【本顧客】最近有什麼互動？幫我準備下次聯繫重點",
-  "answer": "### 近期互動\n- 10/02 電話：本顧客詢問月配息商品……",
+  "answer": "### 近期互動\n\n- 10/02 電話：本顧客詢問月配息商品…… [1]",
   "answerTruncated": false,
   "outcome": "ANSWERED",
   "errorCode": null,
   "toolCalls": [
-    { "toolName": "getRecentInteractions", "status": "SUCCESS", "errorCode": null, "durationMs": 12 },
-    { "toolName": "getCampaignResults", "status": "SUCCESS", "errorCode": null, "durationMs": 9 }
+    { "toolName": "getRecentInteractions", "status": "SUCCESS", "errorCode": null, "durationMs": 12,
+      "citationId": 1, "target": null, "dataTime": null, "resultCount": 3,
+      "resultHash": "9f2c…（SHA-256，共 64 字元）" },
+    { "toolName": "getCampaignResults", "status": "SUCCESS", "errorCode": null, "durationMs": 9,
+      "citationId": 2, "target": null, "dataTime": null, "resultCount": 2,
+      "resultHash": "4be1…（SHA-256，共 64 字元）" }
   ],
+  "unverifiedNumbers": [],
   "durationMs": 2840,
   "createdAt": { "$date": "2026-10-19T06:03:22Z" }
 }
@@ -333,10 +346,17 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_AUDIT", {
               toolName:   { bsonType: "string", maxLength: 64 },
               status:     { enum: ["SUCCESS", "ERROR", "DENIED", "TIMEOUT"] },
               errorCode:  { bsonType: ["string", "null"], maxLength: 64 },
-              durationMs: { bsonType: "int", minimum: 0 }
+              durationMs: { bsonType: "int", minimum: 0 },
+              citationId: { bsonType: ["int", "null"], minimum: 1 },
+              target:     { bsonType: ["string", "null"], maxLength: 100 },
+              dataTime:   { bsonType: ["string", "null"], maxLength: 32 },
+              resultCount: { bsonType: ["int", "null"], minimum: 0 },
+              resultHash: { bsonType: ["string", "null"], minLength: 64, maxLength: 64 },
+              result:     { bsonType: ["object", "null"] }
             }
           }
         },
+        unverifiedNumbers: { bsonType: "array", maxItems: 20, items: { bsonType: "string", maxLength: 32 } },
         durationMs: { bsonType: "int", minimum: 0 },
         createdAt:  { bsonType: "date" }
       },
@@ -374,7 +394,8 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_AUDIT", {
 | 5～7 年（如法規要求） | 3.6～5 億 | 0.8～1 TB | 建議 shard |
 
 - 寫入量平均每秒約 7 筆、尖峰數十筆，壓力在累積的資料量，不在寫入速度。
-- 如果之後要保存工具查到的原始資料（目前不保存，見 3.1），每筆可能增加到 10～20 KB（`tool-result-max-bytes` 4 KB × 最多 5 次工具呼叫），資料量放大 5～10 倍。
+- 引用相關欄位（`citationId`、`target`、`resultHash` 等）讓每筆約增加 0.3～0.5 KB，不影響上面的估算。
+- 如果開啟 `store-tool-results` 保存工具查到的原始資料（預設不保存，見 3.1），每筆可能增加到 10～20 KB（`tool-result-max-bytes` 4 KB × 最多 5 次工具呼叫），資料量放大 5～10 倍。
 
 ### 5.2 各 collection 的建議
 

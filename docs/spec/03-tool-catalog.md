@@ -47,8 +47,18 @@ public record CustomerContext(
 public record ToolResult(
   ToolStatus status,        // SUCCESS | ERROR | DENIED | TIMEOUT
   String errorCode,         // 失敗時的工具錯誤碼，成功時為 null
+  String message,           // 失敗時給模型的固定訊息，成功時為 null
   Object data,              // 給模型的資料（已去識別化、已截斷）
-  List<Source> sources      // 只留在 Java 端，用來組回應的 sources
+  List<Source> sources,     // 只留在 Java 端，用來組回應的 citations
+  CitationDetail citation   // 只留在 Java 端：成功時工具對自己結果的說明（見 1.9），失敗時為 null
+) {}
+
+public record CitationDetail(
+  String title,             // 引用標題，例如「上市個股行情」
+  String target,            // 外部資料的查詢對象，例如「台積電 2330」；內部工具為 null
+  String excerpt,           // 外部資料的原文摘錄；內部工具為 null
+  String description,       // 內部資料的說明，例如「3 筆」；外部工具為 null
+  Integer resultCount       // 結果筆數，只寫入稽核
 ) {}
 ```
 
@@ -64,13 +74,16 @@ public record ToolResult(
    3. 參數中出現 schema 以外的欄位（例如模型自行加上 `customerId`）一律拒絕，同樣回 `TOOL_ARGUMENT_INVALID`。
 3. 在 virtual thread 上執行，超過 `timeout` 就中止，回傳 `TOOL_TIMEOUT`。
 4. 工具結果經過 `CustomerDeidentifier` 與 `PiiRedactor`（見 1.6），序列化後超過 4KB 就截斷清單並加上 `"truncated": true`。
-5. 工具呼叫的名稱、狀態、錯誤碼、耗時記入本次提問的稽核紀錄（見 [04-mongodb-schema.md](04-mongodb-schema.md) 第 3 節）。**不記參數和結果。**
+5. 成功的呼叫由 `ToolExecutor` 依序配發引用編號 `S1`、`S2`…；失敗、無權限、逾時、超過次數上限的呼叫不配發。
+6. 工具呼叫的名稱、狀態、錯誤碼、耗時、引用編號、查詢對象、資料日期、結果筆數與結果雜湊記入本次提問的稽核紀錄（見 [04-mongodb-schema.md](04-mongodb-schema.md) 第 3 節）。**不記參數；結果預設不記**，只有 `ai-assistant.audit.store-tool-results: true` 時才記。
 
 ### 1.5 回送給模型的格式
 
 ```json
-{ "untrustedData": true, "status": "SUCCESS", "data": { } }
+{ "untrustedData": true, "status": "SUCCESS", "citationId": "S1", "data": { } }
 ```
+
+`citationId` 只有成功的呼叫才有。模型在最終回答的每個區塊用它標示依據（見 [01-architecture.md](01-architecture.md) 第 4 節的回答格式規則）。
 
 失敗時：
 
@@ -134,6 +147,26 @@ public record ToolResult(
 |---|---|---|---|
 | 顧客資料 | 平台顧客資料（模擬） | `null` | `null` |
 | TWSE | 臺灣證券交易所 OpenAPI | `https://openapi.twse.com.tw/` | 資料日期 |
+
+這些來源標示由各工具回傳，組成回應 `citations[]` 的 `sourceName`、`url`、`dataTime`（見 [02-rest-api.md](02-rest-api.md) 2.1）。
+
+### 1.9 引用資訊
+
+每個工具在 `ToolResult` 旁提供 `CitationDetail`（1.3），說明自己查了什麼，用在回應的 `citations[]` 與稽核紀錄。內容由工具決定，**不得包含顧客識別資料或工具參數中的敏感值**；回應前再經過 `PiiRedactor`。標題若工具沒有提供，回應改用該工具的中文用途。
+
+| 工具 | title | target | excerpt（外部）／ description（內部） | 資料日期 |
+|---|---|---|---|---|
+| `getCustomerProfile` | 顧客概況 | — | 「N 個欄位」。N 不含 `subject`、`accessNote`（`FULL` 為 8、`LIMITED` 為 3） | — |
+| `getCustomerHoldings` | 顧客持有商品 | — | 「N 筆」 | — |
+| `getRecentInteractions` | 近期互動紀錄 | — | 「N 筆，最近一筆 MM/DD」；沒有紀錄時為「0 筆」 | — |
+| `getCampaignResults` | 行銷活動反應 | — | 「N 筆」 | — |
+| `getStockQuote` | 上市個股行情 | 「公司名稱 代號」；沒有公司名稱時只有代號 | 「收盤 X、漲跌 ±Y、本益比 Z、殖利率 W%」，缺少的項目省略，全部缺少時為 null | 資料日期 |
+| `getMarketIndex` | 大盤指數 | — | 最前面 3 項指數，格式「名稱 收盤（漲跌 ±X）」，以「、」連接；「發行量加權股價指數」顯示為「加權指數」；缺少的數值省略，沒有任何指數時為 null | 資料日期 |
+| `getCompanyAnnouncements` | 上市公司重大訊息 | 「公司名稱 代號」；沒有公司名稱（查無公告）時只有代號 | 最多 3 則主旨（各截斷 60 字），以「；」連接；沒有資料時為「查無重大訊息」 | 有公告時為資料日期，沒有公告時為 null |
+
+- 內部工具（顧客）的 `target`、`excerpt` 一律為 `null`，只有 `description`；外部工具（市場）只有 `target`、`excerpt`，`description` 為 `null`。
+- 外部資料的主旨與摘錄是不可信內容（第 3 節），前端只以純文字顯示。
+- 稽核紀錄也保存 `target`（同樣經過 `PiiRedactor`）、資料日期、`resultCount` 與結果雜湊，不保存 `excerpt` 與 `description`。
 
 ---
 

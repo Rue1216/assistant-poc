@@ -28,7 +28,8 @@ public class PromptAssembler {
         if (configs.systemPrompt() != null) {
             sb.append(configs.systemPrompt().getContent().strip()).append("\n\n");
         } else if (warnedMissingMain.compareAndSet(false, true)) {
-            log.warn("No published system.main found; continuing with instructions and safety rules only");
+            log.warn("No published system.main found; continuing with instructions, safety rules and "
+                    + "answer-format rules only");
         }
         sb.append("# 問題分類\n\n");
         for (AssistantConfig instruction : configs.instructions()) {

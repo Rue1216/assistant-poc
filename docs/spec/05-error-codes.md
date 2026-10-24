@@ -38,6 +38,9 @@
 | `AI_REQUEST_TIMEOUT` | 504 | 處理時間過長，請簡化問題後再試 | 整體超過 60 秒 |
 | `AI_LLM_RATE_LIMITED` | 503 | 小幫手目前使用量較高，請稍後再試 | GPT 供應商回傳 429 |
 | `AI_LLM_UNAVAILABLE` | 503 | 小幫手暫時無法使用，其他功能不受影響 | GPT 連線失敗、5xx、key 無效（401）等 |
+| `AI_ANSWER_FORMAT_INVALID` | 502 | 回答格式異常，請重試 | 模型的最終回答不是合法 JSON、不符合 schema、沒有任何非空白區塊；最終回答為 null 或空白（包含用完工具次數後的最後一次請求仍只回 tool call）；或模型拒絕回答（OpenAI 的 refusal 會以 LangChain4j 的 `ContentFilteredException` 到達，對應到這個錯誤碼）。不自動重試 |
+
+> `AI_ANSWER_FORMAT_INVALID` 的稽核紀錄為 `outcome: FAILED`、`errorCode: AI_ANSWER_FORMAT_INVALID`，且 `answer` 為 null、`toolCalls[].citationId` 為 null（整題失敗時不配發引用編號）；已成功的工具呼叫仍照常記錄 `target`、`dataTime`、`resultCount`、`resultHash`。前端沿用既有的錯誤訊息與重試按鈕。我們自己的規則造成的拒答（例如拒絕透露系統提示）是正常的區塊回答，不屬於這個錯誤。
 
 ### 2.3 Prompt 管理
 
@@ -97,10 +100,10 @@
 
 | 等級 | 內容 |
 |---|---|
-| INFO | requestId、userId、耗時、模型往返次數、tool call 次數、token 數 |
+| INFO | requestId、userId、耗時、模型往返次數、tool call 次數、token 數、回答區塊數（`blocks`）、有引用的區塊數（`citedBlocks`，不含 heading）、單次回應的最大輸出 token 數（`peakOutputTokens`） |
 | WARN | 工具失敗、限流、驗證失敗（只記錯誤碼） |
 | ERROR | GPT 或 TWSE 錯誤類型、未預期例外（stack trace 只在後端 log，敏感字串遮罩） |
 
-**任何等級都不記錄**：使用者提問全文、模型回答全文、工具參數、工具結果、API key。
+**任何等級都不記錄**：使用者提問全文、模型回答全文、模型回傳的原始 JSON、工具參數、工具結果、API key。
 
 > 提問與回答依需求 3-4 只寫入稽核 collection `COLL_ICRM_AI_ASSISTANT_AUDIT`（見 [04-mongodb-schema.md](04-mongodb-schema.md) 第 3 節），不進應用程式 log。

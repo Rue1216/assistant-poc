@@ -100,6 +100,26 @@ class AnswerAssemblerTest {
     }
 
     @Test
+    void groupedAndLabelledMarkersMoveIntoSources() {
+        AssembledAnswer grouped = assemble(json(block("paragraph", "收盤 2420 元 [S1, S2]，上漲")), s("S1"), s("S2"));
+        assertThat(grouped.blocks().get(0).text()).isEqualTo("收盤 2420 元，上漲");
+        assertThat(grouped.blocks().get(0).citations()).containsExactly(1, 2);
+
+        for (String marker : List.of("[S1、S2]", "【S1，S2】", "（S1、S2）", "(S1,S2)")) {
+            AssembledAnswer r = assemble(json(block("paragraph", "收盤 2420 元 " + marker + "。")), s("S1"), s("S2"));
+            assertThat(r.blocks().get(0).text()).as(marker).isEqualTo("收盤 2420 元。");
+            assertThat(r.blocks().get(0).citations()).as(marker).containsExactly(1, 2);
+        }
+        for (String marker : List.of("（來源：S1）", "(來源: S1)")) {
+            AssembledAnswer r = assemble(json(block("paragraph", "收盤 2420 元 " + marker + "，上漲")), s("S1"));
+            assertThat(r.blocks().get(0).text()).as(marker).isEqualTo("收盤 2420 元，上漲");
+            assertThat(r.blocks().get(0).citations()).as(marker).containsExactly(1);
+        }
+        AssembledAnswer middle = assemble(json(block("paragraph", "收盤 [S1] 2420 元")), s("S1"));
+        assertThat(middle.blocks().get(0).text()).isEqualTo("收盤 2420 元");
+    }
+
+    @Test
     void numbersFollowFirstUseThenUncitedInCallOrder() {
         AssembledAnswer r = assemble(json(block("paragraph", "a", "S2"), block("paragraph", "b", "S1")),
                 s("S1"), s("S2"), s("S3"));

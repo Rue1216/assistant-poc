@@ -252,6 +252,23 @@ class CustomerToolsTest {
     }
 
     @Test
+    void latestInteractionIsTheMaxDateNotTheFirstRecord() {
+        CustomerDataPort unordered = new MockCustomerDataAdapter(new MockCustomerData()) {
+            @Override
+            public List<InteractionRecord> findRecentInteractions(String customerId, int limit) {
+                return List.of(
+                        new InteractionRecord(LocalDate.of(2026, 9, 5), "電話", "t", "s", "o", "h"),
+                        new InteractionRecord(LocalDate.of(2026, 10, 12), "電話", "t", "s", "o", "h"),
+                        new InteractionRecord(LocalDate.of(2026, 8, 1), "電話", "t", "s", "o", "h"));
+            }
+        };
+        ToolResult result = new GetRecentInteractionsTool(unordered, new PiiRedactor())
+                .execute(new GetRecentInteractionsTool.InteractionArgs(null), context("C001", AccessLevel.FULL));
+
+        assertThat(result.citation().description()).isEqualTo("3 筆，最近一筆 10/12");
+    }
+
+    @Test
     void emptyInteractionsDescribeZeroRows() {
         CustomerDataPort empty = new MockCustomerDataAdapter(new MockCustomerData()) {
             @Override

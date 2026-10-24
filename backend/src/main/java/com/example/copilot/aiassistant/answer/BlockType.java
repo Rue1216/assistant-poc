@@ -1,6 +1,7 @@
 package com.example.copilot.aiassistant.answer;
 
 import com.fasterxml.jackson.annotation.JsonValue;
+import java.util.Locale;
 import java.util.Optional;
 
 /** Block types of a structured answer; the JSON value is the lower-case name. */
@@ -9,7 +10,7 @@ public enum BlockType {
 
     @JsonValue
     public String json() {
-        return name().toLowerCase();
+        return name().toLowerCase(Locale.ROOT);
     }
 
     public static Optional<BlockType> fromJson(String value) {
