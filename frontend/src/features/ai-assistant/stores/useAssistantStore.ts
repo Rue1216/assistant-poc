@@ -81,7 +81,8 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
       bot.state = 'done'
       bot.content = res.answer
       bot.queriedAt = res.queriedAt
-      bot.sources = res.sources
+      bot.blocks = res.blocks
+      bot.citations = res.citations
       bot.disclaimer = res.disclaimer
       bot.toolCalls = res.toolCalls
     } catch (e) {

@@ -1,10 +1,25 @@
 export type ToolCallStatus = 'SUCCESS' | 'ERROR' | 'DENIED' | 'TIMEOUT'
 
-export interface SourceView {
-  name: string
+export type AnswerBlockType = 'heading' | 'paragraph' | 'bullet' | 'numbered'
+
+export interface AnswerBlock {
+  type: AnswerBlockType
+  text: string
+  citations: number[]
+}
+
+export interface Citation {
+  id: number
+  toolName: string
+  title: string
+  target: string | null
+  excerpt: string | null
+  description: string | null
+  sourceName: string | null
   url: string | null
   dataTime: string | null
   queriedAt: string
+  cited: boolean
 }
 
 export interface ToolCallSummary {
@@ -17,7 +32,8 @@ export interface ToolCallSummary {
 export interface ChatResponse {
   requestId: string
   answer: string
-  sources: SourceView[]
+  blocks: AnswerBlock[]
+  citations: Citation[]
   queriedAt: string
   disclaimer: string | null
   toolCalls: ToolCallSummary[]
@@ -54,7 +70,8 @@ export interface ChatMessage {
   createdAt: string
   /** Server processing time of an assistant answer (ISO 8601). */
   queriedAt?: string
-  sources?: SourceView[]
+  blocks?: AnswerBlock[]
+  citations?: Citation[]
   disclaimer?: string | null
   toolCalls?: ToolCallSummary[]
   error?: ChatMessageError

@@ -204,7 +204,7 @@ function matchLink(s: string, start: number): { text: string; href: string; end:
   return { text: s.slice(start + 1, close), href, end: paren + 1 }
 }
 
-function parseInline(s: string, depth: number): Inline[] {
+export function parseInline(s: string, depth = 0): Inline[] {
   const out: Inline[] = []
   if (depth > MAX_DEPTH) {
     pushText(out, s)

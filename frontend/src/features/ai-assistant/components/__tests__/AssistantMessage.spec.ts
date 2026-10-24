@@ -1,12 +1,27 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
-import type { ChatMessage } from '../../types'
+import type { ChatMessage, Citation } from '../../types'
 
 vi.mock('../../../../platform-mock/useToast', () => ({ useToast: () => ({ show: vi.fn() }) }))
 
 import AssistantMessage from '../AssistantMessage.vue'
-import SafeMarkdown from '../../markdown/SafeMarkdown'
 import { formatTaipei } from '../../taipeiTime'
+
+function cit(id: number, cited = true): Citation {
+  return {
+    id,
+    toolName: 't',
+    title: `標題${id}`,
+    target: null,
+    excerpt: null,
+    description: '說明',
+    sourceName: '平台顧客資料（模擬）',
+    url: null,
+    dataTime: null,
+    queriedAt: '2026-10-19T14:03:22+08:00',
+    cited,
+  }
+}
 
 function msg(extra: Partial<ChatMessage> = {}): ChatMessage {
   return {
@@ -16,7 +31,8 @@ function msg(extra: Partial<ChatMessage> = {}): ChatMessage {
     state: 'done',
     createdAt: '2026-10-19T06:03:20Z',
     queriedAt: '2026-10-19T14:03:24+08:00',
-    sources: [],
+    blocks: [],
+    citations: [],
     disclaimer: null,
     toolCalls: [],
     ...extra,
@@ -24,9 +40,19 @@ function msg(extra: Partial<ChatMessage> = {}): ChatMessage {
 }
 
 describe('AssistantMessage', () => {
-  it('renders answer through SafeMarkdown', () => {
-    const w = mount(AssistantMessage, { props: { message: msg({ content: '<script>alert(1)</script> **粗體**' }) } })
-    expect(w.findComponent(SafeMarkdown).props('source')).toBe('<script>alert(1)</script> **粗體**')
+  it('renders answer blocks with citation buttons', () => {
+    const w = mount(AssistantMessage, {
+      props: {
+        message: msg({
+          blocks: [
+            { type: 'heading', text: '概況', citations: [] },
+            { type: 'paragraph', text: '<script>alert(1)</script> **粗體**', citations: [1] },
+          ],
+          citations: [cit(1)],
+        }),
+      },
+    })
+    expect(w.findAll('button.ai-cite')).toHaveLength(1)
     expect(w.find('script').exists()).toBe(false)
     expect(w.find('strong').text()).toBe('粗體')
     expect(w.find('.ai-msg__time').text()).toBe('14:03')
@@ -57,29 +83,56 @@ describe('AssistantMessage', () => {
     expect(rows[1]!.text()).toContain('1.4 s')
   })
 
-  it('shows sources with data time and queried time, and disclaimer', () => {
+  it('shows disclaimer and citation list; ai-meta only with tools or citations', () => {
+    expect(mount(AssistantMessage, { props: { message: msg() } }).find('.ai-meta').exists()).toBe(false)
     const w = mount(AssistantMessage, {
       props: {
         message: msg({
           disclaimer: '資訊僅供內部經營參考，不構成投資建議',
-          sources: [
-            { name: '平台顧客資料（模擬）', url: null, dataTime: null, queriedAt: '2026-10-19T14:03:22+08:00' },
-            { name: '臺灣證券交易所 OpenAPI', url: 'https://openapi.twse.com.tw/', dataTime: '2026-10-19', queriedAt: '2026-10-19T14:05:00+08:00' },
-            { name: '壞連結', url: 'javascript:alert(1)', dataTime: null, queriedAt: '2026-10-19T14:05:00+08:00' },
-          ],
+          citations: [cit(1), cit(2, false)],
         }),
       },
     })
     expect(w.find('.ai-disclaimer').text()).toBe('資訊僅供內部經營參考，不構成投資建議')
-    const sources = w.findAll('.ai-source')
-    expect(sources[0]!.text()).toContain('查詢 14:03')
-    expect(sources[0]!.element.tagName).toBe('SPAN')
-    expect(sources[1]!.element.tagName).toBe('A')
-    expect(sources[1]!.attributes('href')).toBe('https://openapi.twse.com.tw/')
-    expect(sources[1]!.attributes('rel')).toContain('noopener')
-    expect(sources[1]!.text()).toContain('資料 2026-10-19')
-    expect(sources[1]!.text()).toContain('查詢 14:05')
-    expect(sources[2]!.element.tagName).toBe('SPAN')
+    expect(w.find('.ai-meta').exists()).toBe(true)
+    expect(w.findAll('.ai-citation')).toHaveLength(2)
+    expect(w.find('.ai-meta__sep').exists()).toBe(false)
+  })
+
+  it('adds separator when tools and citations both present', () => {
+    const w = mount(AssistantMessage, {
+      props: {
+        message: msg({
+          citations: [cit(1)],
+          toolCalls: [{ name: 'getStockQuote', purpose: '查詢', status: 'SUCCESS', durationMs: 9 }],
+        }),
+      },
+    })
+    expect(w.find('.ai-meta__sep').exists()).toBe(true)
+  })
+
+  it('clicking a citation button opens and highlights the item', async () => {
+    Element.prototype.scrollIntoView = vi.fn()
+    const w = mount(AssistantMessage, {
+      props: {
+        message: msg({
+          blocks: [{ type: 'paragraph', text: '收盤價', citations: [2] }],
+          citations: [cit(1), cit(2)],
+        }),
+      },
+    })
+    await w.get('button.ai-cite').trigger('click')
+    const item = w.get('[data-citation-id="2"]')
+    expect((item.element as HTMLDetailsElement).open).toBe(true)
+    expect(item.classes()).toContain('ai-citation--flash')
+  })
+
+  it('copy button copies content', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    const w = mount(AssistantMessage, { props: { message: msg() } })
+    await w.get('.ai-mini-btn').trigger('click')
+    expect(writeText).toHaveBeenCalledWith('### 概況\n- 本顧客為 VIP')
   })
 })
 

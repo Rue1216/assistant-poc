@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import type { ChatResponse } from '../../types'
+import type { ChatResponse, Citation } from '../../types'
 
 const { chat } = vi.hoisted(() => ({ chat: vi.fn() }))
 vi.mock('../../api/aiAssistantApi', () => ({ aiAssistantApi: { chat, suggestions: vi.fn() } }))
@@ -9,11 +9,17 @@ vi.mock('../../../../platform-mock/useToast', () => ({ useToast: () => ({ show: 
 import { ApiError } from '../../../../platform-mock/apiClient'
 import { useAssistantStore } from '../useAssistantStore'
 
+const CITATION: Citation = {
+  id: 1, toolName: 't', title: '上市個股行情', target: '2330', excerpt: null, description: null,
+  sourceName: null, url: null, dataTime: null, queriedAt: '2026-10-19T14:03:24+08:00', cited: true,
+}
+
 function response(answer: string): ChatResponse {
   return {
     requestId: 'r1',
     answer,
-    sources: [],
+    blocks: [{ type: 'paragraph', text: answer, citations: [1] }],
+    citations: [CITATION],
     queriedAt: '2026-10-19T14:03:24+08:00',
     disclaimer: null,
     toolCalls: [],
@@ -34,6 +40,22 @@ describe('useAssistantStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     chat.mockReset()
+  })
+
+  it('stores blocks and citations on the bot message and keeps answer as content', async () => {
+    chat.mockResolvedValue(response('答案'))
+    const store = useAssistantStore()
+    store.bindCustomer('C001')
+    await store.send('q')
+    const bot = store.messages[1]!
+    expect(bot.content).toBe('答案')
+    expect(bot.blocks).toEqual([{ type: 'paragraph', text: '答案', citations: [1] }])
+    expect(bot.citations).toEqual([CITATION])
+    await store.send('q2')
+    expect(chat.mock.calls[1]![1].history).toEqual([
+      { role: 'user', content: 'q' },
+      { role: 'assistant', content: '答案' },
+    ])
   })
 
   it('appends user and assistant messages', async () => {

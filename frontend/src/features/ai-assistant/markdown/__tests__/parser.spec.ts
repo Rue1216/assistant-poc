@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseMarkdown, parseMarkdownWithLines, type MdNode } from '../parser'
+import { parseInline, parseMarkdown, parseMarkdownWithLines, type MdNode } from '../parser'
 
 describe('parseMarkdown', () => {
   it('parses headings, lists, bold, table, fenced code', () => {
@@ -143,5 +143,14 @@ describe('parseMarkdownWithLines', () => {
 
   it('returns the same nodes as parseMarkdown', () => {
     expect(parseMarkdownWithLines(src).nodes).toEqual(parseMarkdown(src))
+  })
+})
+
+describe('parseInline', () => {
+  it('is exported and parses inline markup', () => {
+    expect(parseInline('a **b**')).toEqual([
+      { type: 'text', value: 'a ' },
+      { type: 'strong', children: [{ type: 'text', value: 'b' }] },
+    ])
   })
 })

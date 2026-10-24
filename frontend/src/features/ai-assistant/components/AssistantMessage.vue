@@ -1,18 +1,23 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { ChatMessage } from '../types'
 import { formatTaipeiTime } from '../taipeiTime'
 import { useToast } from '../../../platform-mock/useToast'
-import SafeMarkdown from '../markdown/SafeMarkdown'
+import AnswerBlocks from './AnswerBlocks'
 import ToolCallSummary from './ToolCallSummary.vue'
-import SourceList from './SourceList.vue'
+import CitationList from './CitationList.vue'
 
 const props = defineProps<{ message: ChatMessage }>()
 
 const toast = useToast()
 const time = computed(() => formatTaipeiTime(props.message.queriedAt ?? props.message.createdAt))
 const hasTools = computed(() => (props.message.toolCalls?.length ?? 0) > 0)
-const hasSources = computed(() => (props.message.sources?.length ?? 0) > 0)
+const hasCitations = computed(() => (props.message.citations?.length ?? 0) > 0)
+const citationList = ref<InstanceType<typeof CitationList> | null>(null)
+
+function onCite(id: number): void {
+  citationList.value?.reveal(id)
+}
 
 async function copy(): Promise<void> {
   try {
@@ -29,7 +34,7 @@ async function copy(): Promise<void> {
     <div class="ai-msg__avatar" aria-hidden="true">✦</div>
     <div class="ai-msg__content">
       <div class="ai-msg__bubble md">
-        <SafeMarkdown :source="message.content" />
+        <AnswerBlocks :blocks="message.blocks ?? []" :citations="message.citations ?? []" @cite="onCite" />
       </div>
 
       <p v-if="message.disclaimer" class="ai-disclaimer">
@@ -40,9 +45,9 @@ async function copy(): Promise<void> {
         {{ message.disclaimer }}
       </p>
 
-      <div v-if="hasTools || hasSources" class="ai-meta">
+      <div v-if="hasTools || hasCitations" class="ai-meta">
         <ToolCallSummary v-if="hasTools" :tool-calls="message.toolCalls!" />
-        <SourceList v-if="hasSources" :sources="message.sources!" :class="{ 'ai-meta__sep': hasTools }" />
+        <CitationList v-if="hasCitations" ref="citationList" :citations="message.citations!" :class="{ 'ai-meta__sep': hasTools }" />
       </div>
 
       <div class="ai-msg__actions">
@@ -96,6 +101,27 @@ async function copy(): Promise<void> {
 }
 .ai-msg__bubble :deep(h3:not(:first-child)) {
   margin-top: 12px;
+}
+.ai-msg__bubble :deep(.ai-cite) {
+  min-width: 16px;
+  height: 16px;
+  margin-left: 2px;
+  padding: 0 4px;
+  border: 1px solid var(--color-primary-border);
+  border-radius: 4px;
+  background: var(--color-primary-subtle);
+  color: var(--color-primary-active);
+  font-size: 11px;
+  line-height: 14px;
+  cursor: pointer;
+}
+.ai-msg__bubble :deep(.ai-cite:hover) {
+  background: var(--color-primary);
+  color: var(--color-text-on-primary);
+}
+.ai-msg__bubble :deep(.ai-cite:focus-visible) {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
 }
 .ai-disclaimer {
   display: flex;

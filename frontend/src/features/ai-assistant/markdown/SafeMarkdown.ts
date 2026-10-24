@@ -21,21 +21,21 @@ function text(value: string): Child[] {
   return out
 }
 
-function inlines(nodes: Inline[], inLink = false): Child[] {
+export function renderInlines(nodes: Inline[], inLink = false): (VNode | string)[] {
   return nodes.flatMap((n): Child[] => {
     switch (n.type) {
       case 'text':
         return text(n.value)
       case 'strong':
-        return [h('strong', inlines(n.children, inLink))]
+        return [h('strong', renderInlines(n.children, inLink))]
       case 'em':
-        return [h('em', inlines(n.children, inLink))]
+        return [h('em', renderInlines(n.children, inLink))]
       case 'codespan':
         return [h('code', n.value)]
       case 'link': {
         const href = safeHref(n.href)
-        if (!href || inLink) return inlines(n.children, inLink) // nested links become plain text
-        return [h('a', { href, target: '_blank', rel: 'noopener noreferrer nofollow' }, inlines(n.children, true))]
+        if (!href || inLink) return renderInlines(n.children, inLink) // nested links become plain text
+        return [h('a', { href, target: '_blank', rel: 'noopener noreferrer nofollow' }, renderInlines(n.children, true))]
       }
     }
   })
@@ -54,9 +54,9 @@ function blocks(nodes: MdNode[], hl: Highlight): VNode[] {
   return nodes.map((n): VNode => {
     switch (n.type) {
       case 'heading':
-        return h(`h${n.level}`, marked(inlines(n.children), hl(n)))
+        return h(`h${n.level}`, marked(renderInlines(n.children), hl(n)))
       case 'paragraph':
-        return h('p', marked(inlines(n.children), hl(n)))
+        return h('p', marked(renderInlines(n.children), hl(n)))
       case 'list':
         return h(
           n.ordered ? 'ol' : 'ul',
@@ -68,13 +68,13 @@ function blocks(nodes: MdNode[], hl: Highlight): VNode[] {
         return h('pre', [h('code', marked([n.text], hl(n)))])
       case 'table':
         return h('table', [
-          h('thead', [h('tr', n.header.map((c) => h('th', marked(inlines(c), hl(n.header)))))]),
+          h('thead', [h('tr', n.header.map((c) => h('th', marked(renderInlines(c), hl(n.header)))))]),
           h(
             'tbody',
             n.rows.map((r) =>
               h(
                 'tr',
-                r.map((c) => h('td', marked(inlines(c), hl(r)))),
+                r.map((c) => h('td', marked(renderInlines(c), hl(r)))),
               ),
             ),
           ),
