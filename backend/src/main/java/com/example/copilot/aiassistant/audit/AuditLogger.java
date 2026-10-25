@@ -4,6 +4,7 @@ import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.privacy.CustomerContext;
 import com.example.copilot.aiassistant.privacy.CustomerDeidentifier;
 import com.example.copilot.aiassistant.privacy.PiiRedactor;
+import com.example.copilot.aiassistant.prompt.PromptVersion;
 import com.example.copilot.aiassistant.tool.CitationDetail;
 import com.example.copilot.aiassistant.tool.Source;
 import com.example.copilot.aiassistant.tool.ToolOutcome;
@@ -34,6 +35,7 @@ public class AuditLogger {
     private static final int MAX_CUSTOMER = 32;
     private static final int MAX_TARGET = 100;
     private static final int MAX_DATA_TIME = 32;
+    static final int MAX_PROMPT_VERSIONS = 100;
     static final int MAX_UNVERIFIED = 20;
     private static final int MAX_UNVERIFIED_LENGTH = 32;
     private static final JsonMapper JSON = JsonMapper.builder().build();
@@ -77,7 +79,8 @@ public class AuditLogger {
                 clip(e.user().roleKey(), MAX_ROLE), clip(e.customer().customerId(), MAX_CUSTOMER),
                 e.customer().accessLevel().name(), question, truncated ? clip(answer, MAX_ANSWER) : answer,
                 truncated, e.outcome(), clip(e.errorCode(), MAX_ID), calls, clamp(e.durationMs()), clock.instant(),
-                unverified(e.unverifiedNumbers()));
+                unverified(e.unverifiedNumbers()), clamp(e.modelCalls()), clamp(e.inputTokens()),
+                clamp(e.outputTokens()), clamp(e.totalTokens()), versions(e));
     }
 
     private AuditRecord.ToolCall toCall(ToolOutcome o, Map<String, Integer> numbers, CustomerContext customer) {
@@ -104,6 +107,15 @@ public class AuditLogger {
             return null;
         }
         return redactor.redact(target, customer).replace(PiiRedactor.SELF, CustomerDeidentifier.SUBJECT);
+    }
+
+    private static List<PromptVersion> versions(AuditEntry e) {
+        List<PromptVersion> all = e.promptVersions() == null ? List.of() : e.promptVersions();
+        if (all.size() > MAX_PROMPT_VERSIONS) {
+            log.warn("Audit promptVersions truncated requestId={} count={}", e.requestId(), all.size());
+            return all.subList(0, MAX_PROMPT_VERSIONS);
+        }
+        return all;
     }
 
     private static List<String> unverified(List<String> numbers) {

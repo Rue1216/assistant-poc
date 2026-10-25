@@ -38,7 +38,7 @@ public class PublishedConfigCache {
         if (cached != null && now.isBefore(cached.loadedAt().plus(TTL))) {
             return cached.configs();
         }
-        PublishedConfigs loaded = load();
+        PublishedConfigs loaded = loadFresh();
         entry = new Entry(loaded, now);
         return loaded;
     }
@@ -47,7 +47,8 @@ public class PublishedConfigCache {
         entry = null;
     }
 
-    private PublishedConfigs load() {
+    /** Reads the published configs straight from MongoDB without touching the cache. */
+    public PublishedConfigs loadFresh() {
         List<AssistantConfig> published = repository.findByStatus(ConfigStatus.PUBLISHED);
         AssistantConfig systemPrompt = published.stream()
                 .filter(c -> c.getConfigType() == ConfigType.SYSTEM_PROMPT)

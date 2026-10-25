@@ -34,6 +34,24 @@
         }
       },
       "unverifiedNumbers": { "bsonType": "array", "maxItems": 20, "items": { "bsonType": "string", "maxLength": 32 } },
+      "modelCalls":     { "bsonType": "int", "minimum": 0 },
+      "inputTokens":    { "bsonType": "int", "minimum": 0 },
+      "outputTokens":   { "bsonType": "int", "minimum": 0 },
+      "totalTokens":    { "bsonType": "int", "minimum": 0 },
+      "promptVersions": {
+        "bsonType": "array",
+        "maxItems": 100,
+        "items": {
+          "bsonType": "object",
+          "required": ["configKey", "version"],
+          "properties": {
+            "configKey": { "bsonType": "string", "maxLength": 64 },
+            "version":   { "bsonType": "int", "minimum": 1 }
+          }
+        }
+      },
+      "feedback":   { "enum": ["UP", "DOWN", null] },
+      "feedbackAt": { "bsonType": ["date", "null"] },
       "durationMs": { "bsonType": "int", "minimum": 0 },
       "createdAt":  { "bsonType": "date" }
     },

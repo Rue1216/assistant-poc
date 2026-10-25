@@ -129,6 +129,41 @@ class MongoSchemaTest extends IntegrationTestBase {
                 .isInstanceOf(MongoWriteException.class);
     }
 
+
+    private Document auditDocWithFeedback(String requestId, String feedback) {
+        return auditDoc(requestId, "a".repeat(64)).append("modelCalls", 2).append("inputTokens", 6500)
+                .append("outputTokens", 350).append("totalTokens", 6850)
+                .append("promptVersions", java.util.List.of(
+                        new Document("configKey", "system.main").append("version", 1)))
+                .append("feedback", feedback).append("feedbackAt", feedback == null ? null : new Date());
+    }
+
+    @Test
+    void auditValidatorAcceptsNewFields() {
+        mongo.getCollection(AUDIT).insertOne(auditDocWithFeedback("schema-ok-2", null));
+        mongo.getCollection(AUDIT).insertOne(auditDocWithFeedback("schema-ok-3", "UP"));
+        assertThat(mongo.getCollection(AUDIT).countDocuments(new Document("requestId",
+                new Document("$in", java.util.List.of("schema-ok-2", "schema-ok-3"))))).isEqualTo(2);
+    }
+
+    @Test
+    void auditValidatorRejectsBadFeedback() {
+        assertThatThrownBy(() -> mongo.getCollection(AUDIT).insertOne(auditDocWithFeedback("schema-bad-2", "MAYBE")))
+                .isInstanceOf(MongoWriteException.class);
+    }
+    @Test
+    void auditIndexes() {
+        java.util.List<IndexInfo> audit = mongo.indexOps(AUDIT).getIndexInfo();
+        IndexInfo byRequest = audit.stream().filter(i -> i.getName().equals("IX_ICRM_AI_AUDIT_4"))
+                .findFirst().orElseThrow();
+        assertThat(byRequest.getIndexFields().stream().map(f -> f.getKey()).toList()).containsExactly("requestId");
+        IndexInfo byVersion = audit.stream().filter(i -> i.getName().equals("IX_ICRM_AI_AUDIT_5"))
+                .findFirst().orElseThrow();
+        assertThat(byVersion.getIndexFields().stream().map(f -> f.getKey()).toList())
+                .containsExactly("promptVersions.configKey", "promptVersions.version");
+        assertThat(byVersion.getPartialFilterExpression()).isNotBlank();
+    }
+
     @Test
     void indexNamesMatchSpec() {
         Set<String> config = mongo.indexOps(CONFIG).getIndexInfo().stream()

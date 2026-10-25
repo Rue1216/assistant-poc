@@ -20,6 +20,7 @@ public enum ErrorCode {
     AI_LLM_RATE_LIMITED(HttpStatus.SERVICE_UNAVAILABLE, "小幫手目前使用量較高，請稍後再試"),
     AI_LLM_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "小幫手暫時無法使用，其他功能不受影響"),
     AI_ANSWER_FORMAT_INVALID(HttpStatus.BAD_GATEWAY, "回答格式異常，請重試"),
+    AI_FEEDBACK_NOT_FOUND(HttpStatus.NOT_FOUND, "這則回答已無法評分"),
 
     // 2.3 prompt management
     AI_CONFIG_NOT_FOUND(HttpStatus.NOT_FOUND, "找不到指定的設定或版本"),

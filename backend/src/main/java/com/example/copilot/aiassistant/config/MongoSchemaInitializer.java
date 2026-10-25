@@ -10,6 +10,7 @@ import org.springframework.data.mongodb.core.index.Index;
 import org.springframework.data.mongodb.core.index.IndexOperations;
 import org.springframework.data.mongodb.core.index.PartialIndexFilter;
 import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.schema.JsonSchemaObject;
 import org.springframework.stereotype.Component;
 
 /** Idempotently creates the collections, validators and indexes (04 section 4). */
@@ -68,5 +69,9 @@ public class MongoSchemaInitializer implements ApplicationRunner {
                 .on("createdAt", Sort.Direction.DESC));
         ops.createIndex(new Index().named("IX_ICRM_AI_AUDIT_3").on("customerId", Sort.Direction.ASC)
                 .on("createdAt", Sort.Direction.DESC));
+        ops.createIndex(new Index().named("IX_ICRM_AI_AUDIT_4").on("requestId", Sort.Direction.ASC));
+        ops.createIndex(new Index().named("IX_ICRM_AI_AUDIT_5").on("promptVersions.configKey", Sort.Direction.ASC)
+                .on("promptVersions.version", Sort.Direction.ASC)
+                .partial(PartialIndexFilter.of(Criteria.where("feedback").type(JsonSchemaObject.Type.STRING))));
     }
 }

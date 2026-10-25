@@ -98,6 +98,12 @@ public class ScriptedChatModel implements ChatModel {
         return ChatResponse.builder().aiMessage(message).tokenUsage(new TokenUsage(totalTokens)).build();
     }
 
+    /** The same response with an input/output token split (total is their sum). */
+    public static ChatResponse usage(ChatResponse response, int inputTokens, int outputTokens) {
+        return ChatResponse.builder().aiMessage(response.aiMessage())
+                .tokenUsage(new TokenUsage(inputTokens, outputTokens)).build();
+    }
+
     public static ToolExecutionRequest call(String id, String name, String arguments) {
         return ToolExecutionRequest.builder().id(id).name(name).arguments(arguments).build();
     }

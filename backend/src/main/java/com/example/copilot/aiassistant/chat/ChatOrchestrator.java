@@ -18,6 +18,7 @@ import com.example.copilot.aiassistant.port.UserContext;
 import com.example.copilot.aiassistant.privacy.CustomerContext;
 import com.example.copilot.aiassistant.privacy.CustomerDeidentifier;
 import com.example.copilot.aiassistant.privacy.PiiRedactor;
+import com.example.copilot.aiassistant.prompt.AssembledPrompt;
 import com.example.copilot.aiassistant.prompt.PromptAssembler;
 import com.example.copilot.aiassistant.tool.AssistantTool;
 import com.example.copilot.aiassistant.tool.CitationDetail;
@@ -99,15 +100,17 @@ public class ChatOrchestrator {
 
     /** Answers one question; on failure writes a FAILED audit entry and throws {@link AssistantException}. */
     public ChatResult chat(ChatCommand command, UserContext user, CustomerContext customer) {
-        Turn turn = new Turn(user, customer);
+        Turn turn = new Turn(user, customer, promptAssembler.current());
         try {
             ChatResult result = turn.result(turn.answer(command));
             turn.audit(turn.assembled, "ANSWERED", null);
             long citedBlocks = result.blocks().stream()
                     .filter(b -> b.type() != BlockType.HEADING && !b.citations().isEmpty()).count();
             log.info("chat answered requestId={} userId={} durationMs={} modelCalls={} toolCalls={} totalTokens={} "
+                            + "inputTokens={} outputTokens={} "
                             + "blocks={} citedBlocks={} peakOutputTokens={}", turn.requestId, user.userId(),
-                    turn.elapsedMs(), turn.modelCalls, turn.executed.size(), turn.totalTokens, result.blocks().size(),
+                    turn.elapsedMs(), turn.modelCalls, turn.executed.size(), turn.totalTokens, turn.inputTokens,
+                    turn.outputTokens, result.blocks().size(),
                     citedBlocks, turn.peakOutputTokens);
             return result;
         } catch (AssistantException e) {
@@ -132,19 +135,23 @@ public class ChatOrchestrator {
         private final UserContext user;
         private final CustomerContext customer;
         private final ToolContext toolContext;
+        private final AssembledPrompt prompt;
         private final List<ExecutedTool> executed = new ArrayList<>();
         /** Calls beyond the cap: reported in the summary, never executed, never audited as tool calls. */
         private final List<ToolOutcome> skipped = new ArrayList<>();
         private String redactedQuestion;
         private int modelCalls;
         private long totalTokens;
+        private long inputTokens;
+        private long outputTokens;
         private int peakOutputTokens;
         /** Set once the final answer passed validation; the audit's answer and citation data come from here. */
         private AssembledAnswer assembled;
 
-        Turn(UserContext user, CustomerContext customer) {
+        Turn(UserContext user, CustomerContext customer, AssembledPrompt prompt) {
             this.user = user;
             this.customer = customer;
+            this.prompt = prompt;
             this.toolContext = new ToolContext(user, customer);
         }
 
@@ -155,7 +162,7 @@ public class ChatOrchestrator {
         String answer(ChatCommand command) {
             redactedQuestion = redact(command.message());
             List<ChatMessage> messages = new ArrayList<>();
-            messages.add(SystemMessage.from(promptAssembler.systemMessage()));
+            messages.add(SystemMessage.from(prompt.text()));
             messages.addAll(history(command.history()));
             messages.add(UserMessage.from(redactedQuestion));
 
@@ -218,6 +225,8 @@ public class ChatOrchestrator {
                 throw new AssistantException(code);
             }
             totalTokens += tokens(response.tokenUsage());
+            inputTokens += inputTokens(response.tokenUsage());
+            outputTokens += outputTokens(response.tokenUsage());
             peakOutputTokens = Math.max(peakOutputTokens, outputTokens(response.tokenUsage()));
             if (totalTokens > limits.tokenBudget()) {
                 throw new AssistantException(ErrorCode.AI_TOKEN_BUDGET_EXCEEDED);
@@ -312,8 +321,9 @@ public class ChatOrchestrator {
         void fail(ErrorCode code) {
             audit(null, "FAILED", code.name());
             log.warn("chat failed requestId={} userId={} code={} durationMs={} modelCalls={} toolCalls={} "
-                            + "totalTokens={}", requestId, user.userId(), code, elapsedMs(), modelCalls,
-                    executed.size(), totalTokens);
+                            + "totalTokens={} inputTokens={} outputTokens={}", requestId, user.userId(), code,
+                    elapsedMs(), modelCalls,
+                    executed.size(), totalTokens, inputTokens, outputTokens);
         }
 
         /** {@code answer} is null for a failed question: no answer text and no citation data are audited. */
@@ -321,10 +331,12 @@ public class ChatOrchestrator {
             List<ToolOutcome> outcomes = executed.stream().map(ExecutedTool::outcome).toList();
             auditLogger.record(answer == null
                     ? new AuditEntry(requestId, user, customer, redactedQuestion, null, false, outcome, errorCode,
-                            outcomes, Map.of(), List.of(), elapsedMs())
+                            outcomes, Map.of(), List.of(), elapsedMs(), modelCalls, inputTokens,
+                            outputTokens, totalTokens, prompt.versions())
                     : new AuditEntry(requestId, user, customer, redactedQuestion, answer.annotatedAnswer(),
                             answer.truncated(), outcome, errorCode, outcomes, answer.citationNumbers(),
-                            answer.unverifiedNumbers(), elapsedMs()));
+                            answer.unverifiedNumbers(), elapsedMs(), modelCalls, inputTokens, outputTokens, totalTokens,
+                            prompt.versions()));
         }
 
         long elapsedMs() {
@@ -344,6 +356,10 @@ public class ChatOrchestrator {
 
     private static long tokens(TokenUsage usage) {
         return usage == null || usage.totalTokenCount() == null ? 0 : usage.totalTokenCount();
+    }
+
+    private static long inputTokens(TokenUsage usage) {
+        return usage == null || usage.inputTokenCount() == null ? 0 : usage.inputTokenCount();
     }
 
     private static int outputTokens(TokenUsage usage) {

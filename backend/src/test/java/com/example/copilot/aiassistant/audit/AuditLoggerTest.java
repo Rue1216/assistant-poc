@@ -13,6 +13,7 @@ import com.example.copilot.aiassistant.port.AccessLevel;
 import com.example.copilot.aiassistant.port.UserContext;
 import com.example.copilot.aiassistant.privacy.CustomerContext;
 import com.example.copilot.aiassistant.privacy.PiiRedactor;
+import com.example.copilot.aiassistant.prompt.PromptVersion;
 import com.example.copilot.aiassistant.tool.CitationDetail;
 import com.example.copilot.aiassistant.tool.Source;
 import com.example.copilot.aiassistant.tool.ToolOutcome;
@@ -39,7 +40,8 @@ class AuditLoggerTest extends IntegrationTestBase {
     private static final String COLL = "COLL_ICRM_AI_ASSISTANT_AUDIT";
     private static final Set<String> DOC_KEYS = Set.of("_id", "requestId", "userId", "roleKey", "customerId",
             "accessLevel", "question", "answer", "answerTruncated", "outcome", "errorCode", "toolCalls",
-            "durationMs", "createdAt", "unverifiedNumbers");
+            "durationMs", "createdAt", "unverifiedNumbers", "modelCalls", "inputTokens", "outputTokens",
+            "totalTokens", "promptVersions", "feedback", "feedbackAt");
 
     @Autowired AuditLogger auditLogger;
     @Autowired MongoTemplate mongo;
@@ -76,12 +78,12 @@ class AuditLoggerTest extends IntegrationTestBase {
 
     private AuditEntry citedEntry(String requestId, boolean truncated, String answer, List<String> unverified) {
         return new AuditEntry(requestId, USER, CUSTOMER, "q", answer, truncated, "ANSWERED", null,
-                List.of(citedTool()), java.util.Map.of("S1", 1), unverified, 10);
+                List.of(citedTool()), java.util.Map.of("S1", 1), unverified, 10, 1, 0, 0, 0, List.of());
     }
 
     private AuditEntry entry(String requestId, String question, String answer, List<ToolOutcome> tools) {
         return new AuditEntry(requestId, USER, CUSTOMER, question, answer, false, "ANSWERED", null, tools,
-                java.util.Map.of(), List.of(), 2840);
+                java.util.Map.of(), List.of(), 2840, 1, 0, 0, 0, List.of());
     }
 
     private Document find(String requestId) {
@@ -151,7 +153,7 @@ class AuditLoggerTest extends IntegrationTestBase {
                 new CitationDetail("t", "王小明 0912-000-111", "e", null, 1));
         ToolOutcome o = new ToolOutcome("getStockQuote", "p", result, PAYLOAD, 7, "S1");
         auditLogger.record(new AuditEntry("req-cite-7", USER, CUSTOMER, "q", "a", false, "ANSWERED", null,
-                List.of(o), java.util.Map.of("S1", 1), List.of(), 10));
+                List.of(o), java.util.Map.of("S1", 1), List.of(), 10, 1, 0, 0, 0, List.of()));
         String target = find("req-cite-7").getList("toolCalls", Document.class).get(0).getString("target");
         assertThat(target).doesNotContain("王小明", "0912", "【本顧客】").contains("本顧客");
     }
@@ -260,7 +262,7 @@ class AuditLoggerTest extends IntegrationTestBase {
     void overlongIdentifiersAreClippedAndNullsTolerated() {
         ToolOutcome t = tool("n".repeat(100), ToolStatus.ERROR, "E".repeat(100), 1);
         auditLogger.record(new AuditEntry("r".repeat(100), USER, CUSTOMER, null, "a", false, "FAILED",
-                "X".repeat(100), List.of(t), java.util.Map.of(), List.of(), 5));
+                "X".repeat(100), List.of(t), java.util.Map.of(), List.of(), 5, 1, 0, 0, 0, List.of()));
         Document doc = mongo.getCollection(COLL).find(new Document("requestId", "r".repeat(64))).first();
         assertThat(doc).isNotNull();
         assertThat(doc.getString("question")).isEmpty();
@@ -275,7 +277,7 @@ class AuditLoggerTest extends IntegrationTestBase {
         UserContext user = new UserContext("u".repeat(100), "Officer", "R".repeat(50), Set.of());
         CustomerContext customer = new CustomerContext("C".repeat(50), AccessLevel.LIMITED, Set.of(), Set.of());
         auditLogger.record(new AuditEntry("req-clip-1", user, customer, "q", "a", false, "ANSWERED", null,
-                List.of(), java.util.Map.of(), List.of(), 1));
+                List.of(), java.util.Map.of(), List.of(), 1, 1, 0, 0, 0, List.of()));
         Document doc = find("req-clip-1");
         assertThat(doc.getString("userId")).hasSize(64);
         assertThat(doc.getString("roleKey")).hasSize(32);
@@ -285,7 +287,7 @@ class AuditLoggerTest extends IntegrationTestBase {
     @Test
     void failedEntryStoresNullAnswerAndErrorCode() {
         auditLogger.record(new AuditEntry("req-fail-1", USER, CUSTOMER, "q", null, false, "FAILED",
-                "AI_LLM_TIMEOUT", List.of(), java.util.Map.of(), List.of(), 100));
+                "AI_LLM_TIMEOUT", List.of(), java.util.Map.of(), List.of(), 100, 1, 0, 0, 0, List.of()));
         Document doc = find("req-fail-1");
         assertThat(doc.get("answer")).isNull();
         assertThat(doc.getBoolean("answerTruncated")).isFalse();
@@ -293,6 +295,47 @@ class AuditLoggerTest extends IntegrationTestBase {
         assertThat(doc.getString("errorCode")).isEqualTo("AI_LLM_TIMEOUT");
     }
 
+    private AuditEntry versionedEntry(String requestId, List<PromptVersion> versions) {
+        return new AuditEntry(requestId, USER, CUSTOMER, "q", "a", false, "ANSWERED", null, List.of(),
+                java.util.Map.of(), List.of(), 10, 2, 6500, 350, 6850, versions);
+    }
+
+    @Test
+    void writesTokenAndVersionFields() {
+        auditLogger.record(versionedEntry("req-tok-1", List.of(new PromptVersion("system.main", 3),
+                new PromptVersion("instruction.sales", 2))));
+
+        Document doc = find("req-tok-1");
+        assertThat(doc.get("modelCalls")).isEqualTo(2);
+        assertThat(doc.get("inputTokens")).isEqualTo(6500);
+        assertThat(doc.get("outputTokens")).isEqualTo(350);
+        assertThat(doc.get("totalTokens")).isEqualTo(6850);
+        assertThat(doc.getList("promptVersions", Document.class)).containsExactly(
+                new Document("configKey", "system.main").append("version", 3),
+                new Document("configKey", "instruction.sales").append("version", 2));
+        assertThat(doc.containsKey("feedback")).isTrue();
+        assertThat(doc.get("feedback")).isNull();
+        assertThat(doc.containsKey("feedbackAt")).isTrue();
+        assertThat(doc.get("feedbackAt")).isNull();
+    }
+
+    @Test
+    void promptVersionsCappedAt100() {
+        List<PromptVersion> versions = java.util.stream.IntStream.range(0, 120)
+                .mapToObj(i -> new PromptVersion("instruction.k" + i, 1)).toList();
+
+        List<LogEvent> events;
+        try (LogCapture capture = LogCapture.of(AuditLogger.class, Level.WARN)) {
+            auditLogger.record(versionedEntry("req-vcap-1", versions));
+            events = capture.events();
+        }
+
+        assertThat(find("req-vcap-1").getList("promptVersions", Document.class)).hasSize(100);
+        assertThat(events).anySatisfy(e -> {
+            assertThat(e.getLevel()).isEqualTo(Level.WARN);
+            assertThat(e.getMessage().getFormattedMessage()).contains("req-vcap-1", "120");
+        });
+    }
     @Test
     void writeFailureDoesNotThrow() {
         MongoTemplate broken = mock(MongoTemplate.class);

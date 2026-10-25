@@ -6,6 +6,7 @@ import static com.example.copilot.aiassistant.chat.ScriptedChatModel.blocks;
 import static com.example.copilot.aiassistant.chat.ScriptedChatModel.call;
 import static com.example.copilot.aiassistant.chat.ScriptedChatModel.text;
 import static com.example.copilot.aiassistant.chat.ScriptedChatModel.toolCalls;
+import static com.example.copilot.aiassistant.chat.ScriptedChatModel.usage;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
@@ -30,7 +31,9 @@ import com.example.copilot.aiassistant.port.CustomerDataPort;
 import com.example.copilot.aiassistant.port.UserContext;
 import com.example.copilot.aiassistant.privacy.CustomerContext;
 import com.example.copilot.aiassistant.privacy.PiiRedactor;
+import com.example.copilot.aiassistant.prompt.AssembledPrompt;
 import com.example.copilot.aiassistant.prompt.PromptAssembler;
+import com.example.copilot.aiassistant.prompt.PromptVersion;
 import com.example.copilot.aiassistant.tool.CitationDetail;
 import com.example.copilot.aiassistant.tool.ToolExecutor;
 import com.example.copilot.aiassistant.tool.ToolGuard;
@@ -136,8 +139,8 @@ class ChatOrchestratorTest {
         ToolExecutor executor = new ToolExecutor(new ToolGuard(registry, VALIDATOR, mapper), redactor, mapper, props);
         PromptAssembler assembler = new PromptAssembler(null) {
             @Override
-            public String systemMessage() {
-                return SYSTEM;
+            public AssembledPrompt current() {
+                return new AssembledPrompt(SYSTEM, List.of(new PromptVersion("system.main", 1)));
             }
         };
         AuditLogger auditLogger = new AuditLogger(null, clock, null, null, null) {
@@ -802,6 +805,50 @@ class ChatOrchestratorTest {
         assertThat(audit.errorCode()).isEqualTo("AI_LLM_RATE_LIMITED");
     }
 
+
+    @Test
+    void auditCarriesTokenSplitAndPromptVersions() {
+        model.reply(usage(toolCalls(0, call("c1", "getCustomerHoldings", "{}")), 3000, 50))
+                .reply(usage(answer(0, "本顧客持有台積電。"), 3500, 300));
+
+        ask("持有什麼？");
+
+        AuditEntry audit = singleAudit();
+        assertThat(audit.modelCalls()).isEqualTo(2);
+        assertThat(audit.inputTokens()).isEqualTo(6500);
+        assertThat(audit.outputTokens()).isEqualTo(350);
+        assertThat(audit.totalTokens()).isEqualTo(6850);
+        assertThat(audit.promptVersions()).containsExactly(new PromptVersion("system.main", 1));
+    }
+
+    @Test
+    void failedQuestionStillRecordsTokens() {
+        model.reply(usage(toolCalls(0, call("c1", "getCustomerHoldings", "{}")), 1000, 20))
+                .fail(new IllegalStateException("boom"));
+
+        assertThatThrownBy(() -> ask("持有什麼？")).isInstanceOf(AssistantException.class);
+
+        AuditEntry audit = singleAudit();
+        assertThat(audit.outcome()).isEqualTo("FAILED");
+        assertThat(audit.inputTokens()).isEqualTo(1000);
+        assertThat(audit.outputTokens()).isEqualTo(20);
+        assertThat(audit.modelCalls()).isEqualTo(2);
+    }
+
+    @Test
+    void answeredLogHasTokenSplit() {
+        model.reply(usage(answer(0, "回答內容甲乙丙"), 700, 80));
+
+        List<String> lines;
+        try (LogCapture capture = LogCapture.of(ChatOrchestrator.class, Level.INFO)) {
+            ask("提問內容子丑寅");
+            lines = capture.events().stream().map(LogCapture::render).toList();
+        }
+
+        assertThat(lines).anySatisfy(line -> assertThat(line).contains("chat answered", "inputTokens=700",
+                "outputTokens=80", "totalTokens=780"));
+        assertThat(lines).allSatisfy(line -> assertThat(line).doesNotContain("提問內容子丑寅"));
+    }
     @Test
     void applicationLogHoldsCountersButNoContent() {
         String json = blocks(block("heading", "標題戊己庚"), block("paragraph", "回答內容甲乙丙", "S1"));
