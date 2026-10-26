@@ -1,0 +1,639 @@
+{
+  "$jsonSchema": {
+    "bsonType": "object",
+    "required": [
+      "configKey",
+      "candidateVersion",
+      "candidateDocVersion",
+      "candidateUpdatedAt",
+      "baselineVersions",
+      "datasetHash",
+      "status",
+      "triggeredBy",
+      "startedAt",
+      "heartbeatAt",
+      "totalCases",
+      "completedCases",
+      "cases",
+      "docVersion"
+    ],
+    "properties": {
+      "configKey": {
+        "bsonType": "string",
+        "maxLength": 64
+      },
+      "candidateVersion": {
+        "bsonType": "int",
+        "minimum": 1
+      },
+      "candidateDocVersion": {
+        "bsonType": "long"
+      },
+      "candidateUpdatedAt": {
+        "bsonType": "date"
+      },
+      "baselineVersions": {
+        "bsonType": "array",
+        "maxItems": 100,
+        "items": {
+          "bsonType": "object",
+          "required": [
+            "configKey",
+            "version"
+          ],
+          "properties": {
+            "configKey": {
+              "bsonType": "string",
+              "maxLength": 64
+            },
+            "version": {
+              "bsonType": "int",
+              "minimum": 1
+            }
+          }
+        }
+      },
+      "datasetHash": {
+        "bsonType": "string",
+        "minLength": 64,
+        "maxLength": 64
+      },
+      "status": {
+        "enum": [
+          "RUNNING",
+          "COMPLETED",
+          "FAILED"
+        ]
+      },
+      "errorCode": {
+        "bsonType": [
+          "string",
+          "null"
+        ],
+        "maxLength": 64
+      },
+      "triggeredBy": {
+        "bsonType": "string",
+        "maxLength": 64
+      },
+      "startedAt": {
+        "bsonType": "date"
+      },
+      "heartbeatAt": {
+        "bsonType": "date"
+      },
+      "finishedAt": {
+        "bsonType": [
+          "date",
+          "null"
+        ]
+      },
+      "totalCases": {
+        "bsonType": "int",
+        "minimum": 0,
+        "maximum": 30
+      },
+      "completedCases": {
+        "bsonType": "int",
+        "minimum": 0,
+        "maximum": 30
+      },
+      "summary": {
+        "bsonType": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "baseline": {
+            "bsonType": "object",
+            "required": [
+              "correct",
+              "total",
+              "toolsOk",
+              "refusedExpected",
+              "expectedRefusals",
+              "refusedNormal",
+              "normalCases",
+              "avgTotalTokens",
+              "avgInputTokens",
+              "avgOutputTokens",
+              "avgDurationMs"
+            ],
+            "properties": {
+              "correct": {
+                "bsonType": "int",
+                "minimum": 0
+              },
+              "total": {
+                "bsonType": "int",
+                "minimum": 0
+              },
+              "toolsOk": {
+                "bsonType": "int",
+                "minimum": 0
+              },
+              "refusedExpected": {
+                "bsonType": "int",
+                "minimum": 0
+              },
+              "expectedRefusals": {
+                "bsonType": "int",
+                "minimum": 0
+              },
+              "refusedNormal": {
+                "bsonType": "int",
+                "minimum": 0
+              },
+              "normalCases": {
+                "bsonType": "int",
+                "minimum": 0
+              },
+              "avgTotalTokens": {
+                "bsonType": [
+                  "int",
+                  "long"
+                ],
+                "minimum": 0
+              },
+              "avgInputTokens": {
+                "bsonType": [
+                  "int",
+                  "long"
+                ],
+                "minimum": 0
+              },
+              "avgOutputTokens": {
+                "bsonType": [
+                  "int",
+                  "long"
+                ],
+                "minimum": 0
+              },
+              "avgDurationMs": {
+                "bsonType": [
+                  "int",
+                  "long"
+                ],
+                "minimum": 0
+              }
+            }
+          },
+          "candidate": {
+            "bsonType": "object",
+            "required": [
+              "correct",
+              "total",
+              "toolsOk",
+              "refusedExpected",
+              "expectedRefusals",
+              "refusedNormal",
+              "normalCases",
+              "avgTotalTokens",
+              "avgInputTokens",
+              "avgOutputTokens",
+              "avgDurationMs"
+            ],
+            "properties": {
+              "correct": {
+                "bsonType": "int",
+                "minimum": 0
+              },
+              "total": {
+                "bsonType": "int",
+                "minimum": 0
+              },
+              "toolsOk": {
+                "bsonType": "int",
+                "minimum": 0
+              },
+              "refusedExpected": {
+                "bsonType": "int",
+                "minimum": 0
+              },
+              "expectedRefusals": {
+                "bsonType": "int",
+                "minimum": 0
+              },
+              "refusedNormal": {
+                "bsonType": "int",
+                "minimum": 0
+              },
+              "normalCases": {
+                "bsonType": "int",
+                "minimum": 0
+              },
+              "avgTotalTokens": {
+                "bsonType": [
+                  "int",
+                  "long"
+                ],
+                "minimum": 0
+              },
+              "avgInputTokens": {
+                "bsonType": [
+                  "int",
+                  "long"
+                ],
+                "minimum": 0
+              },
+              "avgOutputTokens": {
+                "bsonType": [
+                  "int",
+                  "long"
+                ],
+                "minimum": 0
+              },
+              "avgDurationMs": {
+                "bsonType": [
+                  "int",
+                  "long"
+                ],
+                "minimum": 0
+              }
+            }
+          },
+          "judgeTokens": {
+            "bsonType": [
+              "int",
+              "long"
+            ],
+            "minimum": 0
+          }
+        }
+      },
+      "cases": {
+        "bsonType": "array",
+        "maxItems": 30,
+        "items": {
+          "bsonType": "object",
+          "required": [
+            "caseId",
+            "group",
+            "question",
+            "expectRefusal",
+            "baseline",
+            "candidate"
+          ],
+          "properties": {
+            "caseId": {
+              "bsonType": "string",
+              "maxLength": 64
+            },
+            "group": {
+              "bsonType": "string",
+              "maxLength": 64
+            },
+            "question": {
+              "bsonType": "string",
+              "maxLength": 1000
+            },
+            "expectRefusal": {
+              "bsonType": "bool"
+            },
+            "baseline": {
+              "bsonType": "object",
+              "required": [
+                "outcome",
+                "errorCode",
+                "answer",
+                "toolCalls",
+                "modelCalls",
+                "inputTokens",
+                "outputTokens",
+                "totalTokens",
+                "durationMs",
+                "unverifiedNumbers",
+                "toolsOk",
+                "numbersOk",
+                "missingPhrases",
+                "forbiddenPhrases",
+                "judge",
+                "passed"
+              ],
+              "properties": {
+                "outcome": {
+                  "enum": [
+                    "ANSWERED",
+                    "FAILED"
+                  ]
+                },
+                "errorCode": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 64
+                },
+                "answer": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 8000
+                },
+                "toolCalls": {
+                  "bsonType": "array",
+                  "maxItems": 10,
+                  "items": {
+                    "bsonType": "object",
+                    "required": [
+                      "toolName",
+                      "status"
+                    ],
+                    "properties": {
+                      "toolName": {
+                        "bsonType": "string",
+                        "maxLength": 64
+                      },
+                      "status": {
+                        "bsonType": "string",
+                        "maxLength": 32
+                      }
+                    }
+                  }
+                },
+                "modelCalls": {
+                  "bsonType": "int",
+                  "minimum": 0
+                },
+                "inputTokens": {
+                  "bsonType": "int",
+                  "minimum": 0
+                },
+                "outputTokens": {
+                  "bsonType": "int",
+                  "minimum": 0
+                },
+                "totalTokens": {
+                  "bsonType": "int",
+                  "minimum": 0
+                },
+                "durationMs": {
+                  "bsonType": "int",
+                  "minimum": 0
+                },
+                "unverifiedNumbers": {
+                  "bsonType": "array",
+                  "maxItems": 20,
+                  "items": {
+                    "bsonType": "string",
+                    "maxLength": 32
+                  }
+                },
+                "toolsOk": {
+                  "bsonType": "bool"
+                },
+                "numbersOk": {
+                  "bsonType": "bool"
+                },
+                "passed": {
+                  "bsonType": "bool"
+                },
+                "missingPhrases": {
+                  "bsonType": "array",
+                  "maxItems": 10,
+                  "items": {
+                    "bsonType": "string",
+                    "maxLength": 50
+                  }
+                },
+                "forbiddenPhrases": {
+                  "bsonType": "array",
+                  "maxItems": 10,
+                  "items": {
+                    "bsonType": "string",
+                    "maxLength": 50
+                  }
+                },
+                "judge": {
+                  "bsonType": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "refused": {
+                      "bsonType": [
+                        "bool",
+                        "null"
+                      ]
+                    },
+                    "rubric": {
+                      "bsonType": "array",
+                      "maxItems": 5,
+                      "items": {
+                        "bsonType": "object",
+                        "required": [
+                          "text",
+                          "met"
+                        ],
+                        "properties": {
+                          "text": {
+                            "bsonType": "string",
+                            "maxLength": 100
+                          },
+                          "met": {
+                            "bsonType": "bool"
+                          }
+                        }
+                      }
+                    },
+                    "comment": {
+                      "bsonType": [
+                        "string",
+                        "null"
+                      ],
+                      "maxLength": 100
+                    },
+                    "error": {
+                      "bsonType": [
+                        "string",
+                        "null"
+                      ],
+                      "maxLength": 64
+                    },
+                    "tokens": {
+                      "bsonType": "int",
+                      "minimum": 0
+                    }
+                  }
+                }
+              }
+            },
+            "candidate": {
+              "bsonType": "object",
+              "required": [
+                "outcome",
+                "errorCode",
+                "answer",
+                "toolCalls",
+                "modelCalls",
+                "inputTokens",
+                "outputTokens",
+                "totalTokens",
+                "durationMs",
+                "unverifiedNumbers",
+                "toolsOk",
+                "numbersOk",
+                "missingPhrases",
+                "forbiddenPhrases",
+                "judge",
+                "passed"
+              ],
+              "properties": {
+                "outcome": {
+                  "enum": [
+                    "ANSWERED",
+                    "FAILED"
+                  ]
+                },
+                "errorCode": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 64
+                },
+                "answer": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 8000
+                },
+                "toolCalls": {
+                  "bsonType": "array",
+                  "maxItems": 10,
+                  "items": {
+                    "bsonType": "object",
+                    "required": [
+                      "toolName",
+                      "status"
+                    ],
+                    "properties": {
+                      "toolName": {
+                        "bsonType": "string",
+                        "maxLength": 64
+                      },
+                      "status": {
+                        "bsonType": "string",
+                        "maxLength": 32
+                      }
+                    }
+                  }
+                },
+                "modelCalls": {
+                  "bsonType": "int",
+                  "minimum": 0
+                },
+                "inputTokens": {
+                  "bsonType": "int",
+                  "minimum": 0
+                },
+                "outputTokens": {
+                  "bsonType": "int",
+                  "minimum": 0
+                },
+                "totalTokens": {
+                  "bsonType": "int",
+                  "minimum": 0
+                },
+                "durationMs": {
+                  "bsonType": "int",
+                  "minimum": 0
+                },
+                "unverifiedNumbers": {
+                  "bsonType": "array",
+                  "maxItems": 20,
+                  "items": {
+                    "bsonType": "string",
+                    "maxLength": 32
+                  }
+                },
+                "toolsOk": {
+                  "bsonType": "bool"
+                },
+                "numbersOk": {
+                  "bsonType": "bool"
+                },
+                "passed": {
+                  "bsonType": "bool"
+                },
+                "missingPhrases": {
+                  "bsonType": "array",
+                  "maxItems": 10,
+                  "items": {
+                    "bsonType": "string",
+                    "maxLength": 50
+                  }
+                },
+                "forbiddenPhrases": {
+                  "bsonType": "array",
+                  "maxItems": 10,
+                  "items": {
+                    "bsonType": "string",
+                    "maxLength": 50
+                  }
+                },
+                "judge": {
+                  "bsonType": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "refused": {
+                      "bsonType": [
+                        "bool",
+                        "null"
+                      ]
+                    },
+                    "rubric": {
+                      "bsonType": "array",
+                      "maxItems": 5,
+                      "items": {
+                        "bsonType": "object",
+                        "required": [
+                          "text",
+                          "met"
+                        ],
+                        "properties": {
+                          "text": {
+                            "bsonType": "string",
+                            "maxLength": 100
+                          },
+                          "met": {
+                            "bsonType": "bool"
+                          }
+                        }
+                      }
+                    },
+                    "comment": {
+                      "bsonType": [
+                        "string",
+                        "null"
+                      ],
+                      "maxLength": 100
+                    },
+                    "error": {
+                      "bsonType": [
+                        "string",
+                        "null"
+                      ],
+                      "maxLength": 64
+                    },
+                    "tokens": {
+                      "bsonType": "int",
+                      "minimum": 0
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "docVersion": {
+        "bsonType": "long"
+      }
+    }
+  }
+}

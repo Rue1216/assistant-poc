@@ -20,6 +20,7 @@ public class MongoSchemaInitializer implements ApplicationRunner {
 
     static final String CONFIG = "COLL_ICRM_AI_ASSISTANT_CONFIG";
     static final String AUDIT = "COLL_ICRM_AI_ASSISTANT_AUDIT";
+    static final String EVAL_RUN = "COLL_ICRM_AI_ASSISTANT_EVAL_RUN";
     private static final long AUDIT_TTL_SECONDS = 15_552_000L;
 
     private final MongoTemplate mongo;
@@ -32,8 +33,10 @@ public class MongoSchemaInitializer implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         applyValidator(CONFIG, "mongo/config-validator.json", true);
         applyValidator(AUDIT, "mongo/audit-validator.json", false);
+        applyValidator(EVAL_RUN, "mongo/eval-run-validator.json", true);
         createConfigIndexes();
         createAuditIndexes();
+        createEvalRunIndexes();
     }
 
     private void applyValidator(String collection, String resource, boolean strictErrors) {
@@ -59,6 +62,16 @@ public class MongoSchemaInitializer implements ApplicationRunner {
         ops.createIndex(new Index().named("IX_ICRM_AI_CFG_5").on("status", Sort.Direction.ASC)
                 .on("scheduledAt", Sort.Direction.ASC)
                 .partial(PartialIndexFilter.of(Criteria.where("status").is("SCHEDULED"))));
+    }
+
+    private void createEvalRunIndexes() {
+        IndexOperations ops = mongo.indexOps(EVAL_RUN);
+        ops.createIndex(new Index().named("UK_ICRM_AI_EVAL_1").on("status", Sort.Direction.ASC).unique()
+                .partial(PartialIndexFilter.of(Criteria.where("status").is("RUNNING"))));
+        ops.createIndex(new Index().named("IX_ICRM_AI_EVAL_1").on("configKey", Sort.Direction.ASC)
+                .on("startedAt", Sort.Direction.DESC));
+        ops.createIndex(new Index().named("IX_ICRM_AI_EVAL_2").on("startedAt", Sort.Direction.ASC)
+                .expire(AUDIT_TTL_SECONDS));
     }
 
     private void createAuditIndexes() {

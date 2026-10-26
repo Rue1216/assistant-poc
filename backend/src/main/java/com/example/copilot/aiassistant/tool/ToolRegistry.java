@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -23,6 +24,11 @@ public class ToolRegistry {
     /** Tools whose required level is covered by {@code level}. */
     public List<AssistantTool<?>> toolsFor(AccessLevel level) {
         return byName.values().stream().filter(t -> level.covers(t.requiredAccessLevel())).toList();
+    }
+
+    /** Names of all registered tools. */
+    public Set<String> names() {
+        return Set.copyOf(byName.keySet());
     }
 
     public Optional<AssistantTool<?>> find(String name) {

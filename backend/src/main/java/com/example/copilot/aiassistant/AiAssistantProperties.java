@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "ai-assistant")
 public record AiAssistantProperties(Llm llm, Limits limits, Config config, Market market,
-                                    Audit audit) {
+                                    Audit audit, Eval eval) {
 
     public record Llm(String provider, String apiKey, String modelName, double temperature,
                       Duration timeout, int maxOutputTokens) {
@@ -35,6 +35,14 @@ public record AiAssistantProperties(Llm llm, Limits limits, Config config, Marke
 
     /** {@code storeToolResults}: keep each successful tool result in the audit document (default off). */
     public record Audit(boolean storeToolResults) {
+    }
+
+    /**
+     * Prompt evaluation. {@code dataset}: resource location of the case file; {@code maxCases}: upper bound on its
+     * size; {@code runTimeout}: hard stop for one run; {@code staleAfter}: a RUNNING record without progress for
+     * this long is treated as dead.
+     */
+    public record Eval(String dataset, int maxCases, Duration runTimeout, Duration staleAfter) {
     }
 
     public record Twse(String baseUrl, List<String> allowedHosts, Duration connectTimeout,

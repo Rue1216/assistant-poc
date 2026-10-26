@@ -59,7 +59,7 @@ class AuditLoggerTest extends IntegrationTestBase {
     }
 
     private static AiAssistantProperties propsWith(boolean storeToolResults) {
-        return new AiAssistantProperties(null, null, null, null, new AiAssistantProperties.Audit(storeToolResults));
+        return new AiAssistantProperties(null, null, null, null, new AiAssistantProperties.Audit(storeToolResults), null);
     }
 
     private static String sha256Hex(String s) throws Exception {

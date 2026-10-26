@@ -164,6 +164,99 @@ class MongoSchemaTest extends IntegrationTestBase {
         assertThat(byVersion.getPartialFilterExpression()).isNotBlank();
     }
 
+
+    private static final String EVAL_RUN = "COLL_ICRM_AI_ASSISTANT_EVAL_RUN";
+
+    private Document evalSide(int toolCalls) {
+        java.util.List<Document> calls = new java.util.ArrayList<>();
+        for (int i = 0; i < toolCalls; i++) {
+            calls.add(new Document("toolName", "getStockQuote").append("status", "SUCCESS"));
+        }
+        return new Document("outcome", "ANSWERED").append("errorCode", null).append("answer", "a")
+                .append("toolCalls", calls).append("modelCalls", 2).append("inputTokens", 100)
+                .append("outputTokens", 50).append("totalTokens", 150).append("durationMs", 900)
+                .append("unverifiedNumbers", java.util.List.of()).append("toolsOk", true).append("numbersOk", true)
+                .append("missingPhrases", java.util.List.of()).append("forbiddenPhrases", java.util.List.of())
+                .append("judge", new Document("refused", false)
+                        .append("rubric", java.util.List.of(new Document("text", "r").append("met", true)))
+                        .append("comment", "ok").append("error", null).append("tokens", 40))
+                .append("passed", true);
+    }
+
+    private Document evalCase(String id, Document side) {
+        return new Document("caseId", id).append("group", "g").append("question", "q")
+                .append("expectRefusal", false).append("baseline", side).append("candidate", side);
+    }
+
+    private Document evalMetrics(Object correct) {
+        return new Document("correct", correct).append("total", 1).append("toolsOk", 1)
+                .append("refusedExpected", 0).append("expectedRefusals", 0).append("refusedNormal", 0)
+                .append("normalCases", 1).append("avgTotalTokens", 150L).append("avgInputTokens", 100L)
+                .append("avgOutputTokens", 50L).append("avgDurationMs", 900L);
+    }
+
+    private void assertEvalRejected(Document doc) {
+        assertThatThrownBy(() -> mongo.getCollection(EVAL_RUN).insertOne(doc))
+                .isInstanceOf(MongoWriteException.class);
+    }
+
+    @Test
+    void evalRunValidatorChecksCaseResultAndSummary() {
+        mongo.getCollection(EVAL_RUN).deleteMany(new Document());
+        Document longAnswer = evalSide(1).append("answer", "x".repeat(8001));
+        assertEvalRejected(evalRunDoc("COMPLETED", 0).append("cases",
+                java.util.List.of(evalCase("A1", evalSide(1)).append("candidate", longAnswer))));
+        assertEvalRejected(evalRunDoc("COMPLETED", 0).append("cases",
+                java.util.List.of(evalCase("A1", evalSide(11)))));
+        assertEvalRejected(evalRunDoc("COMPLETED", 0).append("summary", new Document("baseline", evalMetrics("1"))
+                .append("candidate", evalMetrics(1)).append("judgeTokens", 5L)));
+        mongo.getCollection(EVAL_RUN).insertOne(evalRunDoc("COMPLETED", 0).append("summary",
+                new Document("baseline", evalMetrics(1)).append("candidate", evalMetrics(1))
+                        .append("judgeTokens", 5L)));
+        mongo.getCollection(EVAL_RUN).deleteMany(new Document());
+    }
+
+    private Document evalRunDoc(String status, int cases) {
+        java.util.List<Document> list = new java.util.ArrayList<>();
+        for (int i = 0; i < cases; i++) {
+            list.add(evalCase("A" + i, evalSide(10)));
+        }
+        return new Document("configKey", "instruction.raw").append("candidateVersion", 2)
+                .append("candidateDocVersion", 0L).append("candidateUpdatedAt", new Date())
+                .append("baselineVersions", java.util.List.of(
+                        new Document("configKey", "system.main").append("version", 1)))
+                .append("datasetHash", "a".repeat(64)).append("status", status).append("errorCode", null)
+                .append("triggeredBy", "t").append("startedAt", new Date()).append("heartbeatAt", new Date())
+                .append("finishedAt", null).append("totalCases", 16).append("completedCases", 0)
+                .append("summary", null).append("cases", list).append("docVersion", 0L);
+    }
+
+    @Test
+    void evalRunValidatorRejectsBadStatusAndTooManyCases() {
+        mongo.getCollection(EVAL_RUN).deleteMany(new Document());
+        assertThatThrownBy(() -> mongo.getCollection(EVAL_RUN).insertOne(evalRunDoc("DONE", 0)))
+                .isInstanceOf(MongoWriteException.class);
+        assertThatThrownBy(() -> mongo.getCollection(EVAL_RUN).insertOne(evalRunDoc("COMPLETED", 31)))
+                .isInstanceOf(MongoWriteException.class);
+        mongo.getCollection(EVAL_RUN).insertOne(evalRunDoc("COMPLETED", 30));
+        mongo.getCollection(EVAL_RUN).deleteMany(new Document());
+    }
+
+    @Test
+    void evalRunIndexes() {
+        java.util.List<IndexInfo> indexes = mongo.indexOps(EVAL_RUN).getIndexInfo();
+        IndexInfo running = indexes.stream().filter(i -> i.getName().equals("UK_ICRM_AI_EVAL_1"))
+                .findFirst().orElseThrow();
+        assertThat(running.isUnique()).isTrue();
+        assertThat(running.getPartialFilterExpression()).contains("RUNNING");
+        IndexInfo history = indexes.stream().filter(i -> i.getName().equals("IX_ICRM_AI_EVAL_1"))
+                .findFirst().orElseThrow();
+        assertThat(history.getIndexFields().stream().map(f -> f.getKey()).toList())
+                .containsExactly("configKey", "startedAt");
+        IndexInfo ttl = indexes.stream().filter(i -> i.getName().equals("IX_ICRM_AI_EVAL_2"))
+                .findFirst().orElseThrow();
+        assertThat(ttl.getExpireAfter().orElseThrow().toSeconds()).isEqualTo(15_552_000L);
+    }
     @Test
     void indexNamesMatchSpec() {
         Set<String> config = mongo.indexOps(CONFIG).getIndexInfo().stream()

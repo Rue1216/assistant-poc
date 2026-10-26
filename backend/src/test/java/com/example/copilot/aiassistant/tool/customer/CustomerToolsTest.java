@@ -207,7 +207,7 @@ class CustomerToolsTest {
     void serializedOutputContainsNoIdentifiers() {
         AiAssistantProperties props = new AiAssistantProperties(null,
                 new AiAssistantProperties.Limits(1000, 10, 8000, 5, 3, Duration.ofSeconds(60), 16000,
-                        Duration.ofSeconds(5), 4096, 10), null, null, null);
+                        Duration.ofSeconds(5), 4096, 10), null, null, null, null);
         ToolGuard guard = new ToolGuard(
                 new ToolRegistry(List.of(profileTool, holdingsTool, interactionsTool, campaignsTool)),
                 Validation.buildDefaultValidatorFactory().getValidator(), mapper);

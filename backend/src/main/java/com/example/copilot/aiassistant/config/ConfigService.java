@@ -280,6 +280,11 @@ public class ConfigService {
         });
     }
 
+    /** The DRAFT or SCHEDULED version of the key, if any. */
+    public Optional<AssistantConfig> findWorkingCopy(String configKey) {
+        return workingCopy(configKey);
+    }
+
     private Optional<AssistantConfig> workingCopy(String configKey) {
         return repository.findByConfigKeyAndStatusIn(configKey, WORKING_COPY).stream().findFirst();
     }

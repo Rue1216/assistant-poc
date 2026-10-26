@@ -27,7 +27,11 @@ public enum ErrorCode {
     AI_CONFIG_CONFLICT(HttpStatus.CONFLICT, "內容已被他人更新，請重新載入後再編輯"),
     AI_CONFIG_INVALID_STATE(HttpStatus.CONFLICT, "目前狀態無法執行此操作"),
     AI_CONFIG_OVERWRITE_PENDING(HttpStatus.CONFLICT, "此設定已有編輯中的版本，套用後它會被標為已捨棄"),
-    AI_CONFIG_VALIDATION_FAILED(HttpStatus.UNPROCESSABLE_ENTITY, "內容未通過發布檢查，請依提示修正");
+    AI_CONFIG_VALIDATION_FAILED(HttpStatus.UNPROCESSABLE_ENTITY, "內容未通過發布檢查，請依提示修正"),
+
+    // 2.4 prompt evaluation
+    AI_EVAL_RUNNING(HttpStatus.CONFLICT, "目前已有評測執行中，請稍後再試"),
+    AI_EVAL_NOT_FOUND(HttpStatus.NOT_FOUND, "找不到指定的評測紀錄");
 
     private final HttpStatus status;
     private final String message;

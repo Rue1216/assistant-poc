@@ -51,7 +51,7 @@ class OpenAiResponseFormatLiveTest {
         }
         AiAssistantProperties.Llm llm = new AiAssistantProperties.Llm("openai", env.getProperty("OPENAI_API_KEY"),
                 env.getProperty("OPENAI_MODEL"), 0.2, Duration.ofSeconds(30), 1500);
-        model = new LlmConfiguration().chatModel(new AiAssistantProperties(llm, null, null, null, null));
+        model = new LlmConfiguration().chatModel(new AiAssistantProperties(llm, null, null, null, null, null));
     }
 
     @Test

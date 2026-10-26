@@ -111,7 +111,7 @@ class ChatOrchestratorTest {
     private final PiiRedactor redactor = new PiiRedactor();
     private final AiAssistantProperties props = new AiAssistantProperties(null,
             new AiAssistantProperties.Limits(1000, 10, 8000, 5, 3, Duration.ofSeconds(60), 16000,
-                    Duration.ofSeconds(5), 4096, 10), null, null, null);
+                    Duration.ofSeconds(5), 4096, 10), null, null, null, null);
     private final ScriptedChatModel model = new ScriptedChatModel();
     private final List<AuditEntry> audits = new ArrayList<>();
     private ChatOrchestrator orchestrator;
@@ -136,13 +136,17 @@ class ChatOrchestratorTest {
     }
 
     private ChatOrchestrator orchestrator(ToolRegistry registry) {
-        ToolExecutor executor = new ToolExecutor(new ToolGuard(registry, VALIDATOR, mapper), redactor, mapper, props);
         PromptAssembler assembler = new PromptAssembler(null) {
             @Override
             public AssembledPrompt current() {
                 return new AssembledPrompt(SYSTEM, List.of(new PromptVersion("system.main", 1)));
             }
         };
+        return orchestrator(registry, assembler);
+    }
+
+    private ChatOrchestrator orchestrator(ToolRegistry registry, PromptAssembler assembler) {
+        ToolExecutor executor = new ToolExecutor(new ToolGuard(registry, VALIDATOR, mapper), redactor, mapper, props);
         AuditLogger auditLogger = new AuditLogger(null, clock, null, null, null) {
             @Override
             public void record(AuditEntry entry) {
@@ -849,6 +853,147 @@ class ChatOrchestratorTest {
                 "outputTokens=80", "totalTokens=780"));
         assertThat(lines).allSatisfy(line -> assertThat(line).doesNotContain("提問內容子丑寅"));
     }
+
+    @Test
+    void promptLoadingFailureIsAudited() {
+        PromptAssembler failing = new PromptAssembler(null) {
+            @Override
+            public AssembledPrompt current() {
+                throw new IllegalStateException("config unavailable");
+            }
+        };
+        ChatOrchestrator broken = orchestrator(new ToolRegistry(List.of()), failing);
+
+        assertThatThrownBy(() -> broken.chat(new ChatCommand("概況？", List.of()), USER, C001_FULL))
+                .isInstanceOf(IllegalStateException.class);
+
+        AuditEntry audit = singleAudit();
+        assertThat(audit.outcome()).isEqualTo("FAILED");
+        assertThat(audit.errorCode()).isEqualTo("AI_INTERNAL_ERROR");
+        assertThat(audit.promptVersions()).isEmpty();
+        assertThat(model.requests()).isEmpty();
+    }
+
+    private static final AssembledPrompt EVAL_PROMPT = new AssembledPrompt("評測用系統訊息", List.of());
+
+    private EvaluationReport evaluate(String question) {
+        return orchestrator.evaluate(question, USER, C001_FULL, EVAL_PROMPT);
+    }
+
+    @Test
+    void evaluateUsesGivenPromptAndWritesNoAudit() {
+        model.reply(text(blocks(block("paragraph", "本顧客偏好電話聯絡。", "S1")), 100));
+
+        EvaluationReport report = evaluate("聯絡方式？");
+
+        assertThat(model.requests().get(0).messages().get(0)).isEqualTo(SystemMessage.from("評測用系統訊息"));
+        assertThat(audits).isEmpty();
+        assertThat(report.outcome()).isEqualTo("ANSWERED");
+        assertThat(report.errorCode()).isNull();
+        assertThat(report.answer()).isEqualTo("本顧客偏好電話聯絡。").doesNotContain(" [1]");
+    }
+
+    @Test
+    void evaluateReportsToolCallsIncludingDenied() {
+        model.reply(toolCalls(100, call("c1", "getCustomerProfile", "{}"), call("c2", "deleteCustomer", "{}")))
+                .reply(answer(100, "整理如下。"));
+
+        EvaluationReport report = evaluate("概況？");
+
+        assertThat(report.toolCalls()).extracting(EvaluationReport.ToolCall::toolName,
+                        EvaluationReport.ToolCall::status)
+                .containsExactly(tuple("getCustomerProfile", "SUCCESS"), tuple("deleteCustomer", "DENIED"));
+        assertThat(report.modelCalls()).isEqualTo(2);
+    }
+
+    @Test
+    void evaluateListsSkippedCallsAfterExecutedOnes() {
+        model.reply(toolCalls(100, call("c1", "getCustomerProfile", "{}"), call("c2", "getCustomerHoldings", "{}"),
+                        call("c3", "getCampaignResults", "{}"), call("c4", "getRecentInteractions", "{}"),
+                        call("c5", "getMarketIndex", "{}"), call("c6", "getStockQuote", "{\"stockCode\":\"2330\"}")))
+                .reply(answer(100, "依現有資料整理。"));
+
+        EvaluationReport report = evaluate("全部整理");
+
+        assertThat(report.toolCalls()).hasSize(6);
+        assertThat(report.toolCalls().get(5)).isEqualTo(new EvaluationReport.ToolCall("getStockQuote", "DENIED"));
+    }
+
+    @Test
+    void evaluateTurnsErrorsIntoCodes() {
+        // a model failure goes through LlmErrorMapper, exactly as in chat()
+        model.fail(new RuntimeException("boom"));
+        EvaluationReport internal = evaluate("概況？");
+        assertThat(internal.outcome()).isEqualTo("FAILED");
+        assertThat(internal.errorCode()).isEqualTo("AI_LLM_UNAVAILABLE");
+        assertThat(internal.answer()).isNull();
+        assertThat(internal.toolCalls()).isEmpty();
+
+        model.reply(answer(16001, "答案"));
+        EvaluationReport budget = evaluate("概況？");
+        assertThat(budget.outcome()).isEqualTo("FAILED");
+        assertThat(budget.errorCode()).isEqualTo("AI_TOKEN_BUDGET_EXCEEDED");
+        assertThat(budget.totalTokens()).isEqualTo(16001);
+
+        // anything unexpected inside the turn (here: no system text) becomes AI_INTERNAL_ERROR
+        EvaluationReport unexpected = orchestrator.evaluate("概況？", USER, C001_FULL, new AssembledPrompt(null, List.of()));
+        assertThat(unexpected.errorCode()).isEqualTo("AI_INTERNAL_ERROR");
+        assertThat(audits).isEmpty();
+    }
+
+    @Test
+    void evaluateCountsTokensAndRedactsQuestion() {
+        model.reply(usage(toolCalls(0, call("c1", "getCustomerHoldings", "{}")), 3000, 50))
+                .reply(usage(answer(0, "本顧客持有台積電。"), 3500, 300));
+
+        EvaluationReport report = evaluate("王小明最近有什麼互動？");
+
+        assertThat(report.redactedQuestion()).isEqualTo("【本顧客】最近有什麼互動？");
+        assertThat(report.modelCalls()).isEqualTo(2);
+        assertThat(report.inputTokens()).isEqualTo(6500);
+        assertThat(report.outputTokens()).isEqualTo(350);
+        assertThat(report.totalTokens()).isEqualTo(6850);
+        assertThat(report.durationMs()).isNotNegative();
+    }
+
+    @Test
+    void evaluateReportsUnverifiedNumbers() {
+        model.reply(toolCalls(100, call("call_1", "getStockQuote", "{\"stockCode\":\"2330\"}")))
+                .reply(text(blocks(block("paragraph", "收盤 2420 元，目標價 3000 元", "S1")), 200));
+
+        assertThat(evaluate("台積電今天收多少？").unverifiedNumbers()).containsExactly("3000");
+    }
+
+    @Test
+    void evaluateWritesNoChatLog() {
+        model.reply(answer(100, "回答")).fail(new RuntimeException("boom"));
+
+        List<String> lines;
+        try (LogCapture capture = LogCapture.of(ChatOrchestrator.class, Level.INFO)) {
+            evaluate("提問內容子丑寅");
+            evaluate("提問內容子丑寅");
+            lines = capture.events().stream().map(LogCapture::render).toList();
+        }
+
+        assertThat(lines).noneSatisfy(line -> assertThat(line).containsAnyOf("chat answered", "chat failed"));
+        assertThat(lines).anySatisfy(line -> assertThat(line).contains("eval turn failed",
+                "requestId=" + REQUEST_ID, "code=AI_LLM_UNAVAILABLE"));
+        assertThat(lines).allSatisfy(line -> assertThat(line).doesNotContain("提問內容子丑寅", "回答"));
+    }
+
+    @Test
+    void failedReportFactory() {
+        EvaluationReport report = EvaluationReport.failed("AI_EVAL_TIMEOUT");
+
+        assertThat(report.outcome()).isEqualTo("FAILED");
+        assertThat(report.errorCode()).isEqualTo("AI_EVAL_TIMEOUT");
+        assertThat(report.answer()).isNull();
+        assertThat(report.toolCalls()).isEmpty();
+        assertThat(report.unverifiedNumbers()).isEmpty();
+        assertThat(report.modelCalls()).isZero();
+        assertThat(report.totalTokens()).isZero();
+    }
+
     @Test
     void applicationLogHoldsCountersButNoContent() {
         String json = blocks(block("heading", "標題戊己庚"), block("paragraph", "回答內容甲乙丙", "S1"));

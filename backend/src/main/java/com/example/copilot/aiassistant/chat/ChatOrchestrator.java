@@ -20,6 +20,7 @@ import com.example.copilot.aiassistant.privacy.CustomerDeidentifier;
 import com.example.copilot.aiassistant.privacy.PiiRedactor;
 import com.example.copilot.aiassistant.prompt.AssembledPrompt;
 import com.example.copilot.aiassistant.prompt.PromptAssembler;
+import com.example.copilot.aiassistant.prompt.PromptVersion;
 import com.example.copilot.aiassistant.tool.AssistantTool;
 import com.example.copilot.aiassistant.tool.CitationDetail;
 import com.example.copilot.aiassistant.tool.CitationIds;
@@ -100,8 +101,10 @@ public class ChatOrchestrator {
 
     /** Answers one question; on failure writes a FAILED audit entry and throws {@link AssistantException}. */
     public ChatResult chat(ChatCommand command, UserContext user, CustomerContext customer) {
-        Turn turn = new Turn(user, customer, promptAssembler.current());
+        Turn turn = new Turn(user, customer, true);
         try {
+            // Inside the handling so that a prompt that cannot be loaded is audited and logged like any failure.
+            turn.prompt = promptAssembler.current();
             ChatResult result = turn.result(turn.answer(command));
             turn.audit(turn.assembled, "ANSWERED", null);
             long citedBlocks = result.blocks().stream()
@@ -122,10 +125,29 @@ public class ChatOrchestrator {
         }
     }
 
+    /**
+     * Runs one question against the given prompt for the evaluation: the same loop and the same redaction as
+     * {@link #chat}, but no audit entry and no chat log line. Never throws; a failed turn is reported by its code.
+     */
+    public EvaluationReport evaluate(String question, UserContext user, CustomerContext customer,
+                                     AssembledPrompt prompt) {
+        Turn turn = new Turn(user, customer, false);
+        turn.prompt = prompt;
+        try {
+            ChatResult result = turn.result(turn.answer(new ChatCommand(question, List.of())));
+            return turn.report("ANSWERED", null, result.answer());
+        } catch (RuntimeException e) {
+            ErrorCode code = e instanceof AssistantException a ? a.code() : ErrorCode.AI_INTERNAL_ERROR;
+            // Code only: the question, the answer and exception messages may carry customer content.
+            log.warn("eval turn failed requestId={} code={}", turn.requestId, code);
+            return turn.report("FAILED", code.name(), null);
+        }
+    }
+
     private record ExecutedTool(ToolOutcome outcome, Instant queriedAt) {
     }
 
-    /** The state of one {@link #chat} call. */
+    /** The state of one {@link #chat} or {@link #evaluate} call. */
     private final class Turn {
 
         private final String requestId = RequestIdFilter.current();
@@ -135,7 +157,10 @@ public class ChatOrchestrator {
         private final UserContext user;
         private final CustomerContext customer;
         private final ToolContext toolContext;
-        private final AssembledPrompt prompt;
+        /** False for an evaluation turn: no audit entry. */
+        private final boolean audited;
+        /** Set right after construction; stays null only if the prompt could not be loaded. */
+        private AssembledPrompt prompt;
         private final List<ExecutedTool> executed = new ArrayList<>();
         /** Calls beyond the cap: reported in the summary, never executed, never audited as tool calls. */
         private final List<ToolOutcome> skipped = new ArrayList<>();
@@ -148,10 +173,10 @@ public class ChatOrchestrator {
         /** Set once the final answer passed validation; the audit's answer and citation data come from here. */
         private AssembledAnswer assembled;
 
-        Turn(UserContext user, CustomerContext customer, AssembledPrompt prompt) {
+        Turn(UserContext user, CustomerContext customer, boolean audited) {
             this.user = user;
             this.customer = customer;
-            this.prompt = prompt;
+            this.audited = audited;
             this.toolContext = new ToolContext(user, customer);
         }
 
@@ -318,7 +343,20 @@ public class ChatOrchestrator {
                     source == null ? null : source.dataTime(), tool.queriedAt(), cited);
         }
 
+        /** The evaluation's view of the turn; a failed turn has no answer but still reports what it spent. */
+        EvaluationReport report(String outcome, String errorCode, String answer) {
+            List<EvaluationReport.ToolCall> toolCalls = Stream
+                    .concat(executed.stream().map(ExecutedTool::outcome), skipped.stream())
+                    .map(o -> new EvaluationReport.ToolCall(o.toolName(), o.result().status().name())).toList();
+            List<String> unverified = assembled == null ? List.of() : assembled.unverifiedNumbers();
+            return new EvaluationReport(outcome, errorCode, redactedQuestion, answer, toolCalls, modelCalls,
+                    inputTokens, outputTokens, totalTokens, elapsedMs(), unverified);
+        }
+
         void fail(ErrorCode code) {
+            if (!audited) {
+                return;
+            }
             audit(null, "FAILED", code.name());
             log.warn("chat failed requestId={} userId={} code={} durationMs={} modelCalls={} toolCalls={} "
                             + "totalTokens={} inputTokens={} outputTokens={}", requestId, user.userId(), code,
@@ -328,15 +366,19 @@ public class ChatOrchestrator {
 
         /** {@code answer} is null for a failed question: no answer text and no citation data are audited. */
         void audit(AssembledAnswer answer, String outcome, String errorCode) {
+            if (!audited) {
+                return;
+            }
+            List<PromptVersion> versions = prompt == null ? List.of() : prompt.versions();
             List<ToolOutcome> outcomes = executed.stream().map(ExecutedTool::outcome).toList();
             auditLogger.record(answer == null
                     ? new AuditEntry(requestId, user, customer, redactedQuestion, null, false, outcome, errorCode,
                             outcomes, Map.of(), List.of(), elapsedMs(), modelCalls, inputTokens,
-                            outputTokens, totalTokens, prompt.versions())
+                            outputTokens, totalTokens, versions)
                     : new AuditEntry(requestId, user, customer, redactedQuestion, answer.annotatedAnswer(),
                             answer.truncated(), outcome, errorCode, outcomes, answer.citationNumbers(),
                             answer.unverifiedNumbers(), elapsedMs(), modelCalls, inputTokens, outputTokens, totalTokens,
-                            prompt.versions()));
+                            versions));
         }
 
         long elapsedMs() {

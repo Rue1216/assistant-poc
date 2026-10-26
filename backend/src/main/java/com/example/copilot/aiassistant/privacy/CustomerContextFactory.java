@@ -33,6 +33,14 @@ public class CustomerContextFactory {
         return dataPort.findCustomer(customerId).map(record -> build(record, level));
     }
 
+    /**
+     * Builds the context for a dataset case at the level the case declares. Only for {@code EvalRunner}: it does not
+     * check the user's access to the customer. Empty when the customer does not exist.
+     */
+    public Optional<CustomerContext> forEvaluation(String customerId, AccessLevel level) {
+        return dataPort.findCustomer(customerId).map(record -> build(record, level));
+    }
+
     static CustomerContext build(CustomerRecord record, AccessLevel level) {
         Set<String> self = new LinkedHashSet<>();
         add(self, record.customerId());
