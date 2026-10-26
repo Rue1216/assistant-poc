@@ -125,6 +125,12 @@ describe('ConfigEditor', () => {
     expect(api.discardDraft).not.toHaveBeenCalled()
   })
 
+  it('has an 評測 button that emits evaluate', async () => {
+    const { wrapper } = await mountEditor(version('SYSTEM_INSTRUCTION', 'DRAFT'))
+    await button(wrapper, '評測').trigger('click')
+    expect(wrapper.emitted('evaluate')).toHaveLength(1)
+  })
+
   it('does not render any platform safety rules', async () => {
     const { wrapper } = await mountEditor(version('SYSTEM_PROMPT', 'DRAFT'))
     const text = wrapper.text() + (wrapper.find('textarea').element as HTMLTextAreaElement).value

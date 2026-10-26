@@ -7,6 +7,7 @@ const api = vi.hoisted(() => ({
   listConfigs: vi.fn(),
   createConfig: vi.fn(),
   listVersions: vi.fn(),
+  feedbackStats: vi.fn(),
   getVersion: vi.fn(),
   createDraft: vi.fn(),
   saveDraft: vi.fn(),
@@ -87,6 +88,22 @@ describe('usePromptAdmin', () => {
     for (const fn of Object.values(api)) fn.mockReset()
     toast.mockReset()
     api.listConfigs.mockResolvedValue([])
+    api.feedbackStats.mockResolvedValue([])
+  })
+
+  it('loads feedback statistics keyed by version alongside the history', async () => {
+    api.feedbackStats.mockResolvedValue([{ version: 1, up: 12, down: 3 }])
+    const admin = await setup()
+    expect(api.feedbackStats).toHaveBeenCalledWith(KEY)
+    expect(admin.state.feedback).toEqual({ 1: { version: 1, up: 12, down: 3 } })
+  })
+
+  it('keeps the history and an empty feedback map when statistics fail', async () => {
+    api.feedbackStats.mockRejectedValue(new Error('boom'))
+    const admin = await setup()
+    expect(admin.state.versions).toHaveLength(2)
+    expect(admin.state.feedback).toEqual({})
+    expect(toast).not.toHaveBeenCalled()
   })
 
   it('loads the working copy and the published version into state and the form', async () => {

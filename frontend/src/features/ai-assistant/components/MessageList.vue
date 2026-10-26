@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import type { ChatMessage, SuggestionCategory } from '../types'
+import type { ChatMessage, FeedbackRating, SuggestionCategory } from '../types'
 import { formatTaipei, formatTaipeiTime } from '../taipeiTime'
 import WelcomeCard from './WelcomeCard.vue'
 import UserMessage from './UserMessage.vue'
@@ -13,7 +13,7 @@ const props = defineProps<{
   categories: SuggestionCategory[]
   unavailable: boolean
 }>()
-defineEmits<{ ask: [question: string]; cancel: []; retry: [id: string] }>()
+defineEmits<{ ask: [question: string]; cancel: []; retry: [id: string]; rate: [id: string, rating: FeedbackRating | null] }>()
 
 const box = ref<HTMLElement | null>(null)
 const firstTime = computed(() => {
@@ -48,7 +48,7 @@ watch(
         <PendingMessage v-else-if="m.state === 'pending'" @cancel="$emit('cancel')" />
         <ErrorMessage v-else-if="m.state === 'error'" :message="m" @retry="$emit('retry', m.id)" />
         <div v-else-if="m.state === 'cancelled'" class="ai-cancelled">已取消</div>
-        <AssistantMessage v-else :message="m" />
+        <AssistantMessage v-else :message="m" @rate="$emit('rate', m.id, $event)" />
       </template>
     </div>
   </div>

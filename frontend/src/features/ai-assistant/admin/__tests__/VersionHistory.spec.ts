@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import VersionHistory from '../VersionHistory.vue'
-import type { ConfigStatus, VersionHistoryItem } from '../../types'
+import type { ConfigStatus, VersionFeedback, VersionHistoryItem } from '../../types'
 
 function item(version: number, status: ConfigStatus, updatedAt: string, extra: Partial<VersionHistoryItem> = {}) {
   return {
@@ -28,8 +28,8 @@ const VERSIONS: VersionHistoryItem[] = [
   item(9138, 'SCHEDULED', '2026-10-19T11:00:00+08:00', { scheduledAt: '2026-10-24T09:00:00+08:00' }),
 ]
 
-function mountHistory(versions = VERSIONS, canEdit = true) {
-  return mount(VersionHistory, { props: { versions, activeVersions: [], canEdit, busy: false } })
+function mountHistory(versions = VERSIONS, canEdit = true, feedback: Record<number, VersionFeedback> = {}) {
+  return mount(VersionHistory, { props: { versions, activeVersions: [], canEdit, busy: false, feedback } })
 }
 
 const rows = (w: ReturnType<typeof mountHistory>) => w.findAll('.pm-ver')
@@ -147,5 +147,35 @@ describe('VersionHistory', () => {
     const w = mountHistory()
     await rows(w)[1]!.find('.pm-ver__main').trigger('click')
     expect(w.emitted('view')).toEqual([[9136]])
+  })
+
+  describe('feedback statistics', () => {
+    const fb = (version: number, up: number, down: number) => ({ version, up, down })
+
+    it('shows counts and percentage on published and archived rows only', () => {
+      const w = mountHistory(VERSIONS, true, {
+        9135: fb(9135, 1, 1),
+        9136: fb(9136, 12, 3),
+        9137: fb(9137, 5, 5),
+        9138: fb(9138, 4, 0),
+      })
+      const text = rows(w).map((r) => r.text())
+      expect(text.find((t) => t.includes('已發布'))).toContain('👍 12・👎 3（80%）')
+      expect(text.find((t) => t.includes('已封存'))).toContain('👍 1・👎 1（50%）')
+      expect(w.text()).not.toContain('👍 5')
+      expect(w.text()).not.toContain('👍 4')
+      expect(w.text()).toContain('回饋統計涵蓋 180 天內的回答')
+    })
+
+    it('shows nothing without statistics, footnote included', () => {
+      const w = mountHistory()
+      expect(w.text()).not.toContain('👍')
+      expect(w.text()).not.toContain('回饋統計涵蓋')
+    })
+
+    it('hides the footnote when the only statistics belong to a draft', () => {
+      const w = mountHistory([item(1, 'DRAFT', '2026-10-19T08:00:00+08:00')], true, { 1: fb(1, 2, 2) })
+      expect(w.text()).not.toContain('回饋統計涵蓋')
+    })
   })
 })

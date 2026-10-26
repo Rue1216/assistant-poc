@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { formatTaipeiShort, formatTaipeiShortSeconds } from '../taipeiTime'
-import type { VersionHistoryItem } from '../types'
+import type { ConfigStatus, VersionFeedback, VersionHistoryItem } from '../types'
 import { APPLICABLE, STATUS_LABEL, STATUS_VERB } from './promptLabels'
 
 const props = defineProps<{
@@ -10,6 +10,8 @@ const props = defineProps<{
   activeVersions: number[]
   canEdit: boolean
   busy: boolean
+  /** Thumbs counts by version; shown on published and archived rows only. */
+  feedback: Record<number, VersionFeedback>
 }>()
 const emit = defineEmits<{
   view: [version: number]
@@ -60,6 +62,19 @@ function label(row: VersionHistoryItem): string {
   return `${STATUS_LABEL[row.status]}，${timeOf(row)}`
 }
 
+const FEEDBACK_STATUSES: ConfigStatus[] = ['PUBLISHED', 'ARCHIVED']
+
+/** 「👍 12・👎 3（80%）」 for published and archived rows that have feedback. */
+function feedbackText(row: VersionHistoryItem): string | null {
+  const f = props.feedback[row.version]
+  if (!f || !FEEDBACK_STATUSES.includes(row.status)) return null
+  const total = f.up + f.down
+  if (total === 0) return null
+  return `👍 ${f.up}・👎 ${f.down}（${Math.round((f.up / total) * 100)}%）`
+}
+
+const showFeedbackNote = computed(() => rows.value.some((row) => feedbackText(row) !== null))
+
 /** Not v-model with :value, so the internal version number never lands in a DOM attribute. */
 function toggle(version: number, on: boolean) {
   checked.value = on ? [...checked.value, version] : checked.value.filter((v) => v !== version)
@@ -105,6 +120,7 @@ function onCompare() {
             <span class="pm-ver__extra">原作者 {{ row.createdBy }}</span>
             <span v-if="row.scheduledAt" class="pm-ver__extra">原預約 {{ formatTaipeiShort(row.scheduledAt) }}</span>
           </template>
+          <span v-if="feedbackText(row)" class="pm-ver__feedback">{{ feedbackText(row) }}</span>
           <span v-if="row.changeNote" class="pm-ver__note">{{ row.changeNote }}</span>
           <span v-if="appliedFrom(row)" class="pm-ver__from">{{ appliedFrom(row) }}</span>
         </button>
@@ -119,6 +135,7 @@ function onCompare() {
         </button>
       </li>
     </ol>
+    <p v-if="showFeedbackNote" class="pm-versions__note">回饋統計涵蓋 180 天內的回答</p>
     <div v-if="versions.length > 1" class="pm-versions__foot">
       <label v-if="discardedCount" class="pm-versions__toggle">
         <input v-model="showDiscarded" type="checkbox" /> 顯示已捨棄的版本（{{ discardedCount }}）
@@ -259,6 +276,19 @@ function onCompare() {
 }
 
 .pm-ver__note {
+  color: var(--color-text-subtle);
+}
+
+.pm-ver__feedback {
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pm-versions__note {
+  margin: 0 8px;
+  padding: 0 8px 4px;
+  font-size: 11px;
   color: var(--color-text-subtle);
 }
 

@@ -55,6 +55,8 @@ export interface ChatRequestBody {
   history: HistoryItem[]
 }
 
+export type FeedbackRating = 'UP' | 'DOWN'
+
 export interface ChatMessageError {
   code: string
   message: string
@@ -74,6 +76,9 @@ export interface ChatMessage {
   citations?: Citation[]
   disclaimer?: string | null
   toolCalls?: ToolCallSummary[]
+  /** Server request id of the answer; feedback is addressed by it. */
+  requestId?: string
+  feedback?: FeedbackRating | null
   error?: ChatMessageError
 }
 
@@ -99,6 +104,13 @@ export interface ConfigSummary {
   name: string
   published: ConfigVersionInfo | null
   workingCopy: ConfigVersionInfo | null
+}
+
+/** Answer feedback counts of one prompt version (180-day window). */
+export interface VersionFeedback {
+  version: number
+  up: number
+  down: number
 }
 
 export interface VersionHistoryItem {
@@ -171,4 +183,118 @@ export interface OverwritePendingDetail {
   scheduledAt: string | null
   updatedAt: string
   docVersion: number
+}
+
+// ---- Prompt evaluation (spec 2026-10-24 sections 5.2, 6.2-6.6) ----
+
+export type EvalStatus = 'RUNNING' | 'COMPLETED' | 'FAILED'
+
+/** Raw counts per prompt version; rates are computed in the UI. */
+export interface EvalMetrics {
+  correct: number
+  total: number
+  toolsOk: number
+  refusedExpected: number
+  expectedRefusals: number
+  refusedNormal: number
+  normalCases: number
+  avgTotalTokens: number
+  avgInputTokens: number
+  avgOutputTokens: number
+  avgDurationMs: number
+}
+
+export interface EvalSummary {
+  baseline: EvalMetrics
+  candidate: EvalMetrics
+  judgeTokens: number
+}
+
+export interface JudgeVerdict {
+  refused: boolean | null
+  /** Empty when the judge failed (error = AI_EVAL_JUDGE_FAILED). */
+  rubric: { text: string; met: boolean }[]
+  comment: string | null
+  error: string | null
+  tokens: number
+}
+
+export interface CaseResult {
+  outcome: 'ANSWERED' | 'FAILED'
+  errorCode: string | null
+  answer: string | null
+  toolCalls: { toolName: string; status: string }[]
+  modelCalls: number
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  durationMs: number
+  unverifiedNumbers: string[]
+  toolsOk: boolean
+  numbersOk: boolean
+  missingPhrases: string[]
+  forbiddenPhrases: string[]
+  judge: JudgeVerdict | null
+  passed: boolean
+}
+
+export interface EvalCaseRecord {
+  caseId: string
+  group: string
+  question: string
+  expectRefusal: boolean
+  baseline: CaseResult | null
+  candidate: CaseResult | null
+}
+
+export interface EvalRunSummary {
+  runId: string
+  status: EvalStatus
+  errorCode: string | null
+  triggeredBy: string
+  startedAt: string
+  finishedAt: string | null
+  candidateVersion: number
+  candidateUpdatedAt: string
+  candidateDocVersion: number
+  datasetChanged: boolean
+  totalCases: number
+  completedCases: number
+  summary: EvalSummary | null
+}
+
+export interface EvalRun extends EvalRunSummary {
+  configKey: string
+  cases: EvalCaseRecord[]
+}
+
+/** The one running evaluation (GET evaluations/current). */
+export interface CurrentEvaluation {
+  runId: string
+  configKey: string
+  triggeredBy: string
+  startedAt: string
+  totalCases: number
+  completedCases: number
+}
+
+export interface EvalCase {
+  id: string
+  group: string
+  accessLevel: string
+  customerId: string
+  question: string
+  expect: {
+    tools: string[]
+    forbiddenTools: string[]
+    refusal: boolean
+    mustContain: string[]
+    mustNotContain: string[]
+  }
+  rubric: string[]
+}
+
+export interface EvalCases {
+  datasetHash: string
+  cases: EvalCase[]
 }

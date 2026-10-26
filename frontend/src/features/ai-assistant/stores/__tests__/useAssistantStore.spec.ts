@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import type { ChatResponse, Citation } from '../../types'
 
-const { chat } = vi.hoisted(() => ({ chat: vi.fn() }))
-vi.mock('../../api/aiAssistantApi', () => ({ aiAssistantApi: { chat, suggestions: vi.fn() } }))
+const { chat, putFeedback } = vi.hoisted(() => ({ chat: vi.fn(), putFeedback: vi.fn() }))
+vi.mock('../../api/aiAssistantApi', () => ({ aiAssistantApi: { chat, putFeedback, suggestions: vi.fn() } }))
 vi.mock('../../../../platform-mock/useToast', () => ({ useToast: () => ({ show: vi.fn() }) }))
 
 import { ApiError } from '../../../../platform-mock/apiClient'
@@ -40,6 +40,7 @@ describe('useAssistantStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     chat.mockReset()
+    putFeedback.mockReset()
   })
 
   it('stores blocks and citations on the bot message and keeps answer as content', async () => {
@@ -298,5 +299,112 @@ describe('useAssistantStore', () => {
     store.markUnavailable()
     await store.retry(store.messages[1]!.id)
     expect(store.messages.map((m) => m.state)).toEqual(['error', 'error'])
+  })
+
+  describe('feedback', () => {
+    async function answered() {
+      chat.mockResolvedValue(response('答案'))
+      const store = useAssistantStore()
+      store.bindCustomer('C001')
+      await store.send('q')
+      return store
+    }
+
+    it('send stores requestId', async () => {
+      const store = await answered()
+      expect(store.messages[1]!.requestId).toBe('r1')
+    })
+
+    it('rate updates optimistically and calls api', async () => {
+      const store = await answered()
+      const d = deferred<void>()
+      putFeedback.mockReturnValue(d.promise)
+      const p = store.rate(store.messages[1]!.id, 'UP')
+      expect(store.messages[1]!.feedback).toBe('UP')
+      expect(putFeedback).toHaveBeenCalledWith('r1', 'UP')
+      d.resolve()
+      await p
+      expect(store.messages[1]!.feedback).toBe('UP')
+    })
+
+    it('rate reverts on failure', async () => {
+      const store = await answered()
+      putFeedback.mockRejectedValue(new Error('x'))
+      await store.rate(store.messages[1]!.id, 'UP')
+      expect(store.messages[1]!.feedback ?? null).toBeNull()
+    })
+
+    it('rapid clicks keep the last choice when an earlier request fails', async () => {
+      const store = await answered()
+      const first = deferred<void>()
+      putFeedback.mockReturnValueOnce(first.promise).mockResolvedValueOnce(undefined)
+      const id = store.messages[1]!.id
+      const p1 = store.rate(id, 'UP')
+      await store.rate(id, 'DOWN')
+      first.reject(new Error('x'))
+      await p1
+      expect(store.messages[1]!.feedback).toBe('DOWN')
+    })
+
+    it('queues a newer click and sends it after the in-flight one succeeds', async () => {
+      const store = await answered()
+      const first = deferred<void>()
+      putFeedback.mockReturnValueOnce(first.promise).mockResolvedValueOnce(undefined)
+      const id = store.messages[1]!.id
+      const p1 = store.rate(id, 'UP')
+      await store.rate(id, 'DOWN')
+      expect(putFeedback).toHaveBeenCalledTimes(1)
+      first.resolve()
+      await p1
+      expect(putFeedback.mock.calls.map((c) => c[1])).toEqual(['UP', 'DOWN'])
+      expect(store.messages[1]!.feedback).toBe('DOWN')
+    })
+
+    it('still sends the newer click when the in-flight one fails', async () => {
+      const store = await answered()
+      const first = deferred<void>()
+      putFeedback.mockReturnValueOnce(first.promise).mockResolvedValueOnce(undefined)
+      const id = store.messages[1]!.id
+      const p1 = store.rate(id, 'UP')
+      await store.rate(id, 'DOWN')
+      first.reject(new Error('x'))
+      await p1
+      expect(putFeedback.mock.calls.map((c) => c[1])).toEqual(['UP', 'DOWN'])
+      expect(store.messages[1]!.feedback).toBe('DOWN')
+    })
+
+    it('falls back to the confirmed value when a later rating fails', async () => {
+      const store = await answered()
+      const id = store.messages[1]!.id
+      putFeedback.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('x'))
+      await store.rate(id, 'UP')
+      await store.rate(id, 'DOWN')
+      expect(store.messages[1]!.feedback).toBe('UP')
+    })
+
+    it('sends nothing more when the user returns to the confirmed value', async () => {
+      const store = await answered()
+      const first = deferred<void>()
+      putFeedback.mockReturnValueOnce(first.promise)
+      const id = store.messages[1]!.id
+      const p1 = store.rate(id, 'UP')
+      await store.rate(id, 'DOWN')
+      await store.rate(id, 'UP')
+      first.resolve()
+      await p1
+      expect(putFeedback).toHaveBeenCalledTimes(1)
+      expect(store.messages[1]!.feedback).toBe('UP')
+    })
+
+    it('feedback response after reset is ignored', async () => {
+      const store = await answered()
+      const d = deferred<void>()
+      putFeedback.mockReturnValue(d.promise)
+      const p = store.rate(store.messages[1]!.id, 'UP')
+      store.reset()
+      d.reject(new Error('x'))
+      await expect(p).resolves.toBeUndefined()
+      expect(store.messages).toEqual([])
+    })
   })
 })

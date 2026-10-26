@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
+import type { FeedbackRating } from '../types'
 import { useAssistantStore } from '../stores/useAssistantStore'
 
 export const MAX_MESSAGE_LENGTH = 1000
@@ -43,5 +44,6 @@ export function useAssistantChat() {
     cancel: store.cancel,
     retry: (id: string) => void store.retry(id),
     clear: store.clear,
+    rate: (id: string, rating: FeedbackRating | null) => void store.rate(id, rating),
   }
 }

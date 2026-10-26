@@ -136,6 +136,25 @@ describe('AssistantMessage', () => {
   })
 })
 
+describe('AssistantMessage feedback', () => {
+  it('shows feedback buttons for a done answer with requestId', () => {
+    const w = mount(AssistantMessage, { props: { message: msg({ requestId: 'r1' }) } })
+    expect(w.findComponent({ name: 'FeedbackButtons' }).exists()).toBe(true)
+  })
+
+  it('hides them without requestId or on error', () => {
+    expect(mount(AssistantMessage, { props: { message: msg() } }).findComponent({ name: 'FeedbackButtons' }).exists()).toBe(false)
+    const err = msg({ requestId: 'r1', state: 'error' })
+    expect(mount(AssistantMessage, { props: { message: err } }).findComponent({ name: 'FeedbackButtons' }).exists()).toBe(false)
+  })
+
+  it('emits rate upward', async () => {
+    const w = mount(AssistantMessage, { props: { message: msg({ requestId: 'r1', feedback: null }) } })
+    await w.get('[aria-label="有幫助"]').trigger('click')
+    expect(w.emitted('rate')).toEqual([['UP']])
+  })
+})
+
 describe('formatTaipei', () => {
   it('formats in Asia/Taipei', () => {
     expect(formatTaipei('2026-10-24T01:00:00Z')).toBe('2026/10/24 09:00')

@@ -16,6 +16,11 @@ const api = vi.hoisted(() => ({
   validateDraft: vi.fn(),
   publish: vi.fn(),
   applyVersion: vi.fn(),
+  listEvaluations: vi.fn(),
+  currentEvaluation: vi.fn(),
+  getEvaluation: vi.fn(),
+  startEvaluation: vi.fn(),
+  evaluationCases: vi.fn(),
 }))
 vi.mock('../../api/aiAssistantApi', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/aiAssistantApi')>()),
@@ -146,6 +151,8 @@ describe('PromptManagementPage', () => {
     toast.mockReset()
     HISTORY = structuredClone(BASE_HISTORY)
     api.listConfigs.mockResolvedValue(CONFIGS)
+    api.listEvaluations.mockResolvedValue([])
+    api.currentEvaluation.mockResolvedValue(null)
     api.listVersions.mockImplementation(async (key: string) => HISTORY[key])
     api.getVersion.mockImplementation(async (key: string, v: number) => full(key, HISTORY[key]!.find((h) => h.version === v)!))
   })
@@ -302,6 +309,25 @@ describe('PromptManagementPage', () => {
     await flushPromises()
     expect(api.listVersions).toHaveBeenCalledWith('instruction.customer-overview')
     expect(w.find('.pm-viewer').text()).toContain('顧客概況')
+  })
+
+  it('opens the evaluation view from the editor and returns to it with unsaved edits intact', async () => {
+    const w = await mountPage()
+    await openInstructions(w, '聯繫準備')
+    await w.find('textarea').setValue('我的未儲存內容')
+
+    await w.findAll('button').find((b) => b.text() === '評測')!.trigger('click')
+    await flushPromises()
+    expect(w.find('textarea').exists()).toBe(false)
+    expect(w.text()).toContain('評測：聯繫準備')
+    expect(w.text()).toContain('請先儲存，評測使用已儲存的內容')
+    expect(api.listEvaluations).toHaveBeenCalledWith('instruction.contact-prep')
+
+    await byText(w, 'button', '返回編輯').trigger('click')
+    await flushPromises()
+    expect(w.find('.pm-editor__title').text()).toBe('聯繫準備')
+    expect(textarea(w).value).toBe('我的未儲存內容')
+    expect(w.find('[role="dialog"]').exists()).toBe(false)
   })
 
   it('switches config without asking when there are no unsaved edits', async () => {

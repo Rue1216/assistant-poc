@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { ApiError } from '../../../platform-mock/apiClient'
 import { aiAssistantApi } from '../api/aiAssistantApi'
-import type { ChatMessage, HistoryItem } from '../types'
+import type { ChatMessage, FeedbackRating, HistoryItem } from '../types'
 
 export const MAX_HISTORY_MESSAGES = 20
 export const MAX_HISTORY_CONTENT = 4000
@@ -19,6 +19,10 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
   // response (customer switch, cancel, clear) is recognised as stale and dropped.
   let current: AbortController | null = null
   let seq = 0
+
+  // Per-message feedback tracking (not reactive): `desired` is the latest click, `confirmed` the
+  // last value the server accepted, `inFlight` marks a running request. Cleared on reset/customer switch so late responses are ignored.
+  const feedbackState = new Map<string, { desired: FeedbackRating | null; confirmed: FeedbackRating | null; inFlight: boolean }>()
 
   const nextId = () => `m${++seq}`
 
@@ -39,6 +43,7 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
     if (customerId.value === id) return
     abortCurrent()
     messages.value = []
+    feedbackState.clear()
     unavailable.value = false
     customerId.value = id
   }
@@ -47,6 +52,7 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
   function reset(): void {
     abortCurrent()
     messages.value = []
+    feedbackState.clear()
     unavailable.value = false
     customerId.value = null
   }
@@ -79,6 +85,7 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
       if (current !== controller) return
       user.state = 'done'
       bot.state = 'done'
+      bot.requestId = res.requestId
       bot.content = res.answer
       bot.queriedAt = res.queriedAt
       bot.blocks = res.blocks
@@ -129,7 +136,44 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
   function clear(): void {
     abortCurrent()
     messages.value = []
+    feedbackState.clear()
   }
 
-  return { customerId, messages, pending, unavailable, bindCustomer, reset, markUnavailable, send, cancel, retry, clear }
+  /**
+   * Rate an answer. The UI shows the latest click at once; requests are serialised per message (one PUT in
+   * flight), so the server ends up with the last click. If the newest value is rejected the UI falls back
+   * to what the server last accepted.
+   */
+  async function rate(messageId: string, rating: FeedbackRating | null): Promise<void> {
+    const m = messages.value.find((x) => x.id === messageId)
+    if (!m || !m.requestId) return
+    let entry = feedbackState.get(messageId)
+    if (!entry) {
+      const initial = m.feedback ?? null
+      entry = { desired: initial, confirmed: initial, inFlight: false }
+      feedbackState.set(messageId, entry)
+    }
+    entry.desired = rating
+    m.feedback = rating
+    if (entry.inFlight) return // the running loop sends the newest value when the current request settles
+    entry.inFlight = true
+    while (entry.desired !== entry.confirmed) {
+      const sending = entry.desired
+      try {
+        await aiAssistantApi.putFeedback(m.requestId, sending)
+        if (feedbackState.get(messageId) !== entry) return // conversation was reset meanwhile
+        entry.confirmed = sending
+      } catch {
+        if (feedbackState.get(messageId) !== entry) return
+        // the global toast already reported it; a newer click is still sent, otherwise show the server's value
+        if (entry.desired === sending) {
+          entry.desired = entry.confirmed
+          m.feedback = entry.confirmed
+        }
+      }
+    }
+    entry.inFlight = false
+  }
+
+  return { customerId, messages, pending, unavailable, bindCustomer, reset, markUnavailable, send, cancel, retry, clear, rate }
 })

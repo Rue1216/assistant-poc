@@ -23,6 +23,15 @@ describe('aiAssistantApi admin functions', () => {
     ])
   })
 
+  it('reads feedback statistics silently', async () => {
+    http.get.mockResolvedValue({ data: [{ version: 3, up: 12, down: 3 }] })
+    const stats = await aiAssistantApi.feedbackStats('instruction.contact-prep')
+    expect(stats).toEqual([{ version: 3, up: 12, down: 3 }])
+    expect(http.get).toHaveBeenCalledWith(`${BASE}/feedback-stats`, {
+      meta: expect.objectContaining({ silentCodes: expect.any(Array) }),
+    })
+  })
+
   it('keeps conflict and validation failures silent on save', async () => {
     const body = { name: 'n', content: 'c', changeNote: null, saveMode: 'KEEP_STATUS' as const, docVersion: 4 }
     await aiAssistantApi.saveDraft('instruction.contact-prep', body)
@@ -67,5 +76,40 @@ describe('aiAssistantApi admin functions', () => {
   it('keeps a validate conflict silent so only the conflict banner shows', async () => {
     await aiAssistantApi.validateDraft('instruction.contact-prep')
     expect(http.post.mock.calls[0]![2]).toEqual({ meta: { silentCodes: ['AI_CONFIG_CONFLICT'] } })
+  })
+})
+
+describe('aiAssistantApi evaluation functions', () => {
+  const ADMIN = '/ai-assistant/admin'
+  beforeEach(() => {
+    for (const fn of Object.values(http)) fn.mockReset().mockResolvedValue({ data: {} })
+  })
+
+  it('starts an evaluation with AI_EVAL_RUNNING silent', async () => {
+    http.post.mockResolvedValue({ data: { runId: 'r1', status: 'RUNNING', totalCases: 16 } })
+    const res = await aiAssistantApi.startEvaluation('instruction.contact-prep', 5)
+    expect(res.runId).toBe('r1')
+    expect(http.post).toHaveBeenCalledWith(`${BASE}/evaluations`, { docVersion: 5 }, {
+      meta: { silentCodes: ['AI_EVAL_RUNNING'] },
+    })
+  })
+
+  it('reads the history, one run and the dataset', async () => {
+    await aiAssistantApi.listEvaluations('instruction.contact-prep')
+    await aiAssistantApi.getEvaluation('abc')
+    await aiAssistantApi.evaluationCases()
+    expect(http.get.mock.calls.map((c) => c[0])).toEqual([
+      `${BASE}/evaluations`,
+      `${ADMIN}/evaluations/abc`,
+      `${ADMIN}/evaluation-cases`,
+    ])
+  })
+
+  it('maps an empty current evaluation (204) to null', async () => {
+    http.get.mockResolvedValueOnce({ status: 204, data: '' })
+    expect(await aiAssistantApi.currentEvaluation()).toBeNull()
+    http.get.mockResolvedValueOnce({ status: 200, data: { runId: 'r1' } })
+    expect(await aiAssistantApi.currentEvaluation()).toEqual({ runId: 'r1' })
+    expect(http.get).toHaveBeenCalledWith(`${ADMIN}/evaluations/current`)
   })
 })

@@ -54,6 +54,7 @@ function startNewChat(): void {
       @ask="chat.ask"
       @cancel="chat.cancel"
       @retry="chat.retry"
+      @rate="chat.rate"
     />
     <ChatComposer
       :model-value="chat.draft.value"

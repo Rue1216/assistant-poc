@@ -11,6 +11,7 @@ import type { ConfigType, ConfigVersion, OverwritePendingDetail, VersionHistoryI
 import ConfigEditor from './ConfigEditor.vue'
 import ConfigList from './ConfigList.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
+import EvaluationView from './EvaluationView.vue'
 import NewInstructionDialog from './NewInstructionDialog.vue'
 import { STATUS_SHORT } from './promptLabels'
 import VersionDiff from './VersionDiff.vue'
@@ -20,6 +21,7 @@ import './prompt-admin.css'
 
 type View =
   | { kind: 'main' }
+  | { kind: 'evaluation' }
   | { kind: 'version'; version: ConfigVersion }
   | {
       kind: 'diff'
@@ -136,6 +138,8 @@ const mainPane = computed<'editor' | 'published' | 'none'>(() => {
   if (state.published) return 'published'
   return 'none'
 })
+
+const nameOfKey = (key: string) => state.configs.find((c) => c.configKey === key)?.name ?? key
 
 const backLabel = computed(() => (state.workingCopy ? '返回編輯' : '返回目前生效的版本'))
 
@@ -275,6 +279,7 @@ async function onCreateInstruction(keySuffix: string, name: string) {
             :active-versions="activeVersions"
             :can-edit="canEdit"
             :busy="state.busy"
+            :feedback="state.feedback"
             @view="onView"
             @compare="onCompare"
             @apply="onApply"
@@ -307,6 +312,17 @@ async function onCreateInstruction(keySuffix: string, name: string) {
         :back-label="state.workingCopy ? '返回編輯' : '返回'"
         @back="showMain"
       />
+      <EvaluationView
+        v-else-if="view.kind === 'evaluation'"
+        :config-key="selectedKey"
+        :name="selectedSummary?.name ?? ''"
+        :working-copy="state.workingCopy"
+        :dirty="admin.dirty.value"
+        :can-edit="canEdit"
+        :back-label="backLabel"
+        :name-of="nameOfKey"
+        @back="showMain"
+      />
       <ConfigEditor
         v-else-if="mainPane === 'editor'"
         :key="`${selectedKey}:${state.workingCopy!.version}`"
@@ -318,6 +334,7 @@ async function onCreateInstruction(keySuffix: string, name: string) {
         @go-instructions="selectTab('SYSTEM_INSTRUCTION')"
         @discard="onDiscard"
         @reload="onReload"
+        @evaluate="view = { kind: 'evaluation' }"
       />
       <VersionViewer
         v-else-if="mainPane === 'published'"

@@ -6,10 +6,17 @@ import type {
   ConfigSummary,
   ConfigVersion,
   CreateConfigBody,
+  CurrentEvaluation,
+  EvalCases,
+  EvalRun,
+  EvalRunSummary,
+  EvalStatus,
+  FeedbackRating,
   PublishBody,
   SaveDraftBody,
   SuggestionCategory,
   ValidationReport,
+  VersionFeedback,
   VersionHistoryItem,
 } from '../types'
 
@@ -18,17 +25,22 @@ export const CHAT_TIMEOUT_MS = 150_000
 
 const SILENT = { silentCodes: ['AI_CUSTOMER_NOT_FOUND'] }
 
+/** Feedback statistics are a side panel: failures stay out of the toast. AI_UNAUTHENTICATED is deliberately absent: silencing it would also skip the session-expiry handler. */
+const STATS_SILENT = { silentCodes: [...SILENT.silentCodes, 'AI_NETWORK_ERROR', 'AI_INTERNAL_ERROR', 'AI_FORBIDDEN', 'AI_CONFIG_NOT_FOUND'] }
+
 /** Admin error codes the prompt management page shows in place instead of a toast (05 section 4). */
 export const CONFLICT = 'AI_CONFIG_CONFLICT'
 export const VALIDATION_FAILED = 'AI_CONFIG_VALIDATION_FAILED'
 export const OVERWRITE_PENDING = 'AI_CONFIG_OVERWRITE_PENDING'
 export const INPUT_INVALID = 'AI_INPUT_INVALID'
+export const EVAL_RUNNING = 'AI_EVAL_RUNNING'
 
 function base(customerId: string): string {
   return `/ai-assistant/customers/${encodeURIComponent(customerId)}`
 }
 
 const ADMIN = '/ai-assistant/admin/configs'
+const EVALUATIONS = '/ai-assistant/admin/evaluations'
 
 function configPath(configKey: string): string {
   return `${ADMIN}/${encodeURIComponent(configKey)}`
@@ -51,6 +63,11 @@ export const aiAssistantApi = {
     return res.data.categories
   },
 
+  /** Not silent: a failure (e.g. 404 AI_FEEDBACK_NOT_FOUND) shows the global toast. */
+  async putFeedback(requestId: string, rating: FeedbackRating | null): Promise<void> {
+    await apiClient.put(`/ai-assistant/chat/${encodeURIComponent(requestId)}/feedback`, { rating })
+  },
+
   // ---- Prompt management (02 section 3) ----
 
   /** 3.1 */
@@ -68,6 +85,12 @@ export const aiAssistantApi = {
   /** 3.3 */
   async listVersions(configKey: string): Promise<VersionHistoryItem[]> {
     const res = await apiClient.get<VersionHistoryItem[]>(`${configPath(configKey)}/versions`)
+    return res.data
+  },
+
+  /** Per-version thumbs-up and thumbs-down counts; versions without feedback are absent. */
+  async feedbackStats(configKey: string): Promise<VersionFeedback[]> {
+    const res = await apiClient.get<VersionFeedback[]>(`${configPath(configKey)}/feedback-stats`, { meta: STATS_SILENT })
     return res.data
   },
 
@@ -125,6 +148,43 @@ export const aiAssistantApi = {
     const res = await apiClient.post<ConfigVersion>(`${configPath(configKey)}/versions/${version}/apply`, body, {
       meta: { silentCodes: [CONFLICT, OVERWRITE_PENDING] },
     })
+    return res.data
+  },
+
+  // ---- Prompt evaluation (design 6.2-6.6) ----
+
+  /** 202; 409 AI_EVAL_RUNNING is silent because the caller shows the running evaluation instead. */
+  async startEvaluation(
+    configKey: string,
+    docVersion: number,
+  ): Promise<{ runId: string; status: EvalStatus; totalCases: number }> {
+    const res = await apiClient.post<{ runId: string; status: EvalStatus; totalCases: number }>(
+      `${configPath(configKey)}/evaluations`,
+      { docVersion },
+      { meta: { silentCodes: [EVAL_RUNNING] } },
+    )
+    return res.data
+  },
+
+  /** The latest runs of one key, newest first, without cases. */
+  async listEvaluations(configKey: string): Promise<EvalRunSummary[]> {
+    const res = await apiClient.get<EvalRunSummary[]>(`${configPath(configKey)}/evaluations`)
+    return res.data
+  },
+
+  /** 204 (nothing running) arrives as an empty body and becomes null. */
+  async currentEvaluation(): Promise<CurrentEvaluation | null> {
+    const res = await apiClient.get<CurrentEvaluation | ''>(`${EVALUATIONS}/current`)
+    return res.status === 204 || !res.data ? null : res.data
+  },
+
+  async getEvaluation(runId: string): Promise<EvalRun> {
+    const res = await apiClient.get<EvalRun>(`${EVALUATIONS}/${encodeURIComponent(runId)}`)
+    return res.data
+  },
+
+  async evaluationCases(): Promise<EvalCases> {
+    const res = await apiClient.get<EvalCases>('/ai-assistant/admin/evaluation-cases')
     return res.data
   },
 }

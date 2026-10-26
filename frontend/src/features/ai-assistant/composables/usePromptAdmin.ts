@@ -12,6 +12,7 @@ import type {
   PublishMode,
   SaveMode,
   ValidationIssue,
+  VersionFeedback,
   VersionHistoryItem,
 } from '../types'
 
@@ -62,6 +63,8 @@ export function usePromptAdmin(configKey: Ref<string>) {
     workingCopy: null as ConfigVersion | null,
     published: null as ConfigVersion | null,
     versions: [] as VersionHistoryItem[],
+    /** Thumbs counts by version; empty when the statistics could not be loaded. */
+    feedback: {} as Record<number, VersionFeedback>,
     form: { name: '', content: '', changeNote: '' } as PromptForm,
     errors: [] as ValidationIssue[],
     validation: 'idle' as ValidationState,
@@ -109,11 +112,21 @@ export function usePromptAdmin(configKey: Ref<string>) {
     }
   }
 
+  /** Statistics are optional: any failure gives an empty map and never touches the history. */
+  async function fetchFeedback(key: string): Promise<Record<number, VersionFeedback>> {
+    try {
+      return Object.fromEntries((await aiAssistantApi.feedbackStats(key)).map((f) => [f.version, f]))
+    } catch {
+      return {}
+    }
+  }
+
   let loadSeq = 0
   let loadedKey = ''
 
   function clearSelected(): void {
     state.versions = []
+    state.feedback = {}
     state.workingCopy = null
     state.published = null
     resetForm()
@@ -130,6 +143,7 @@ export function usePromptAdmin(configKey: Ref<string>) {
     if (!key) return
     state.loading = true
     try {
+      const feedbackLoad = fetchFeedback(key)
       const versions = await aiAssistantApi.listVersions(key)
       const wcItem = versions.find((v) => WORKING.includes(v.status))
       const pubItem = versions.find((v) => v.status === 'PUBLISHED')
@@ -137,8 +151,10 @@ export function usePromptAdmin(configKey: Ref<string>) {
         wcItem ? aiAssistantApi.getVersion(key, wcItem.version) : null,
         pubItem ? aiAssistantApi.getVersion(key, pubItem.version) : null,
       ])
+      const feedback = await feedbackLoad
       if (seq !== loadSeq) return
       state.versions = [...versions].sort((a, b) => b.version - a.version)
+      state.feedback = feedback
       state.workingCopy = wc
       state.published = pub
       resetForm()
@@ -160,8 +176,15 @@ export function usePromptAdmin(configKey: Ref<string>) {
   async function refreshLists(key: string): Promise<void> {
     if (!onKey(key)) return
     try {
-      const [versions] = await Promise.all([aiAssistantApi.listVersions(key), loadConfigs()])
-      if (onKey(key)) state.versions = [...versions].sort((a, b) => b.version - a.version)
+      const [versions, feedback] = await Promise.all([
+        aiAssistantApi.listVersions(key),
+        fetchFeedback(key),
+        loadConfigs(),
+      ])
+      if (onKey(key)) {
+        state.versions = [...versions].sort((a, b) => b.version - a.version)
+        state.feedback = feedback
+      }
     } catch {
       // toast already shown by apiClient
     }

@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { ChatMessage } from '../types'
+import type { ChatMessage, FeedbackRating } from '../types'
 import { formatTaipeiTime } from '../taipeiTime'
 import { useToast } from '../../../platform-mock/useToast'
 import AnswerBlocks from './AnswerBlocks'
 import ToolCallSummary from './ToolCallSummary.vue'
 import CitationList from './CitationList.vue'
+import FeedbackButtons from './FeedbackButtons.vue'
 
 const props = defineProps<{ message: ChatMessage }>()
+
+const emit = defineEmits<{ rate: [rating: FeedbackRating | null] }>()
 
 const toast = useToast()
 const time = computed(() => formatTaipeiTime(props.message.queriedAt ?? props.message.createdAt))
@@ -58,6 +61,11 @@ async function copy(): Promise<void> {
           </svg>
           複製
         </button>
+        <FeedbackButtons
+          v-if="message.state === 'done' && message.requestId"
+          :rating="message.feedback ?? null"
+          @rate="emit('rate', $event)"
+        />
         <span class="ai-msg__time">{{ time }}</span>
       </div>
     </div>

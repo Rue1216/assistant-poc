@@ -18,7 +18,7 @@ const props = defineProps<{
   canPublish: boolean
 }>()
 /** discard and reload may throw away unsaved edits, so the page confirms them first (R29) */
-const emit = defineEmits<{ 'go-instructions': []; discard: []; reload: [] }>()
+const emit = defineEmits<{ 'go-instructions': []; discard: []; reload: []; evaluate: [] }>()
 
 const id = useId()
 const state = computed(() => props.admin.state)
@@ -40,6 +40,7 @@ function onPublish(mode: PublishMode, date: string, time: string) {
         <h2 :id="`${id}-title`" class="pm-editor__title">{{ wc.name }}</h2>
         <span v-if="scheduledAt" class="badge badge--scheduled">已排程 {{ formatTaipei(scheduledAt) }}</span>
         <span v-else class="badge badge--draft">草稿</span>
+        <button class="btn btn--secondary btn--sm pm-editor__evaluate" type="button" @click="emit('evaluate')">評測</button>
       </div>
       <div class="pm-editor__meta">
         <code>{{ wc.configKey }}</code>
@@ -143,6 +144,10 @@ function onPublish(mode: PublishMode, date: string, time: string) {
 <style scoped>
 .pm-editor {
   min-width: 0;
+}
+
+.pm-editor__evaluate {
+  margin-left: auto;
 }
 
 .pm-form-row {
