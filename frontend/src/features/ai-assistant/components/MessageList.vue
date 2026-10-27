@@ -10,24 +10,33 @@ import ErrorMessage from './ErrorMessage.vue'
 
 const props = defineProps<{
   messages: ChatMessage[]
+  /** The current round; earlier rounds stay on screen but cannot be retried. */
+  round: number
   categories: SuggestionCategory[]
   unavailable: boolean
 }>()
 defineEmits<{ ask: [question: string, categoryKey: string]; cancel: []; retry: [id: string]; rate: [id: string, rating: FeedbackRating | null] }>()
 
 const box = ref<HTMLElement | null>(null)
-const firstTime = computed(() => {
-  const first = props.messages[0]
-  if (!first) return ''
+function timeLabel(iso: string): string {
   // compare calendar days in Asia/Taipei; formatTaipei is "YYYY/MM/DD HH:mm"
-  const day = (iso: string) => formatTaipei(iso).slice(0, 10)
-  return day(first.createdAt) === day(new Date().toISOString())
-    ? `今天 ${formatTaipeiTime(first.createdAt)}`
-    : formatTaipei(first.createdAt)
-})
+  const day = (t: string) => formatTaipei(t).slice(0, 10)
+  return day(iso) === day(new Date().toISOString()) ? `今天 ${formatTaipeiTime(iso)}` : formatTaipei(iso)
+}
+
+/** Divider text before each message that opens a round (null otherwise); later rounds are marked 新對話. */
+const dividers = computed(() =>
+  props.messages.map((m, i) => {
+    if (i > 0 && props.messages[i - 1]!.round === m.round) return null
+    return i === 0 ? timeLabel(m.createdAt) : `新對話 · ${timeLabel(m.createdAt)}`
+  }),
+)
+
+/** A new round was started and has no messages yet. */
+const awaitingRound = computed(() => props.messages.length > 0 && props.messages.at(-1)!.round !== props.round)
 
 watch(
-  () => [props.messages.length, props.messages.at(-1)?.state],
+  () => [props.messages.length, props.messages.at(-1)?.state, props.round],
   async () => {
     await nextTick()
     if (box.value) box.value.scrollTop = box.value.scrollHeight
@@ -40,16 +49,19 @@ watch(
     <p v-if="unavailable" class="ai-unavailable" role="alert">查無此顧客或您沒有查看權限</p>
     <WelcomeCard v-else-if="messages.length === 0" :categories="categories" @ask="(q, k) => $emit('ask', q, k)" />
     <div v-else class="ai-thread">
-      <div class="ai-divider">
-        <span>{{ firstTime }}</span>
-      </div>
-      <template v-for="m in messages" :key="m.id">
+      <template v-for="(m, i) in messages" :key="m.id">
+        <div v-if="dividers[i]" class="ai-divider">
+          <span>{{ dividers[i] }}</span>
+        </div>
         <UserMessage v-if="m.role === 'user'" :message="m" />
         <PendingMessage v-else-if="m.state === 'pending'" @cancel="$emit('cancel')" />
-        <ErrorMessage v-else-if="m.state === 'error'" :message="m" @retry="$emit('retry', m.id)" />
+        <ErrorMessage v-else-if="m.state === 'error'" :message="m" :retryable="m.round === round" @retry="$emit('retry', m.id)" />
         <div v-else-if="m.state === 'cancelled'" class="ai-cancelled">已取消</div>
         <AssistantMessage v-else :message="m" @rate="$emit('rate', m.id, $event)" />
       </template>
+      <div v-if="awaitingRound" class="ai-divider">
+        <span>新對話</span>
+      </div>
     </div>
   </div>
 </template>

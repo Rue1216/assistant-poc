@@ -8,7 +8,7 @@ export const MAX_MESSAGE_LENGTH = 1000
 /** Composer state and actions on top of the conversation store. */
 export function useAssistantChat() {
   const store = useAssistantStore()
-  const { messages, pending, unavailable } = storeToRefs(store)
+  const { messages, pending, unavailable, round } = storeToRefs(store)
   const draft = ref('')
 
   const count = computed(() => draft.value.length)
@@ -35,6 +35,7 @@ export function useAssistantChat() {
     messages,
     pending,
     unavailable,
+    round,
     draft,
     count,
     canSend,
@@ -43,7 +44,7 @@ export function useAssistantChat() {
     ask,
     cancel: store.cancel,
     retry: (id: string) => void store.retry(id),
-    clear: store.clear,
+    startNewRound: store.startNewRound,
     rate: (id: string, rating: FeedbackRating | null) => void store.rate(id, rating),
   }
 }

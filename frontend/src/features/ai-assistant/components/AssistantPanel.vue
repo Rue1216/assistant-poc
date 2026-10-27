@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch } from 'vue'
+import { computed, watch } from 'vue'
 import { useAssistantStore } from '../stores/useAssistantStore'
 import { useAssistantChat } from '../composables/useAssistantChat'
 import { useSuggestions } from '../composables/useSuggestions'
@@ -25,21 +25,17 @@ watch(
   { immediate: true },
 )
 
+const canStartNew = computed(() => chat.messages.value.some((m) => m.round === chat.round.value))
+
 function startNewChat(): void {
-  chat.clear()
+  chat.startNewRound()
   chat.draft.value = ''
 }
 </script>
 
 <template>
   <section class="ai-panel" aria-label="顧問小幫手">
-    <AssistantHeader
-      :customer-id="customerId"
-      :has-messages="chat.messages.value.length > 0"
-      @new-chat="startNewChat"
-      @delete="chat.clear"
-      @close="$emit('close')"
-    />
+    <AssistantHeader :can-start-new="canStartNew" @new-chat="startNewChat" @close="$emit('close')" />
     <div class="ai-notice">
       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <rect x="4" y="11" width="16" height="10" rx="2" />
@@ -49,6 +45,7 @@ function startNewChat(): void {
     </div>
     <MessageList
       :messages="chat.messages.value"
+      :round="chat.round.value"
       :categories="suggestions.categories.value"
       :unavailable="chat.unavailable.value"
       @ask="chat.ask"

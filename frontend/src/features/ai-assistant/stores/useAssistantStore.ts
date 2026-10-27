@@ -14,9 +14,11 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
   const messages = ref<ChatMessage[]>([])
   const pending = ref(false)
   const unavailable = ref(false)
+  // New chat keeps earlier messages on screen but starts a new round: only the current round is sent as history.
+  const round = ref(0)
 
   // The in-flight request. Anything that invalidates it sets this to null, so a late
-  // response (customer switch, cancel, clear) is recognised as stale and dropped.
+  // response (customer switch, cancel, new round) is recognised as stale and dropped.
   let current: AbortController | null = null
   let seq = 0
 
@@ -34,7 +36,7 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
 
   function buildHistory(): HistoryItem[] {
     return messages.value
-      .filter((m) => m.state === 'done' && m.content.length > 0)
+      .filter((m) => m.round === round.value && m.state === 'done' && m.content.length > 0)
       .slice(-MAX_HISTORY_MESSAGES)
       .map((m) => ({ role: m.role, content: m.content.slice(0, MAX_HISTORY_CONTENT) }))
   }
@@ -45,6 +47,7 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
     messages.value = []
     feedbackState.clear()
     unavailable.value = false
+    round.value = 0
     customerId.value = id
   }
 
@@ -54,6 +57,7 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
     messages.value = []
     feedbackState.clear()
     unavailable.value = false
+    round.value = 0
     customerId.value = null
   }
 
@@ -68,9 +72,10 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
 
     const history = buildHistory()
     const now = new Date().toISOString()
+    const r = round.value
     messages.value.push(
-      { id: nextId(), role: 'user', content: message, state: 'pending', createdAt: now, ...(categoryKey ? { categoryKey } : {}) },
-      { id: nextId(), role: 'assistant', content: '', state: 'pending', createdAt: now },
+      { id: nextId(), role: 'user', content: message, state: 'pending', createdAt: now, round: r, ...(categoryKey ? { categoryKey } : {}) },
+      { id: nextId(), role: 'assistant', content: '', state: 'pending', createdAt: now, round: r },
     )
     // take the reactive proxies so later mutations re-render
     const user = messages.value[messages.value.length - 2]!
@@ -121,23 +126,24 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
     abortCurrent()
   }
 
-  /** Re-send the question behind a failed answer. */
+  /** Re-send the question behind a failed answer (current round only). */
   async function retry(errorMessageId: string): Promise<void> {
     // same guards as send(): never remove the failed pair unless the re-send can go out
     if (pending.value || unavailable.value || !customerId.value) return
     const i = messages.value.findIndex((m) => m.id === errorMessageId && m.state === 'error')
     const question = i > 0 ? messages.value[i - 1] : undefined
-    if (!question || question.role !== 'user') return
+    if (!question || question.role !== 'user' || question.round !== round.value) return
     const text = question.content
     const categoryKey = question.categoryKey
     messages.value.splice(i - 1, 2)
     await send(text, categoryKey)
   }
 
-  function clear(): void {
-    abortCurrent()
-    messages.value = []
-    feedbackState.clear()
+  /** Start a new round after the current one; a running request is cancelled. No-op while the current round is empty. */
+  function startNewRound(): void {
+    if (!messages.value.some((m) => m.round === round.value)) return
+    cancel()
+    round.value++
   }
 
   /**
@@ -176,5 +182,5 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
     entry.inFlight = false
   }
 
-  return { customerId, messages, pending, unavailable, bindCustomer, reset, markUnavailable, send, cancel, retry, clear, rate }
+  return { customerId, messages, pending, unavailable, round, bindCustomer, reset, markUnavailable, send, cancel, retry, startNewRound, rate }
 })

@@ -72,6 +72,8 @@ export interface ChatMessage {
   state: 'done' | 'pending' | 'cancelled' | 'error'
   /** ISO timestamp the message was created in the browser (used for the time divider). */
   createdAt: string
+  /** Conversation round the message belongs to; 開新對話 starts the next one. */
+  round: number
   /** User messages only: the category a chip question came from, reused on retry. */
   categoryKey?: string
   /** Server processing time of an assistant answer (ISO 8601). */

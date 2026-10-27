@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import type { ChatMessage } from '../types'
 
-const props = defineProps<{ message: ChatMessage }>()
+const props = defineProps<{ message: ChatMessage; retryable: boolean }>()
 defineEmits<{ retry: [] }>()
 
 const reference = computed(() => {
@@ -19,7 +19,7 @@ const reference = computed(() => {
       <strong>{{ message.error?.message }}</strong>
       <p class="ai-error__ref">{{ reference }}</p>
     </div>
-    <button class="btn btn--secondary btn--sm" type="button" @click="$emit('retry')">重試</button>
+    <button v-if="retryable" class="btn btn--secondary btn--sm" type="button" @click="$emit('retry')">重試</button>
   </div>
 </template>
 

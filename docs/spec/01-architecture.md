@@ -293,7 +293,7 @@ frontend/src/
 │  │                EvaluationCaseList、EvaluationHistory、EvaluationCasesDialog、evaluationFormat.ts
 │  ├─ markdown/     parser.ts、SafeMarkdown.ts、lineDiff.ts（逐行差異，自行實作）
 │  ├─ api/          aiAssistantApi.ts
-│  ├─ stores/       useAssistantStore.ts（對話以 customerId 為單位，換顧客即清空）
+│  ├─ stores/       useAssistantStore.ts（對話以 customerId 為單位，換顧客即清空；「開新對話」保留畫面上的訊息，只把目前這一輪送作歷史）
 │  ├─ composables/  useAssistantChat.ts、useSuggestions.ts、usePromptAdmin.ts、usePromptEvaluation.ts（評測狀態與輪詢）、
 │  │                taipeiTime.ts
 │  └─ types.ts

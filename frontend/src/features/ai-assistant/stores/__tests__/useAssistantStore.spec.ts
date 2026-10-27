@@ -269,32 +269,85 @@ describe('useAssistantStore', () => {
     expect(history[1]!.content).toHaveLength(4000)
   })
 
-  it('clear() empties messages and drops a late response', async () => {
-    const calls = queueChats()
-    const store = useAssistantStore()
-    store.bindCustomer('C001')
-    const first = store.send('q1')
-    store.clear()
-    expect(calls[0]!.signal.aborted).toBe(true)
-    const second = store.send('q2')
+  describe('new round', () => {
+    it('keeps earlier messages and sends only the current round as history', async () => {
+      chat.mockResolvedValue(response('a'))
+      const store = useAssistantStore()
+      store.bindCustomer('C001')
+      await store.send('q1')
+      store.startNewRound()
+      expect(store.round).toBe(1)
 
-    calls[0]!.d.resolve(response('late'))
-    await first
-    expect(store.messages.map((m) => [m.state, m.content])).toEqual([
-      ['pending', 'q2'],
-      ['pending', ''],
-    ])
-    expect(store.pending).toBe(true)
+      await store.send('q2')
+      expect(chat.mock.calls[1]![1].history).toEqual([])
+      await store.send('q3')
+      expect(chat.mock.calls[2]![1].history).toEqual([
+        { role: 'user', content: 'q2' },
+        { role: 'assistant', content: 'a' },
+      ])
+      expect(store.messages.map((m) => [m.content, m.round])).toEqual([
+        ['q1', 0], ['a', 0], ['q2', 1], ['a', 1], ['q3', 1], ['a', 1],
+      ])
+    })
 
-    store.cancel()
-    expect(calls[1]!.signal.aborted).toBe(true)
-    calls[1]!.d.reject(new DOMException('aborted', 'AbortError'))
-    await second
+    it('is a no-op while the current round is empty', async () => {
+      chat.mockResolvedValue(response('a'))
+      const store = useAssistantStore()
+      store.bindCustomer('C001')
+      store.startNewRound()
+      expect(store.round).toBe(0)
 
-    const third = store.send('q3')
-    calls[2]!.d.resolve(response('fresh'))
-    await third
-    expect(store.messages.at(-1)).toMatchObject({ state: 'done', content: 'fresh' })
+      await store.send('q1')
+      store.startNewRound()
+      store.startNewRound()
+      expect(store.round).toBe(1)
+    })
+
+    it('cancels a running request and drops its late response', async () => {
+      const calls = queueChats()
+      const store = useAssistantStore()
+      store.bindCustomer('C001')
+      const first = store.send('q1')
+      store.startNewRound()
+      expect(calls[0]!.signal.aborted).toBe(true)
+      expect(store.pending).toBe(false)
+      expect(store.round).toBe(1)
+
+      calls[0]!.d.resolve(response('late'))
+      await first
+      expect(store.messages.map((m) => [m.state, m.content])).toEqual([
+        ['cancelled', 'q1'],
+        ['cancelled', ''],
+      ])
+
+      const second = store.send('q2')
+      calls[1]!.d.resolve(response('fresh'))
+      await second
+      expect(chat.mock.calls[1]![1].history).toEqual([])
+      expect(store.messages.at(-1)).toMatchObject({ state: 'done', content: 'fresh', round: 1 })
+    })
+
+    it('does not retry an error from an earlier round', async () => {
+      chat.mockRejectedValueOnce(new ApiError(503, 'AI_LLM_UNAVAILABLE', 'x'))
+      const store = useAssistantStore()
+      store.bindCustomer('C001')
+      await store.send('hello')
+      store.startNewRound()
+      await store.retry(store.messages[1]!.id)
+      expect(chat).toHaveBeenCalledTimes(1)
+      expect(store.messages.map((m) => m.state)).toEqual(['error', 'error'])
+    })
+
+    it('starts again from round 0 when the customer changes', async () => {
+      chat.mockResolvedValue(response('a'))
+      const store = useAssistantStore()
+      store.bindCustomer('C001')
+      await store.send('q1')
+      store.startNewRound()
+      store.bindCustomer('C002')
+      expect(store.round).toBe(0)
+      expect(store.messages).toEqual([])
+    })
   })
 
   it('resets unavailable when the customer changes', async () => {

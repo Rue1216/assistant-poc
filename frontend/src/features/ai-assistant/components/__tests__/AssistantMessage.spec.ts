@@ -30,6 +30,7 @@ function msg(extra: Partial<ChatMessage> = {}): ChatMessage {
     content: '### 概況\n- 本顧客為 VIP',
     state: 'done',
     createdAt: '2026-10-19T06:03:20Z',
+    round: 0,
     queriedAt: '2026-10-19T14:03:24+08:00',
     blocks: [],
     citations: [],

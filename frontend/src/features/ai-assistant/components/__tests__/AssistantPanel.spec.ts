@@ -46,9 +46,10 @@ describe('AssistantPanel', () => {
     suggestions.mockResolvedValue(CATEGORIES)
   })
 
-  it('shows the customer id in the header only', async () => {
+  it('header shows only the title, without the viewing status', async () => {
     const { wrapper } = await mountPanel('C003')
-    expect(wrapper.find('.ai-header__sub').text()).toContain('正在檢視 C003 · 個人 360')
+    expect(wrapper.find('.ai-header').text()).toBe('顧問小幫手')
+    expect(wrapper.text()).not.toContain('正在檢視')
   })
 
   it('Enter sends, Shift+Enter inserts newline', async () => {
@@ -197,93 +198,63 @@ describe('AssistantPanel', () => {
     expect(wrapper.text()).not.toContain('正在查詢資料並整理回答')
   })
 
-  describe('more-actions menu', () => {
-    const trigger = (w: Awaited<ReturnType<typeof mountPanel>>['wrapper']) => w.find('button[aria-label="更多動作"]')
-    const item = (w: Awaited<ReturnType<typeof mountPanel>>['wrapper'], label: string) =>
-      w.findAll('[role="menuitem"]').find((b) => b.text() === label)!
+  describe('new chat button', () => {
+    const newChat = (w: Awaited<ReturnType<typeof mountPanel>>['wrapper']) => w.find('button[aria-label="開新對話"]')
+    const dividers = (w: Awaited<ReturnType<typeof mountPanel>>['wrapper']) => w.findAll('.ai-divider').map((d) => d.text())
 
-    const confirmButton = (w: Awaited<ReturnType<typeof mountPanel>>['wrapper'], label: string) =>
-      w.findAll('.ai-confirm button').find((b) => b.text() === label)!
-
-    it('opens with three actions; history is disabled for now', async () => {
+    it('replaces the more-actions menu; history and delete are gone', async () => {
       const { wrapper } = await mountPanel()
+      expect(wrapper.find('button[aria-label="更多動作"]').exists()).toBe(false)
       expect(wrapper.find('[role="menu"]').exists()).toBe(false)
-      expect(trigger(wrapper).attributes('aria-expanded')).toBe('false')
-
-      await trigger(wrapper).trigger('click')
-      expect(trigger(wrapper).attributes('aria-expanded')).toBe('true')
-      expect(wrapper.findAll('[role="menuitem"]').map((b) => b.text())).toEqual(['開新對話', '查看對話紀錄', '刪除對話'])
-      expect(item(wrapper, '查看對話紀錄').attributes('disabled')).toBeDefined()
+      expect(wrapper.text()).not.toContain('刪除對話')
+      expect(wrapper.text()).not.toContain('查看對話紀錄')
+      expect(newChat(wrapper).exists()).toBe(true)
     })
 
-    it('delete is disabled while there is nothing to delete, then empties the conversation', async () => {
+    it('is disabled until the current round has a message', async () => {
       chat.mockResolvedValue(answer())
       const { wrapper, store } = await mountPanel()
-      await trigger(wrapper).trigger('click')
-      expect(item(wrapper, '刪除對話').attributes('disabled')).toBeDefined()
-      await trigger(wrapper).trigger('click')
+      expect(newChat(wrapper).attributes('disabled')).toBeDefined()
+      expect(wrapper.find('.ai-welcome').exists()).toBe(true)
 
       await store.send('hello')
-      await wrapper.find('textarea').setValue('草稿')
-      await trigger(wrapper).trigger('click')
-      expect(item(wrapper, '刪除對話').attributes('disabled')).toBeUndefined()
-      await item(wrapper, '刪除對話').trigger('click')
-      await confirmButton(wrapper, '確定刪除').trigger('click')
-      expect(store.messages).toEqual([])
-      expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('草稿')
-      expect(wrapper.find('[role="menu"]').exists()).toBe(false)
-      expect(wrapper.find('.ai-confirm').exists()).toBe(false)
-    })
-
-    it('asks before deleting; cancel keeps the conversation', async () => {
-      chat.mockResolvedValue(answer())
-      const { wrapper, store } = await mountPanel()
-      await store.send('hello')
-      await trigger(wrapper).trigger('click')
-      await item(wrapper, '刪除對話').trigger('click')
-
-      expect(store.messages).not.toEqual([]) // nothing deleted yet
-      expect(wrapper.find('.ai-confirm').text()).toContain('確定要刪除這段對話嗎？')
-
-      await confirmButton(wrapper, '取消').trigger('click')
-      expect(wrapper.find('.ai-confirm').exists()).toBe(false)
-      expect(store.messages).not.toEqual([])
-    })
-
-    it('Escape dismisses the delete confirmation without deleting', async () => {
-      chat.mockResolvedValue(answer())
-      const { wrapper, store } = await mountPanel()
-      await store.send('hello')
-      await trigger(wrapper).trigger('click')
-      await item(wrapper, '刪除對話').trigger('click')
-
-      await wrapper.find('.ai-confirm').trigger('keydown', { key: 'Escape' })
-      expect(wrapper.find('.ai-confirm').exists()).toBe(false)
-      expect(store.messages).not.toEqual([])
-    })
-
-    it('new chat empties the conversation and the draft', async () => {
-      chat.mockResolvedValue(answer())
-      const { wrapper, store } = await mountPanel()
-      await store.send('hello')
-      await wrapper.find('textarea').setValue('草稿')
-      await trigger(wrapper).trigger('click')
-      await item(wrapper, '開新對話').trigger('click')
-      expect(store.messages).toEqual([])
-      expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('')
-      expect(wrapper.find('[role="menu"]').exists()).toBe(false)
-    })
-
-    it('closes on Escape and on a click outside', async () => {
-      const { wrapper } = await mountPanel()
-      await trigger(wrapper).trigger('click')
-      await wrapper.find('[role="menu"]').trigger('keydown', { key: 'Escape' })
-      expect(wrapper.find('[role="menu"]').exists()).toBe(false)
-
-      await trigger(wrapper).trigger('click')
-      document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }))
       await flushPromises()
-      expect(wrapper.find('[role="menu"]').exists()).toBe(false)
+      expect(newChat(wrapper).attributes('disabled')).toBeUndefined()
+
+      await newChat(wrapper).trigger('click')
+      expect(newChat(wrapper).attributes('disabled')).toBeDefined()
+    })
+
+    it('keeps the earlier conversation, adds a 新對話 divider and clears the draft', async () => {
+      chat.mockResolvedValue(answer('第一輪回答'))
+      const { wrapper, store } = await mountPanel()
+      await store.send('hello')
+      await wrapper.find('textarea').setValue('草稿')
+      await newChat(wrapper).trigger('click')
+
+      expect(wrapper.text()).toContain('第一輪回答')
+      expect(wrapper.find('.ai-welcome').exists()).toBe(false)
+      expect(dividers(wrapper)).toHaveLength(2)
+      expect(dividers(wrapper)[1]).toBe('新對話')
+      expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('')
+
+      await store.send('again')
+      await flushPromises()
+      expect(dividers(wrapper)).toHaveLength(2)
+      expect(dividers(wrapper)[0]).toMatch(/^今天 \d{2}:\d{2}$/)
+      expect(dividers(wrapper)[1]).toMatch(/^新對話 · 今天 \d{2}:\d{2}$/)
+    })
+
+    it('hides retry on an error from an earlier round', async () => {
+      chat.mockRejectedValueOnce(new ApiError(503, 'AI_LLM_UNAVAILABLE', '服務暫時無法使用'))
+      const { wrapper, store } = await mountPanel()
+      await store.send('hello')
+      await flushPromises()
+      expect(wrapper.find('[role="alert"] button').exists()).toBe(true)
+
+      await newChat(wrapper).trigger('click')
+      expect(wrapper.find('[role="alert"]').text()).toContain('服務暫時無法使用')
+      expect(wrapper.find('[role="alert"] button').exists()).toBe(false)
     })
   })
 
