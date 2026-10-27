@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { formatTaipeiShort, formatTaipeiShortSeconds } from '../taipeiTime'
 import type { ConfigStatus, VersionFeedback, VersionHistoryItem } from '../types'
+import ThumbIcon from '../components/ThumbIcon.vue'
 import { APPLICABLE, STATUS_LABEL, STATUS_VERB } from './promptLabels'
 
 const props = defineProps<{
@@ -64,16 +65,16 @@ function label(row: VersionHistoryItem): string {
 
 const FEEDBACK_STATUSES: ConfigStatus[] = ['PUBLISHED', 'ARCHIVED']
 
-/** 「👍 12・👎 3（80%）」 for published and archived rows that have feedback. */
-function feedbackText(row: VersionHistoryItem): string | null {
+/** Counts and the like percentage for published and archived rows that have feedback. */
+function feedbackOf(row: VersionHistoryItem): { up: number; down: number; percent: number } | null {
   const f = props.feedback[row.version]
   if (!f || !FEEDBACK_STATUSES.includes(row.status)) return null
   const total = f.up + f.down
   if (total === 0) return null
-  return `👍 ${f.up}・👎 ${f.down}（${Math.round((f.up / total) * 100)}%）`
+  return { up: f.up, down: f.down, percent: Math.round((f.up / total) * 100) }
 }
 
-const showFeedbackNote = computed(() => rows.value.some((row) => feedbackText(row) !== null))
+const showFeedbackNote = computed(() => rows.value.some((row) => feedbackOf(row) !== null))
 
 /** Not v-model with :value, so the internal version number never lands in a DOM attribute. */
 function toggle(version: number, on: boolean) {
@@ -120,7 +121,14 @@ function onCompare() {
             <span class="pm-ver__extra">原作者 {{ row.createdBy }}</span>
             <span v-if="row.scheduledAt" class="pm-ver__extra">原預約 {{ formatTaipeiShort(row.scheduledAt) }}</span>
           </template>
-          <span v-if="feedbackText(row)" class="pm-ver__feedback">{{ feedbackText(row) }}</span>
+          <span
+            v-if="feedbackOf(row)"
+            class="pm-ver__feedback"
+            role="img"
+            :aria-label="`讚 ${feedbackOf(row)!.up}、倒讚 ${feedbackOf(row)!.down}（${feedbackOf(row)!.percent}%）`"
+          >
+            <ThumbIcon direction="up" :size="12" />{{ feedbackOf(row)!.up }}・<ThumbIcon direction="down" :size="12" />{{ feedbackOf(row)!.down }}（{{ feedbackOf(row)!.percent }}%）
+          </span>
           <span v-if="row.changeNote" class="pm-ver__note">{{ row.changeNote }}</span>
           <span v-if="appliedFrom(row)" class="pm-ver__from">{{ appliedFrom(row) }}</span>
         </button>
@@ -280,6 +288,9 @@ function onCompare() {
 }
 
 .pm-ver__feedback {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;

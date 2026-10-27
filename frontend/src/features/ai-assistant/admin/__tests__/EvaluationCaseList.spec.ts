@@ -14,7 +14,29 @@ describe('EvaluationCaseList', () => {
   it('lists all cases and shows pass marks', () => {
     const w = mount(EvaluationCaseList, { props: { cases: [same, changed] } })
     expect(w.findAll('.ev-case')).toHaveLength(2)
-    expect(w.findAll('.ev-case__toggle')[1]!.text()).toContain('✓ → ✗')
+    const header = w.findAll('.ev-case__toggle')[1]!.text()
+    expect(header).toContain('已發布：通過')
+    expect(header).toContain('編輯中：未通過')
+    expect(header).not.toContain('→')
+    expect(w.findAll('.ev-case__toggle')[0]!.text()).toContain('編輯中：通過')
+  })
+
+  it('labels a regression 變差, an improvement 變好, and nothing when equal', () => {
+    const better = rec('Q4-better', result({ passed: false }), result({ passed: true }))
+    const w = mount(EvaluationCaseList, { props: { cases: [same, changed, better] } })
+    const headers = w.findAll('.ev-case__toggle').map((b) => b.text())
+    expect(headers[0]).not.toMatch(/變好|變差/)
+    expect(headers[1]).toContain('變差')
+    expect(headers[2]).toContain('變好')
+  })
+
+  it('says 執行中 for a side that has not finished', () => {
+    const w = mount(EvaluationCaseList, { props: { cases: [rec('Q1', result(), null), rec('Q2', null, null)] } })
+    const headers = w.findAll('.ev-case__toggle').map((b) => b.text())
+    expect(headers[0]).toContain('已發布：通過')
+    expect(headers[0]).toContain('編輯中：執行中')
+    expect(headers[0]).not.toMatch(/變好|變差/)
+    expect(headers[1]).toContain('已發布：執行中')
   })
 
   it('keeps only changed cases when the filter is checked', async () => {

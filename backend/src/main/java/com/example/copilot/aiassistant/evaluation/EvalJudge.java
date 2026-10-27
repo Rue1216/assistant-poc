@@ -17,6 +17,9 @@ import dev.langchain4j.model.chat.request.json.JsonSchema;
 import dev.langchain4j.model.chat.request.json.JsonStringSchema;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.output.TokenUsage;
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import org.slf4j.Logger;
@@ -40,12 +43,16 @@ public class EvalJudge {
 
     private final ChatModel chatModel;
     private final PiiRedactor redactor;
-    private final JsonMapper mapper;
+    private static final ZoneId TAIPEI = ZoneId.of("Asia/Taipei");
 
-    public EvalJudge(ChatModel chatModel, PiiRedactor redactor, JsonMapper mapper) {
+    private final JsonMapper mapper;
+    private final Clock clock;
+
+    public EvalJudge(ChatModel chatModel, PiiRedactor redactor, JsonMapper mapper, Clock clock) {
         this.chatModel = chatModel;
         this.redactor = redactor;
         this.mapper = mapper;
+        this.clock = clock;
     }
 
     public JudgeVerdict judge(String question, String answer, List<String> rubric, CustomerContext customer) {
@@ -65,6 +72,7 @@ public class EvalJudge {
         ObjectNode user = mapper.createObjectNode();
         user.put("question", question);
         user.put("answer", answer);
+        user.put("today", LocalDate.now(clock.withZone(TAIPEI)).toString());
         ArrayNode items = user.putArray("rubric");
         rubric.forEach(items::add);
         return ChatRequest.builder()

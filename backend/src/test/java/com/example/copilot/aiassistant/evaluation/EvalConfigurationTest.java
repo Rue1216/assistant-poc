@@ -29,8 +29,8 @@ class EvalConfigurationTest {
 
     @Test
     void maxCasesWithinStoredLimitLoads() {
-        assertThat(load(30).cases()).hasSize(16);
-        assertThat(load(16).cases()).hasSize(16);
+        assertThat(load(30).cases()).hasSize(17);
+        assertThat(load(17).cases()).hasSize(17);
     }
 
     @Test

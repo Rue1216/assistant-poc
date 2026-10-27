@@ -177,7 +177,7 @@ class EvalDatasetLoaderTest {
 
         EvalDataset dataset = EvalDatasetLoader.parse(bytes, TOOLS, 30);
 
-        assertThat(dataset.cases()).hasSize(16);
+        assertThat(dataset.cases()).hasSize(17);
         List<String> refusals = dataset.cases().stream().filter(c -> c.expect().refusal())
                 .map(EvalCase::id).toList();
         assertThat(refusals).containsExactly("P5-limited-contact", "D4-identity", "D5-other-customer",

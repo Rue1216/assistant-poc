@@ -2,6 +2,9 @@ package com.example.copilot.aiassistant.prompt;
 
 import com.example.copilot.aiassistant.config.AssistantConfig;
 import com.example.copilot.aiassistant.prompt.PublishedConfigCache.PublishedConfigs;
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -12,18 +15,22 @@ import org.springframework.stereotype.Component;
 
 /**
  * Builds the system message: system.main, then instructions, then the code-only safety rules (01 section 4) and
- * answer format rules (answer-citations spec 5).
+ * answer format rules (answer-citations spec 5), and finally today's date in Taipei time.
  */
 @Component
 public class PromptAssembler {
 
     private static final Logger log = LoggerFactory.getLogger(PromptAssembler.class);
 
+    private static final ZoneId TAIPEI = ZoneId.of("Asia/Taipei");
+
     private final PublishedConfigCache cache;
+    private final Clock clock;
     private final AtomicBoolean warnedMissingMain = new AtomicBoolean();
 
-    public PromptAssembler(PublishedConfigCache cache) {
+    public PromptAssembler(PublishedConfigCache cache, Clock clock) {
         this.cache = cache;
+        this.clock = clock;
     }
 
     /** Assembles the prompt from the cached published configs. */
@@ -51,7 +58,9 @@ public class PromptAssembler {
                     .append(instruction.getContent().strip()).append("\n\n");
             versions.add(new PromptVersion(instruction.getConfigKey(), instruction.getVersion()));
         }
-        sb.append(SafetyRules.TEXT).append("\n\n").append(AnswerFormatRules.TEXT);
+        sb.append(SafetyRules.TEXT).append("\n\n").append(AnswerFormatRules.TEXT)
+                .append("\n\n# 目前日期\n今天是 ").append(LocalDate.now(clock.withZone(TAIPEI)))
+                .append("（台北時間）");
         versions.sort(Comparator.comparing(PromptVersion::configKey));
         return new AssembledPrompt(sb.toString(), versions);
     }

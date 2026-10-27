@@ -16,7 +16,15 @@ function toggle(id: string) {
   else open.add(id)
 }
 
-const mark = (r: CaseResult | null) => (r === null ? '…' : r.passed ? '✓' : '✗')
+const verdict = (r: CaseResult | null) => (r === null ? '執行中' : r.passed ? '通過' : '未通過')
+
+/** Only when both sides are done and the verdict differs. */
+function change(c: EvalCaseRecord): 'better' | 'worse' | null {
+  if (!c.baseline || !c.candidate || c.baseline.passed === c.candidate.passed) return null
+  return c.candidate.passed ? 'better' : 'worse'
+}
+
+const CHANGE_LABEL = { better: '變好', worse: '變差' }
 const tick = (ok: boolean) => (ok ? '✓' : '✗')
 
 function failures(r: CaseResult, expectRefusal: boolean): string[] {
@@ -57,7 +65,11 @@ const unmet = (r: CaseResult) => (r.judge?.rubric ?? []).filter((x) => !x.met).m
         <span aria-hidden="true">{{ open.has(c.caseId) ? '▾' : '▸' }}</span>
         <span class="ev-case__id">{{ c.caseId }}</span>
         <span class="ev-case__group">{{ c.group }}</span>
-        <span class="ev-case__marks">{{ mark(c.baseline) }} → {{ mark(c.candidate) }}</span>
+        <span class="ev-case__marks">
+          <span class="ev-case__verdict">已發布：{{ verdict(c.baseline) }}</span>
+          <span class="ev-case__verdict">編輯中：{{ verdict(c.candidate) }}</span>
+          <span v-if="change(c)" class="ev-dir" :class="`is-${change(c)}`">{{ CHANGE_LABEL[change(c)!] }}</span>
+        </span>
       </button>
       <div v-if="open.has(c.caseId)" class="ev-case__body">
         <p class="ev-case__question">{{ c.question }}</p>
@@ -139,8 +151,20 @@ const unmet = (r: CaseResult) => (r.judge?.rubric ?? []).filter((x) => !x.met).m
   color: var(--color-text-muted);
 }
 .ev-case__marks {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   margin-left: auto;
   font-weight: 600;
+}
+.ev-case__verdict {
+  white-space: nowrap;
+}
+.ev-dir.is-better {
+  color: var(--green-700);
+}
+.ev-dir.is-worse {
+  color: var(--red-600);
 }
 .ev-case__body {
   padding: 4px 12px 14px;

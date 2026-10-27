@@ -160,16 +160,24 @@ describe('VersionHistory', () => {
         9138: fb(9138, 4, 0),
       })
       const text = rows(w).map((r) => r.text())
-      expect(text.find((t) => t.includes('已發布'))).toContain('👍 12・👎 3（80%）')
-      expect(text.find((t) => t.includes('已封存'))).toContain('👍 1・👎 1（50%）')
-      expect(w.text()).not.toContain('👍 5')
-      expect(w.text()).not.toContain('👍 4')
+      const published = text.find((t) => t.includes('已發布'))!
+      expect(published).toContain('12')
+      expect(published).toContain('（80%）')
+      expect(text.find((t) => t.includes('已封存'))).toContain('（50%）')
+      expect(w.text()).not.toContain('👍')
+      expect(w.text()).not.toContain('👎')
+      expect(w.text()).not.toContain('（100%）')
+      expect(w.text()).not.toContain('（0%）')
+      const labels = w.findAll('.pm-ver__feedback').map((f) => f.attributes('aria-label'))
+      expect(labels).toEqual(['讚 12、倒讚 3（80%）', '讚 1、倒讚 1（50%）'])
+      expect(w.findAll('.pm-ver__feedback svg')).toHaveLength(4)
       expect(w.text()).toContain('回饋統計涵蓋 180 天內的回答')
     })
 
     it('shows nothing without statistics, footnote included', () => {
       const w = mountHistory()
       expect(w.text()).not.toContain('👍')
+      expect(w.find('.pm-ver__feedback').exists()).toBe(false)
       expect(w.text()).not.toContain('回饋統計涵蓋')
     })
 

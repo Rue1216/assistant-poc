@@ -32,4 +32,10 @@ describe('FeedbackButtons', () => {
     expect(w.get('[aria-label="有幫助"]').attributes('aria-pressed')).toBe('false')
     expect(w.get('[aria-label="沒有幫助"]').attributes('aria-pressed')).toBe('true')
   })
+
+  it('draws a filled icon only on the selected button', () => {
+    const w = mount(FeedbackButtons, { props: { rating: 'DOWN' } })
+    expect(w.get('[aria-label="沒有幫助"] path').attributes('fill')).toBe('currentColor')
+    expect(w.get('[aria-label="有幫助"] path').attributes('fill')).toBeUndefined()
+  })
 })

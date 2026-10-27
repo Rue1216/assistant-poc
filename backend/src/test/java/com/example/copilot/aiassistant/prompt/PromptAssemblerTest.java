@@ -7,6 +7,9 @@ import com.example.copilot.aiassistant.config.AssistantConfig;
 import com.example.copilot.aiassistant.config.AssistantConfigRepository;
 import com.example.copilot.aiassistant.config.ConfigStatus;
 import com.example.copilot.aiassistant.prompt.PublishedConfigCache.PublishedConfigs;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
@@ -69,7 +72,7 @@ class PromptAssemblerTest extends IntegrationTestBase {
         String message = assembler.current().text();
 
         assertThat(message).doesNotContain("## 安全規則");
-        assertThat(message).endsWith(SafetyRules.TEXT + "\n\n" + AnswerFormatRules.TEXT);
+        assertThat(message).contains(SafetyRules.TEXT + "\n\n" + AnswerFormatRules.TEXT + "\n\n# 目前日期\n今天是 ");
     }
 
     @Test
@@ -83,7 +86,27 @@ class PromptAssemblerTest extends IntegrationTestBase {
         cache.invalidate();
         String message = assembler.current().text();
 
-        assertThat(message).endsWith(SafetyRules.TEXT + "\n\n" + AnswerFormatRules.TEXT);
+        assertThat(message).contains(SafetyRules.TEXT + "\n\n" + AnswerFormatRules.TEXT + "\n\n# 目前日期\n今天是 ");
+    }
+
+    @Test
+    void dateSectionIsLastAndUsesTaipeiZone() {
+        // 17:30 UTC on 10-26 is already 10-27 in Taipei (UTC+8).
+        PromptAssembler fixed = new PromptAssembler(null,
+                Clock.fixed(Instant.parse("2026-10-26T17:30:00Z"), ZoneOffset.UTC));
+        String text = fixed.assemble(cache.loadFresh()).text();
+
+        assertThat(text).endsWith(AnswerFormatRules.TEXT + "\n\n# 目前日期\n今天是 2026-10-27（台北時間）");
+        int main = text.indexOf("## 角色");
+        int categories = text.indexOf("# 問題分類");
+        int safety = text.indexOf("# 不可覆寫的安全規則");
+        int format = text.indexOf("# 回答格式規則");
+        int date = text.indexOf("# 目前日期");
+        assertThat(main).isGreaterThanOrEqualTo(0);
+        assertThat(categories).isGreaterThan(main);
+        assertThat(safety).isGreaterThan(categories);
+        assertThat(format).isGreaterThan(safety);
+        assertThat(date).isGreaterThan(format);
     }
 
     @Test

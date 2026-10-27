@@ -136,7 +136,7 @@ class ChatOrchestratorTest {
     }
 
     private ChatOrchestrator orchestrator(ToolRegistry registry) {
-        PromptAssembler assembler = new PromptAssembler(null) {
+        PromptAssembler assembler = new PromptAssembler(null, clock) {
             @Override
             public AssembledPrompt current() {
                 return new AssembledPrompt(SYSTEM, List.of(new PromptVersion("system.main", 1)));
@@ -856,7 +856,7 @@ class ChatOrchestratorTest {
 
     @Test
     void promptLoadingFailureIsAudited() {
-        PromptAssembler failing = new PromptAssembler(null) {
+        PromptAssembler failing = new PromptAssembler(null, clock) {
             @Override
             public AssembledPrompt current() {
                 throw new IllegalStateException("config unavailable");

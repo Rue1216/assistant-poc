@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { FeedbackRating } from '../types'
+import ThumbIcon from './ThumbIcon.vue'
 
 const props = defineProps<{ rating: FeedbackRating | null }>()
 const emit = defineEmits<{ rate: [rating: FeedbackRating | null] }>()
@@ -13,14 +14,10 @@ function toggle(value: FeedbackRating): void {
 <template>
   <span class="ai-feedback">
     <button class="ai-fb-btn" type="button" aria-label="有幫助" :aria-pressed="rating === 'UP'" @click="toggle('UP')">
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M7 11v9H4v-9h3zM7 11l4-7a2 2 0 0 1 2 2v4h6a2 2 0 0 1 2 2.3l-1 6A2 2 0 0 1 18 20H7" />
-      </svg>
+      <ThumbIcon direction="up" :filled="rating === 'UP'" />
     </button>
     <button class="ai-fb-btn" type="button" aria-label="沒有幫助" :aria-pressed="rating === 'DOWN'" @click="toggle('DOWN')">
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M17 13V4h3v9h-3zM17 13l-4 7a2 2 0 0 1-2-2v-4H5a2 2 0 0 1-2-2.3l1-6A2 2 0 0 1 6 4h11" />
-      </svg>
+      <ThumbIcon direction="down" :filled="rating === 'DOWN'" />
     </button>
   </span>
 </template>
@@ -47,11 +44,19 @@ function toggle(value: FeedbackRating): void {
   color: var(--color-text);
 }
 .ai-fb-btn[aria-pressed='true'] {
-  background: var(--color-primary-subtle);
-  color: var(--color-primary-active);
+  background: var(--color-primary);
+  color: var(--color-text-on-primary);
+}
+.ai-fb-btn[aria-pressed='true']:hover {
+  background: var(--color-primary-hover);
+  color: var(--color-text-on-primary);
 }
 .ai-fb-btn:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 1px;
+}
+.ai-fb-btn[aria-pressed='true']:focus-visible {
+  outline-color: var(--color-primary-active);
+  outline-offset: 2px;
 }
 </style>
