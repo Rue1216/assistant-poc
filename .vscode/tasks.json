@@ -36,10 +36,11 @@
     },
     {
       "label": "後端：啟動",
-      "detail": "mvnw spring-boot:run，http://localhost:8090",
+      "detail": "mvnw spring-boot:run，http://localhost:8090（8090 已在使用時略過）",
       "type": "shell",
-      "command": ".\\mvnw.cmd spring-boot:run",
-      "options": { "cwd": "${workspaceFolder}/backend" },
+      // 已在執行時略過，否則第二次 F5 會因 port 被占用以 exit code 1 結束，瀏覽器不會開啟
+      "command": "if (Get-NetTCPConnection -State Listen -LocalPort 8090 -ErrorAction SilentlyContinue) { Write-Host 'Port 8090 already in use, skip starting backend' } else { .\\mvnw.cmd spring-boot:run }",
+      "options": { "cwd": "${workspaceFolder}/backend", "shell": { "executable": "powershell.exe", "args": ["-NoProfile", "-Command"] } },
       "isBackground": true,
       "problemMatcher": {
         "owner": "poc-backend",
@@ -47,17 +48,18 @@
         "background": {
           "activeBegins": true,
           "beginsPattern": "Scanning for projects|Starting CopilotApplication",
-          "endsPattern": "Started CopilotApplication|APPLICATION FAILED TO START|BUILD FAILURE"
+          "endsPattern": "Started CopilotApplication|APPLICATION FAILED TO START|BUILD FAILURE|skip starting backend"
         }
       },
       "presentation": { "group": "poc", "reveal": "always" }
     },
     {
       "label": "前端：啟動",
-      "detail": "npm run dev，http://localhost:5173",
+      "detail": "npm run dev，http://localhost:5173（5173 已在使用時略過）",
       "type": "shell",
-      "command": "npm run dev",
-      "options": { "cwd": "${workspaceFolder}/frontend" },
+      // 已在執行時略過，否則 Vite 會改用 5174，瀏覽器仍開 5173
+      "command": "if (Get-NetTCPConnection -State Listen -LocalPort 5173 -ErrorAction SilentlyContinue) { Write-Host 'Port 5173 already in use, skip starting frontend' } else { npm run dev }",
+      "options": { "cwd": "${workspaceFolder}/frontend", "shell": { "executable": "powershell.exe", "args": ["-NoProfile", "-Command"] } },
       "isBackground": true,
       "problemMatcher": {
         "owner": "poc-frontend",
@@ -65,7 +67,7 @@
         "background": {
           "activeBegins": true,
           "beginsPattern": "vite|VITE",
-          "endsPattern": "ready in|Local"
+          "endsPattern": "ready in|Local|skip starting frontend"
         }
       },
       "presentation": { "group": "poc", "reveal": "always" }
