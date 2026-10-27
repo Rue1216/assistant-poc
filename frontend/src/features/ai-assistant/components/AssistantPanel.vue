@@ -1,47 +1,63 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
-import { useAssistantStore } from '../stores/useAssistantStore'
-import { useAssistantChat } from '../composables/useAssistantChat'
-import { useSuggestions } from '../composables/useSuggestions'
-import AssistantHeader from './AssistantHeader.vue'
-import MessageList from './MessageList.vue'
-import ChatComposer from './ChatComposer.vue'
+import { computed, watch } from "vue";
+import { useAssistantStore } from "../stores/useAssistantStore";
+import { useAssistantChat } from "../composables/useAssistantChat";
+import { useSuggestions } from "../composables/useSuggestions";
+import AssistantHeader from "./AssistantHeader.vue";
+import MessageList from "./MessageList.vue";
+import ChatComposer from "./ChatComposer.vue";
 
-const props = defineProps<{ customerId: string }>()
-defineEmits<{ close: [] }>()
+const props = defineProps<{ customerId: string }>();
+defineEmits<{ close: [] }>();
 
-const store = useAssistantStore()
-const chat = useAssistantChat()
-const suggestions = useSuggestions()
+const store = useAssistantStore();
+const chat = useAssistantChat();
+const suggestions = useSuggestions();
 
 // bind first, then load: suggestions are dropped if the customer changes meanwhile
 watch(
   () => props.customerId,
   (id) => {
-    store.bindCustomer(id)
-    chat.draft.value = ''
-    void suggestions.load(id)
+    store.bindCustomer(id);
+    chat.draft.value = "";
+    void suggestions.load(id);
   },
   { immediate: true },
-)
+);
 
-const canStartNew = computed(() => chat.messages.value.some((m) => m.round === chat.round.value))
+const canStartNew = computed(() =>
+  chat.messages.value.some((m) => m.round === chat.round.value),
+);
 
 function startNewChat(): void {
-  chat.startNewRound()
-  chat.draft.value = ''
+  chat.startNewRound();
+  chat.draft.value = "";
 }
 </script>
 
 <template>
   <section class="ai-panel" aria-label="顧問小幫手">
-    <AssistantHeader :can-start-new="canStartNew" @new-chat="startNewChat" @close="$emit('close')" />
+    <AssistantHeader
+      :can-start-new="canStartNew"
+      @new-chat="startNewChat"
+      @close="$emit('close')"
+    />
     <div class="ai-notice">
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <svg
+        viewBox="0 0 24 24"
+        width="14"
+        height="14"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
         <rect x="4" y="11" width="16" height="10" rx="2" />
         <path d="M8 11V7a4 4 0 0 1 8 0v4" />
       </svg>
-      <span>對話只針對此顧客，切換顧客會清空；姓名等識別資料不會傳給 AI。</span>
+      <span>AI 產生的內容可能有誤，請以系統資料為準。</span>
     </div>
     <MessageList
       :messages="chat.messages.value"
@@ -59,7 +75,11 @@ function startNewChat(): void {
       :can-send="chat.canSend.value"
       :pending="chat.pending.value"
       :disabled="chat.unavailable.value"
-      :quick-questions="chat.messages.value.length > 0 ? suggestions.categories.value.flatMap((c) => c.questions) : []"
+      :quick-questions="
+        chat.messages.value.length > 0
+          ? suggestions.categories.value.flatMap((c) => c.questions)
+          : []
+      "
       @update:model-value="chat.setDraft"
       @send="chat.submit"
       @ask="chat.ask"
