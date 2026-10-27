@@ -41,27 +41,32 @@ async function onSubmit() {
 
 <template>
   <div class="login-wrap">
-    <form class="card" @submit.prevent="onSubmit">
-      <h1>行銷人員顧問小幫手 POC</h1>
-      <p class="hint">模擬平台登入（示範帳號密碼皆為 poc1234）</p>
+    <form class="card login" @submit.prevent="onSubmit">
+      <div class="login__brand">
+        <span class="app-header__logo" aria-hidden="true">✦</span>
+        <div>
+          <h1>行銷人員顧問小幫手 POC</h1>
+          <p class="login__hint">模擬平台登入（示範帳號密碼皆為 poc1234）</p>
+        </div>
+      </div>
 
-      <label>
-        <span>示範帳號</span>
-        <select v-model="username">
+      <label class="field">
+        <span class="field__label">示範帳號</span>
+        <select v-model="username" class="input">
           <option value="" disabled>請選擇示範帳號</option>
           <option v-for="a in DEMO_ACCOUNTS" :key="a" :value="a">{{ a }}</option>
         </select>
       </label>
-      <label>
-        <span>帳號</span>
-        <input v-model="username" type="text" autocomplete="username" required />
+      <label class="field">
+        <span class="field__label">帳號</span>
+        <input v-model="username" class="input" type="text" autocomplete="username" required />
       </label>
-      <label>
-        <span>密碼</span>
-        <input v-model="password" type="password" autocomplete="current-password" required />
+      <label class="field">
+        <span class="field__label">密碼</span>
+        <input v-model="password" class="input" type="password" autocomplete="current-password" required />
       </label>
-      <p v-if="loginError" class="error" role="alert">{{ loginError }}</p>
-      <button class="primary" type="submit" :disabled="submitting">登入</button>
+      <p v-if="loginError" class="login__error" role="alert">{{ loginError }}</p>
+      <button class="btn btn--primary login__submit" type="submit" :disabled="submitting">登入</button>
     </form>
   </div>
 </template>
@@ -74,60 +79,42 @@ async function onSubmit() {
   justify-content: center;
   background: var(--gradient-soft);
 }
-.card {
-  width: 360px;
+.login {
+  width: 380px;
+  max-width: calc(100% - 32px);
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
   padding: var(--space-8);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-md);
+}
+.login__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+.login__brand .app-header__logo {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  font-size: 18px;
 }
 h1 {
   font-size: var(--text-xl);
   color: var(--color-text-strong);
 }
-.hint {
+.login__hint {
   font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
-.error {
+.login__error {
   font-size: var(--text-sm);
   color: var(--red-600);
 }
-label {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-}
-input,
-select {
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-}
-input:focus,
-select:focus {
-  outline: 2px solid var(--color-focus-ring);
-}
-.primary {
-  padding: var(--space-3);
-  border: 0;
-  border-radius: var(--radius-md);
-  background: var(--color-primary);
-  color: var(--color-text-on-primary);
-  cursor: pointer;
-}
-.primary:hover:not(:disabled) {
-  background: var(--color-primary-hover);
-}
-.primary:disabled {
-  opacity: 0.6;
-  cursor: default;
+.login__submit {
+  height: 40px;
+  margin-top: var(--space-2);
 }
 </style>

@@ -9,13 +9,15 @@ const auth = useAuthStore()
     <h1>歡迎，{{ auth.user?.displayName }}</h1>
     <p class="muted">角色：{{ auth.user?.roleName }}</p>
     <div class="cards">
-      <RouterLink class="tile" to="/customer">
+      <RouterLink class="card tile" to="/customer">
+        <span class="tile__icon" aria-hidden="true">✦</span>
         <strong>顧客經營</strong>
-        <span>查看顧客清單與個人 360，使用 AI 小幫手</span>
+        <span class="tile__desc">查看顧客清單與個人 360，使用 AI 小幫手</span>
       </RouterLink>
-      <RouterLink v-if="auth.hasPermission('AI_CONFIG_READ')" class="tile" to="/setting/prompt-management">
+      <RouterLink v-if="auth.hasPermission('AI_CONFIG_READ')" class="card tile" to="/setting/prompt-management">
+        <span class="tile__icon" aria-hidden="true">⚙</span>
         <strong>Prompt 管理</strong>
-        <span>管理小幫手的 System Prompt 與問題分類</span>
+        <span class="tile__desc">管理小幫手的 System Prompt 與問題分類</span>
       </RouterLink>
     </div>
   </section>
@@ -39,23 +41,33 @@ h1 {
 .tile {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  width: 280px;
+  gap: var(--space-1);
+  width: 300px;
   padding: var(--space-5);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
   text-decoration: none;
   color: var(--color-text);
+  transition: border-color var(--duration-fast), transform var(--duration-fast);
 }
 .tile:hover {
-  border-color: var(--color-primary-border);
-  box-shadow: var(--shadow-sm);
+  border-color: var(--green-300);
+  transform: translateY(-2px);
+}
+.tile__icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: var(--space-2);
+  border-radius: 10px;
+  background: var(--gradient-ai);
+  color: #fff;
+  font-size: 18px;
 }
 .tile strong {
-  color: var(--color-primary-active);
+  font-size: var(--text-lg);
+  color: var(--color-text-strong);
 }
-.tile span {
+.tile__desc {
   font-size: var(--text-sm);
   color: var(--color-text-muted);
 }

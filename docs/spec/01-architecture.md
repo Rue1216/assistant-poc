@@ -297,13 +297,24 @@ frontend/src/
 │  ├─ composables/  useAssistantChat.ts、useSuggestions.ts、usePromptAdmin.ts、usePromptEvaluation.ts（評測狀態與輪詢）、
 │  │                taipeiTime.ts
 │  └─ types.ts
-└─ platform-mock/   apiClient、useToast、useAuthStore、router、layout
+└─ platform-mock/   apiClient、useToast、useAuthStore、router、useTheme（深色模式切換）、
+                    layout（頂部列 + 左側選單；個人 360 頁不顯示左側選單）、
+                    styles/customer-360.css
                     頁面：登入（9 個帳號）、首頁、顧客經營（/customer：輸入編號 + 列表）、
-                          個人 360（/customer/:customerId，簡易版：名片 + 基本資料，放置小幫手）、
+                          個人 360（/customer/:customerId，版面照 prototype 的 A–M 區塊，放置小幫手；
+                          pages/customer360/ 為各區塊元件）、
                           後台管理（/setting/prompt-management，掛載 PromptManagementPage）
 ```
 
-**視覺依據**：小幫手與 Prompt 管理頁照 `prototype/chatbot.html`、`prototype/prompt-management.html`（元件拆分照 prototype 註解中的 Vue 元件名稱，樣式取自 `prototype/styles/chatbot.css`、`prompt-management.css`，改寫為元件的 scoped CSS）。`prototype/` 不進版控，所以用到的樣式要複製進 `frontend/`。個人 360 頁面是平台替身，實際平台樣式已定，只做簡易版。prototype 中標示「原型切換，Vue 版不實作」的控制列不實作。
+**視覺依據**：小幫手與 Prompt 管理頁照 `prototype/chatbot.html`、`prototype/prompt-management.html`（元件拆分照 prototype 註解中的 Vue 元件名稱，樣式取自 `prototype/styles/chatbot.css`、`prompt-management.css`，改寫為元件的 scoped CSS）。`prototype/` 不進版控，所以用到的樣式要複製進 `frontend/`。prototype 中標示「原型切換，Vue 版不實作」的控制列不實作。
+
+平台替身（`platform-mock`）的外框與個人 360 頁面也照 `prototype/chatbot.html`、`prototype/prompt-management.html`，讓 demo 畫面接近實際平台（2026-10-27）：
+
+- 個人 360：A 顧客名片接 `GET /api/mock/customers/{customerId}`；B–M 的提醒與圖表是照搬 prototype 的**示意資料**，每位顧客都一樣，頂部列標示「圖表為示意資料」，數字與小幫手的回答不一定一致。`LIMITED` 時只顯示名片，其他區塊以一行說明取代。
+- 樣式放在 `platform-mock/styles/customer-360.css`，整合時隨 `platform-mock` 一起刪除。
+- 登入、首頁、顧客列表 prototype 沒有畫，只套用 `base.css` 的共用樣式。
+
+**深色模式**：`tokens.css` 的 `html.dark` 覆蓋色票，元件只用 token，不另寫深色規則。POC 由 `platform-mock` 的 `useTheme` 切換 `<html>` 的 `dark` class，選擇存在 localStorage（`platform-theme`），未選擇時依系統設定；`index.html` 在掛載前先套用，避免閃爍。小幫手本身不提供切換按鈕，跟隨宿主頁面。
 
 ## 6. 設定（application.yml）
 
@@ -423,3 +434,4 @@ OPENAI_MODEL=<模型名稱>
 7. 移除 `spring.config.import` 的 `.env` 載入，改由平台的 secret 管理機制注入 `OPENAI_API_KEY`。
 8. 評測需要平台提供專用的假測試顧客（資料集的 `customerId` 改用那些顧客），並且評測執行緒會用掉 GPT token；見 [platform-setup-requests.md](../platform-setup-requests.md)。多個 pod 時，同時只有一個評測由 `UK_ICRM_AI_EVAL_1` 保證；評測只在收到請求的那個 pod 上執行。
 9. 依平台管理第三方 jar 的方式，併入 `backend/lib-repo/` 的 jar；平台已有的 artifact 不要重複放（見 7.1）。
+10. 深色模式：平台有深色模式時，把 `tokens.css` 的 `html.dark` 選擇器改成平台切換深色時使用的 class 或屬性；平台沒有深色模式就不用處理，`html.dark` 的覆蓋不會生效。

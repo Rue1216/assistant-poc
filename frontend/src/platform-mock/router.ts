@@ -6,6 +6,8 @@ import { useToast } from './useToast'
 declare module 'vue-router' {
   interface RouteMeta {
     permission?: string
+    /** the layout leaves out the left menu (customer 360, as in the prototype) */
+    hideSidebar?: boolean
   }
 }
 
@@ -24,6 +26,7 @@ export function createAppRouter(history: RouterHistory = createWebHistory()) {
             path: 'customer/:customerId',
             component: () => import('./pages/Customer360Page.vue'),
             props: true,
+            meta: { hideSidebar: true },
           },
           {
             path: 'setting/prompt-management',

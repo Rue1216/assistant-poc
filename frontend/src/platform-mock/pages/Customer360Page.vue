@@ -2,6 +2,12 @@
 import { computed, ref, watch } from 'vue'
 import { apiClient, ApiError } from '../apiClient'
 import AssistantLauncher from '../../features/ai-assistant/components/AssistantLauncher.vue'
+import AssetCards from './customer360/AssetCards.vue'
+import BehaviorCards from './customer360/BehaviorCards.vue'
+import IntentCards from './customer360/IntentCards.vue'
+import OpsCard from './customer360/OpsCard.vue'
+import ProfileCards from './customer360/ProfileCards.vue'
+import '../styles/customer-360.css'
 
 interface CustomerDetail {
   customerId: string
@@ -31,6 +37,11 @@ function assetTier(amount: number | undefined): string {
 }
 
 const tier = computed(() => assetTier(customer.value?.assetAmount))
+const consent = computed(() => {
+  const value = customer.value?.marketingConsent
+  if (value === undefined) return '—'
+  return value ? '同意' : '不同意'
+})
 
 watch(
   () => props.customerId,
@@ -56,151 +67,59 @@ watch(
 </script>
 
 <template>
-  <section class="page">
-    <nav class="crumbs" aria-label="breadcrumb">
-      <RouterLink to="/customer">顧客經營</RouterLink>
-      <span> / </span>
-      <span>個人 360</span>
-    </nav>
+  <div class="c360">
+    <div class="c360-topbar">
+      <RouterLink class="c360-back" to="/customer">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>返回顧客名單
+      </RouterLink>
+      <nav class="breadcrumb" aria-label="麵包屑">
+        <RouterLink to="/customer">顧客經營</RouterLink><span aria-hidden="true">/</span><span>個人 360</span>
+      </nav>
+      <span class="c360-topbar__time">
+        <template v-if="customer?.accessLevel === 'FULL'">圖表為示意資料・</template>資料更新 2026/10/20 08:00
+      </span>
+    </div>
 
-    <p v-if="loading" class="muted">載入中…</p>
-    <p v-else-if="notFound" class="notfound">查無此顧客或您沒有查看權限</p>
+    <p v-if="loading" class="c360-loading">載入中…</p>
+    <p v-else-if="notFound" class="c360-notfound">查無此顧客或您沒有查看權限</p>
 
     <template v-else-if="customer">
-      <div class="card profile">
-        <div class="avatar">{{ customer.name.charAt(0) }}</div>
-        <div class="info">
-          <h1>{{ customer.name }}</h1>
-          <dl class="facts">
-            <div>
-              <dt>客群</dt>
-              <dd>{{ customer.segment }}</dd>
+      <div class="c360-grid">
+        <section class="card c360-a c360-namecard" data-area="A" aria-label="顧客名片">
+          <div class="c360-namecard__head">
+            <div class="c360-namecard__avatar" aria-hidden="true">{{ customer.name.charAt(0) }}</div>
+            <div class="c360-namecard__who">
+              <div class="c360-namecard__name-row">
+                <h1 class="c360-namecard__name">{{ customer.name }}</h1>
+                <span class="badge badge--published badge--plain">{{ customer.segment }}</span>
+              </div>
+              <span class="c360-namecard__id">{{ customer.customerId }}・往來 {{ customer.relationshipYears }} 年</span>
             </div>
-            <div>
-              <dt>往來年資</dt>
-              <dd>{{ customer.relationshipYears }} 年</dd>
-            </div>
-            <div>
-              <dt>資產級距</dt>
-              <dd>{{ tier }}</dd>
-            </div>
+          </div>
+          <div v-if="customer.tags?.length" class="c360-tags" aria-label="分群標籤">
+            <span v-for="t in customer.tags" :key="t" class="c360-tag">{{ t }}</span>
+          </div>
+          <dl class="c360-kv">
+            <div><dt>風險屬性</dt><dd>{{ customer.riskProfile ?? '—' }}</dd></div>
+            <div><dt>偏好管道</dt><dd>{{ customer.preferredChannel ?? '—' }}</dd></div>
+            <div><dt>行銷同意</dt><dd>{{ consent }}</dd></div>
+            <div><dt>資產級距</dt><dd>{{ tier }}</dd></div>
           </dl>
-          <ul v-if="customer.tags?.length" class="tags">
-            <li v-for="t in customer.tags" :key="t">{{ t }}</li>
-          </ul>
-        </div>
-      </div>
+        </section>
 
-      <div class="card basic">
-        <h2>基本資料</h2>
-        <dl class="grid">
-          <div>
-            <dt>風險屬性</dt>
-            <dd>{{ customer.riskProfile ?? '—' }}</dd>
-          </div>
-          <div>
-            <dt>行銷同意</dt>
-            <dd>{{ customer.marketingConsent === undefined ? '—' : customer.marketingConsent ? '同意' : '不同意' }}</dd>
-          </div>
-          <div>
-            <dt>偏好管道</dt>
-            <dd>{{ customer.preferredChannel ?? '—' }}</dd>
-          </div>
-        </dl>
+        <p v-if="customer.accessLevel === 'LIMITED'" class="card c360-limited">
+          您的角色僅能查看基本資料，其他區塊不顯示。
+        </p>
+        <template v-else>
+          <OpsCard />
+          <AssetCards />
+          <ProfileCards />
+          <IntentCards />
+          <BehaviorCards />
+        </template>
       </div>
 
       <AssistantLauncher :customer-id="customerId" />
     </template>
-  </section>
+  </div>
 </template>
-
-<style scoped>
-.crumbs {
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-  margin-bottom: var(--space-4);
-}
-.crumbs a {
-  color: var(--color-primary-active);
-  text-decoration: none;
-}
-.muted {
-  color: var(--color-text-muted);
-}
-.notfound {
-  padding: var(--space-6);
-  background: var(--red-50);
-  border: 1px solid var(--red-200);
-  border-radius: var(--radius-md);
-  color: var(--red-700);
-}
-.card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-5);
-  margin-bottom: var(--space-4);
-}
-.profile {
-  display: flex;
-  gap: var(--space-5);
-  align-items: center;
-}
-.avatar {
-  width: 64px;
-  height: 64px;
-  border-radius: var(--radius-pill);
-  background: var(--gradient-ai);
-  color: var(--color-text-on-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--text-xl);
-}
-h1 {
-  font-size: var(--text-xl);
-  color: var(--color-text-strong);
-}
-h2 {
-  font-size: var(--text-lg);
-  color: var(--color-text-strong);
-  margin-bottom: var(--space-3);
-}
-dl {
-  margin: 0;
-}
-dt {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-}
-dd {
-  margin: 0;
-  color: var(--color-text-strong);
-}
-.facts {
-  display: flex;
-  gap: var(--space-6);
-  margin-top: var(--space-2);
-}
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: var(--space-4);
-}
-.tags {
-  list-style: none;
-  padding: 0;
-  display: flex;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  margin-top: var(--space-3);
-}
-.tags li {
-  font-size: var(--text-xs);
-  padding: 2px var(--space-2);
-  border-radius: var(--radius-pill);
-  background: var(--color-primary-subtle);
-  color: var(--color-primary-active);
-  border: 1px solid var(--color-primary-border);
-}
-</style>
