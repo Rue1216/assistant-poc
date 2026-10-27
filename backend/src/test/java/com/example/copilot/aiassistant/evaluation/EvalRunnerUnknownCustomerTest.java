@@ -35,6 +35,8 @@ class EvalRunnerUnknownCustomerTest extends EvalRunnerTestBase {
         EvalRun done = runs.findById(run.id()).orElseThrow();
         assertThat(done.status()).isEqualTo(EvalStatus.COMPLETED);
         EvalCaseRecord unknown = done.cases().get(1);
+        // Neither side reached the model, so the dataset question (a fixed test-customer string) is stored.
+        assertThat(unknown.question()).isEqualTo("question of c2");
         for (CaseResult side : List.of(unknown.baseline(), unknown.candidate())) {
             assertThat(side.outcome()).isEqualTo("FAILED");
             assertThat(side.errorCode()).isEqualTo("AI_CUSTOMER_NOT_FOUND");

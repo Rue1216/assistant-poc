@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -37,6 +38,7 @@ public class EvalRunService {
 
     private static final Logger log = LoggerFactory.getLogger(EvalRunService.class);
     private static final int RECENT_LIMIT = 10;
+    private static final String INTERNAL_ERROR = "AI_INTERNAL_ERROR";
 
     /** The two assembled prompts of a run, frozen when it starts. */
     public record EvalSnapshot(AssembledPrompt baseline, AssembledPrompt candidate) {
@@ -104,9 +106,16 @@ public class EvalRunService {
         EvalRun run = new EvalRun(id, draft.configKey(), draft.candidateVersion(), draft.candidateDocVersion(),
                 draft.candidateUpdatedAt(), draft.baselineVersions(), draft.datasetHash(), draft.status(), null,
                 draft.triggeredBy(), now, now, null, draft.totalCases(), 0, null, List.of(), 0L);
+        try {
+            executor.execute(() -> runner.run(run, snapshot));
+        } catch (RejectedExecutionException e) {
+            // Otherwise the RUNNING record would block every evaluation until it goes stale.
+            repository.fail(id, 0L, INTERNAL_ERROR, clock.instant());
+            log.error("eval run rejected runId={}", id);
+            throw new AssistantException(ErrorCode.AI_INTERNAL_ERROR);
+        }
         log.info("eval run started runId={} configKey={} cases={} triggeredBy={}", id, configKey,
                 run.totalCases(), actor);
-        executor.execute(() -> runner.run(run, snapshot));
         return run;
     }
 

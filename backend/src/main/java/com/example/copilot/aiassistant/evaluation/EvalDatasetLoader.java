@@ -13,13 +13,14 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.DuplicateKeyException;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
 import org.yaml.snakeyaml.error.YAMLException;
 
 /**
  * Parses and validates {@code eval-cases.yml}. SafeConstructor yields only basic types, so the file can never
  * instantiate classes. All problems are collected and reported in one exception, each as
- * {@code eval-cases.yml: <id or #index>.<field>: <reason>}.
+ * {@code eval-cases.yml: <id or #index>.<field>: <reason>}. Unknown keys are errors and duplicate keys fail parsing.
  */
 public final class EvalDatasetLoader {
 
@@ -31,14 +32,24 @@ public final class EvalDatasetLoader {
     private static final int PHRASES_MAX_ITEMS = 10;
     private static final int RUBRIC_MAX_ITEMS = 5;
     private static final int RUBRIC_ITEM_MAX = 100;
+    /** Only these keys are allowed: a misspelt key (mustNotContian) would otherwise silently disable a check. */
+    private static final Set<String> CASE_KEYS = Set.of("id", "group", "accessLevel", "customerId", "question",
+            "expect", "rubric");
+    private static final Set<String> EXPECT_KEYS = Set.of("tools", "forbiddenTools", "refusal", "mustContain",
+            "mustNotContain");
 
     private EvalDatasetLoader() {
     }
 
     public static EvalDataset parse(byte[] yaml, Set<String> toolNames, int maxCases) {
         Object root;
+        LoaderOptions options = new LoaderOptions();
+        options.setAllowDuplicateKeys(false);
         try {
-            root = new Yaml(new SafeConstructor(new LoaderOptions())).load(new String(yaml, StandardCharsets.UTF_8));
+            root = new Yaml(new SafeConstructor(options)).load(new String(yaml, StandardCharsets.UTF_8));
+        } catch (DuplicateKeyException e) {
+            int line = e.getProblemMark() == null ? 0 : e.getProblemMark().getLine() + 1;
+            throw new IllegalStateException("eval-cases.yml: 第 " + line + " 行: 重複的欄位", e);
         } catch (YAMLException e) {
             throw new IllegalStateException("eval-cases.yml: 無法解析 YAML", e);
         }
@@ -82,6 +93,7 @@ public final class EvalDatasetLoader {
         } else {
             errors.add(msg(label, "id", "必須符合 [A-Za-z0-9-]{1,40}"));
         }
+        unknownKeys(map, CASE_KEYS, label, "", errors);
 
         String group = text(map.get("group"), GROUP_MAX, label, "group", errors);
         AccessLevel level = accessLevel(map.get("accessLevel"), label, errors);
@@ -104,6 +116,7 @@ public final class EvalDatasetLoader {
 
     private static EvalCase.Expect parseExpect(Map<?, ?> e, String label, Set<String> toolNames,
                                                List<String> errors) {
+        unknownKeys(e, EXPECT_KEYS, label, "expect.", errors);
         List<String> tools = toolList(e.get("tools"), "expect.tools", label, toolNames, errors);
         List<String> forbidden = toolList(e.get("forbiddenTools"), "expect.forbiddenTools", label, toolNames,
                 errors);
@@ -134,6 +147,15 @@ public final class EvalDatasetLoader {
             }
         }
         return names;
+    }
+
+    private static void unknownKeys(Map<?, ?> map, Set<String> allowed, String label, String prefix,
+                                    List<String> errors) {
+        for (Object key : map.keySet()) {
+            if (!allowed.contains(key)) {
+                errors.add(msg(label, prefix + key, "未知的欄位"));
+            }
+        }
     }
 
     private static AccessLevel accessLevel(Object value, String label, List<String> errors) {

@@ -66,6 +66,10 @@ public class EvalRunner {
         progress.docVersion = run.docVersion();
         String status = "FAILED";
         try {
+            if (interrupted(run)) {
+                status = "INTERRUPTED";
+                return;
+            }
             // A queued run's heartbeat is as old as its insert; do not go on if it was marked stale meanwhile.
             if (!repository.touch(run.id(), progress.docVersion, clock.instant())) {
                 status = "INTERRUPTED";
@@ -76,7 +80,7 @@ public class EvalRunner {
         } catch (RuntimeException e) {
             // Class name only: the message may echo question, answer or customer data.
             log.error("eval run failed runId={} error={}", run.id(), e.getClass().getSimpleName());
-            fail(run, progress, INTERNAL_ERROR);
+            status = fail(run, progress, INTERNAL_ERROR) ? "FAILED" : "INTERRUPTED";
         } finally {
             log.info("eval run finished runId={} status={} durationMs={} chatTokens={} judgeTokens={}", run.id(),
                     status, Duration.between(began, clock.instant()).toMillis(), progress.chatTokens,
@@ -84,19 +88,26 @@ public class EvalRunner {
         }
     }
 
-    /** Returns how the run ended: COMPLETED, FAILED (timeout) or INTERRUPTED (a conditional write was refused). */
+    /**
+     * Returns how the run ended: COMPLETED, FAILED (timeout) or INTERRUPTED (a conditional write was refused, or the
+     * thread was interrupted).
+     */
     private String execute(EvalRun run, EvalRunService.EvalSnapshot snapshot, Progress progress) {
         Instant deadline = run.startedAt().plus(runTimeout);
         List<EvalCaseRecord> records = new ArrayList<>();
         for (EvalCase c : dataset.cases()) {
+            if (interrupted(run)) {
+                return "INTERRUPTED";
+            }
             if (!clock.instant().isBefore(deadline)) {
                 return fail(run, progress, EvalErrors.TIMEOUT) ? "FAILED" : "INTERRUPTED";
             }
             Optional<CustomerContext> customer = customerFactory.forEvaluation(c.customerId(), c.accessLevel());
-            CaseResult baseline = side(run, c, "baseline", snapshot.baseline(), customer, progress);
-            CaseResult candidate = side(run, c, "candidate", snapshot.candidate(), customer, progress);
-            EvalCaseRecord record = new EvalCaseRecord(c.id(), c.group(), c.question(), c.expect().refusal(),
-                    baseline, candidate);
+            Side baseline = side(run, c, "baseline", snapshot.baseline(), customer, progress);
+            Side candidate = side(run, c, "candidate", snapshot.candidate(), customer, progress);
+            EvalCaseRecord record = new EvalCaseRecord(c.id(), c.group(),
+                    storedQuestion(c, baseline.report(), candidate.report()), c.expect().refusal(),
+                    baseline.result(), candidate.result());
             if (!repository.appendCase(run.id(), progress.docVersion, record, clock.instant())) {
                 return "INTERRUPTED";
             }
@@ -112,36 +123,65 @@ public class EvalRunner {
         return "COMPLETED";
     }
 
+    /** One side's stored result and the report it was built from. */
+    private record Side(CaseResult result, EvaluationReport report) {
+    }
+
     /** Answers the case with one prompt and judges the answer, but only when there is one. */
-    private CaseResult side(EvalRun run, EvalCase c, String side, AssembledPrompt prompt,
-                            Optional<CustomerContext> customer, Progress progress) {
-        EvaluationReport report = customer.isEmpty() ? EvaluationReport.failed(CUSTOMER_NOT_FOUND)
-                : evaluate(run, c, prompt, customer.get());
+    private Side side(EvalRun run, EvalCase c, String side, AssembledPrompt prompt,
+                      Optional<CustomerContext> customer, Progress progress) {
+        EvaluationReport report;
         JudgeVerdict verdict = null;
-        if ("ANSWERED".equals(report.outcome())) {
-            verdict = judge.judge(report.redactedQuestion(), report.answer(), c.rubric(), customer.get());
-            progress.judgeTokens += verdict.tokens();
+        if (customer.isEmpty()) {
+            report = EvaluationReport.failed(CUSTOMER_NOT_FOUND);
+        } else {
+            // The turn and its judgement run under a request id derived from the run, so their log lines can be
+            // tied back to it.
+            String previous = MDC.get(RequestIdFilter.MDC_KEY);
+            MDC.put(RequestIdFilter.MDC_KEY, "e" + run.id().substring(run.id().length() - 7));
+            try {
+                report = orchestrator.evaluate(c.question(), EVAL_USER, customer.get(), prompt);
+                if ("ANSWERED".equals(report.outcome())) {
+                    verdict = judge.judge(report.redactedQuestion(), report.answer(), c.rubric(), customer.get());
+                    progress.judgeTokens += verdict.tokens();
+                }
+            } finally {
+                restore(previous);
+            }
         }
         progress.chatTokens += report.totalTokens();
         CaseResult result = CaseResult.of(report, CaseChecker.check(c, report), verdict, c.expect().refusal());
         log.info("eval case done runId={} case={} side={} outcome={} totalTokens={} durationMs={} passed={}",
                 run.id(), c.id(), side, result.outcome(), result.totalTokens(), result.durationMs(),
                 result.passed());
-        return result;
+        return new Side(result, report);
     }
 
-    /** The turn runs under a request id derived from the run, so its log lines can be tied back to it. */
-    private EvaluationReport evaluate(EvalRun run, EvalCase c, AssembledPrompt prompt, CustomerContext customer) {
-        String previous = MDC.get(RequestIdFilter.MDC_KEY);
-        MDC.put(RequestIdFilter.MDC_KEY, "e" + run.id().substring(run.id().length() - 7));
-        try {
-            return orchestrator.evaluate(c.question(), EVAL_USER, customer, prompt);
-        } finally {
-            if (previous == null) {
-                MDC.remove(RequestIdFilter.MDC_KEY);
-            } else {
-                MDC.put(RequestIdFilter.MDC_KEY, previous);
-            }
+    /**
+     * The de-identified question the model saw (spec 5.2); the baseline's when it has one. When neither side reached
+     * the model, the dataset question is kept: it is a fixed string about a test customer.
+     */
+    private static String storedQuestion(EvalCase c, EvaluationReport baseline, EvaluationReport candidate) {
+        if (baseline.redactedQuestion() != null) {
+            return baseline.redactedQuestion();
+        }
+        return candidate.redactedQuestion() != null ? candidate.redactedQuestion() : c.question();
+    }
+
+    /** True when the runner thread was interrupted (executor shutdown); the stale check then ends the run. */
+    private static boolean interrupted(EvalRun run) {
+        if (!Thread.currentThread().isInterrupted()) {
+            return false;
+        }
+        log.warn("eval run stopped runId={} reason=interrupted", run.id());
+        return true;
+    }
+
+    private static void restore(String previous) {
+        if (previous == null) {
+            MDC.remove(RequestIdFilter.MDC_KEY);
+        } else {
+            MDC.put(RequestIdFilter.MDC_KEY, previous);
         }
     }
 

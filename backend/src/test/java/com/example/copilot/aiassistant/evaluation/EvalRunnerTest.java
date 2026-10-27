@@ -2,12 +2,15 @@ package com.example.copilot.aiassistant.evaluation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
 
 import com.example.copilot.aiassistant.chat.ScriptedChatModel;
 import com.example.copilot.aiassistant.common.RequestIdFilter;
 import com.example.copilot.aiassistant.port.AccessLevel;
+import com.example.copilot.aiassistant.privacy.PiiRedactor;
 import com.example.copilot.aiassistant.tool.ToolRegistry;
 import com.example.copilot.testsupport.LogCapture;
 import dev.langchain4j.agent.tool.ToolSpecification;
@@ -33,13 +36,16 @@ class EvalRunnerTest extends EvalRunnerTestBase {
         @Primary
         EvalDataset threeCaseDataset() {
             return new EvalDataset(List.of(
-                    evalCase("c1", "C001", AccessLevel.FULL, false),
+                    new EvalCase("c1", "g", AccessLevel.FULL, "C001", "王小明 question of c1",
+                            new EvalCase.Expect(List.of(), List.of(), false, List.of(), List.of()),
+                            List.of("rubric of c1")),
                     evalCase("c2", "C001", AccessLevel.LIMITED, false),
                     evalCase("c3", "C001", AccessLevel.FULL, true)), "d".repeat(64));
         }
     }
 
     @MockitoSpyBean EvalJudge judge;
+    @MockitoSpyBean EvalRunRepository repository;
     @Autowired ToolRegistry registry;
 
     private EvalRun reload(EvalRun run) {
@@ -66,8 +72,10 @@ class EvalRunnerTest extends EvalRunnerTestBase {
             assertThat(c.candidate().outcome()).isEqualTo("ANSWERED");
             assertThat(c.baseline().judge()).isNotNull();
             assertThat(c.candidate().judge()).isNotNull();
-            assertThat(c.question()).isEqualTo("question of " + c.caseId());
         });
+        // The stored question is the de-identified one the model saw, never the customer's name.
+        assertThat(done.cases()).extracting(EvalCaseRecord::question).containsExactly(
+                PiiRedactor.SELF + " question of c1", "question of c2", "question of c3");
         assertThat(done.cases().get(2).expectRefusal()).isTrue();
         assertThat(done.summary().baseline().total()).isEqualTo(3);
         assertThat(done.summary().candidate().total()).isEqualTo(3);
@@ -107,7 +115,9 @@ class EvalRunnerTest extends EvalRunnerTestBase {
         assertThat(atFirstAnswer.get().completedCases()).isZero();
         // Case 1 is stored before case 2 starts.
         assertThat(atSecondCase.get().completedCases()).isEqualTo(1);
-        assertThat(atSecondCase.get().heartbeatAt()).isAfter(atFirstAnswer.get().heartbeatAt());
+        // Millisecond clock: two writes may share a tick, so only "not older" is guaranteed.
+        assertThat(atSecondCase.get().heartbeatAt()).isAfterOrEqualTo(atFirstAnswer.get().heartbeatAt());
+        assertThat(atSecondCase.get().docVersion()).isEqualTo(2L);
         assertThat(atSecondCase.get().status()).isEqualTo(EvalStatus.RUNNING);
     }
 
@@ -223,13 +233,88 @@ class EvalRunnerTest extends EvalRunnerTestBase {
     }
 
     @Test
+    void unexpectedErrorAfterInterruptionLogsInterrupted() {
+        EvalRun run = insertRun(3, Duration.ofSeconds(1));
+        answerStep();
+        // The run is marked interrupted meanwhile, then the judge blows up: the fail write is refused.
+        doAnswer(inv -> {
+            assertThat(runs.fail(run.id(), reload(run).docVersion(), EvalErrors.INTERRUPTED, clock.instant()))
+                    .isTrue();
+            throw new IllegalStateException("judge exploded");
+        }).when(judge).judge(any(), any(), any(), any());
+        List<String> lines;
+        try (LogCapture capture = LogCapture.of(EvalRunner.class, Level.INFO)) {
+            runner.run(run, snapshot());
+            lines = capture.events().stream().map(LogCapture::render).toList();
+        }
+
+        assertThat(reload(run).errorCode()).isEqualTo(EvalErrors.INTERRUPTED);
+        assertThat(lines).anyMatch(l -> l.startsWith("eval run finished runId=" + run.id() + " status=INTERRUPTED "));
+    }
+
+    @Test
+    void interruptedThreadDoesNotStart() {
+        EvalRun run = insertRun(3, Duration.ofSeconds(1));
+        List<String> lines;
+        // shutdownNow interrupts the runner thread; the test plays that thread.
+        Thread.currentThread().interrupt();
+        try (LogCapture capture = LogCapture.of(EvalRunner.class, Level.INFO)) {
+            runner.run(run, snapshot());
+            lines = capture.events().stream().map(LogCapture::render).toList();
+        } finally {
+            Thread.interrupted();
+        }
+
+        assertThat(scripted.requests()).isEmpty();
+        EvalRun after = reload(run);
+        // Nothing is written: the stale check later marks the run AI_EVAL_INTERRUPTED.
+        assertThat(after.status()).isEqualTo(EvalStatus.RUNNING);
+        assertThat(after.docVersion()).isZero();
+        assertThat(after.cases()).isEmpty();
+        assertThat(lines).contains("eval run stopped runId=" + run.id() + " reason=interrupted");
+        assertThat(lines).anyMatch(l -> l.startsWith("eval run finished runId=" + run.id() + " status=INTERRUPTED "));
+    }
+
+    @Test
+    void interruptedThreadStopsBeforeTheNextCase() {
+        scriptFullCase();
+        EvalRun run = insertRun(3, Duration.ofSeconds(1));
+        // The interrupt arrives while case 1 is being stored (blocking socket I/O does not notice it).
+        doAnswer(inv -> {
+            Object written = inv.callRealMethod();
+            Thread.currentThread().interrupt();
+            return written;
+        }).when(repository).appendCase(any(), anyLong(), any(), any());
+        List<String> lines;
+        try (LogCapture capture = LogCapture.of(EvalRunner.class, Level.INFO)) {
+            runner.run(run, snapshot());
+            lines = capture.events().stream().map(LogCapture::render).toList();
+        } finally {
+            Thread.interrupted();
+        }
+
+        // Case 1 is kept; case 2 is never asked and nothing more is written.
+        assertThat(scripted.requests()).hasSize(4);
+        EvalRun after = reload(run);
+        assertThat(after.status()).isEqualTo(EvalStatus.RUNNING);
+        assertThat(after.cases()).extracting(EvalCaseRecord::caseId).containsExactly("c1");
+        assertThat(lines).contains("eval run stopped runId=" + run.id() + " reason=interrupted");
+        assertThat(lines).anyMatch(l -> l.startsWith("eval run finished runId=" + run.id() + " status=INTERRUPTED "));
+    }
+
+    @Test
     void logsCountersOnlyAndSetsRequestId() {
         AtomicReference<String> during = new AtomicReference<>();
+        AtomicReference<String> duringJudge = new AtomicReference<>();
         scripted.reply(request -> {
             during.set(MDC.get(RequestIdFilter.MDC_KEY));
             return ScriptedChatModel.answer(ANSWER_TOKENS, "這是回答");
         });
-        judgeStep();
+        scripted.reply(request -> {
+            duringJudge.set(MDC.get(RequestIdFilter.MDC_KEY));
+            return ScriptedChatModel.text("{\"refused\":false,\"rubric\":[{\"index\":1,\"met\":true}],"
+                    + "\"comment\":\"評語內容\"}", JUDGE_TOKENS);
+        });
         answerStep();
         judgeStep();
         scriptFullCase();
@@ -247,6 +332,8 @@ class EvalRunnerTest extends EvalRunnerTestBase {
         }
 
         assertThat(during.get()).isEqualTo("e" + run.id().substring(run.id().length() - 7));
+        // The judge call runs under the same request id, so its failure lines can be tied to the run.
+        assertThat(duringJudge.get()).isEqualTo(during.get());
         List<String> lines = events.stream().map(LogCapture::render).toList();
         assertThat(lines.stream().filter(l -> l.startsWith("eval case done"))).hasSize(6);
         assertThat(lines).anyMatch(l -> l.startsWith("eval case done runId=" + run.id() + " case=c1 side=baseline "

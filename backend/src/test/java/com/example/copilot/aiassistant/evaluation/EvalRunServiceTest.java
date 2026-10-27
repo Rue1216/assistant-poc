@@ -9,6 +9,7 @@ import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 
 import com.example.copilot.IntegrationTestBase;
+import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.chat.EvaluationReport;
 import com.example.copilot.aiassistant.common.AssistantException;
 import com.example.copilot.aiassistant.common.ErrorCode;
@@ -16,11 +17,15 @@ import com.example.copilot.aiassistant.config.AssistantConfig;
 import com.example.copilot.aiassistant.config.AssistantConfigRepository;
 import com.example.copilot.aiassistant.config.ConfigService;
 import com.example.copilot.aiassistant.config.ConfigType;
+import com.example.copilot.aiassistant.config.ConfigValidator;
 import com.example.copilot.aiassistant.config.SaveCommand;
 import com.example.copilot.aiassistant.config.SaveMode;
 import com.example.copilot.aiassistant.config.SeedLoader;
 import com.example.copilot.aiassistant.config.ValidationError;
+import com.example.copilot.aiassistant.prompt.PromptAssembler;
 import com.example.copilot.aiassistant.prompt.PromptVersion;
+import com.example.copilot.aiassistant.prompt.PublishedConfigCache;
+import com.example.copilot.testsupport.LogCapture;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -31,6 +36,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.core.LogEvent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -55,6 +62,10 @@ class EvalRunServiceTest extends IntegrationTestBase {
     @Autowired EvalDataset dataset;
     @Autowired MongoTemplate mongo;
     @Autowired Clock clock;
+    @Autowired ConfigValidator validator;
+    @Autowired PublishedConfigCache cache;
+    @Autowired PromptAssembler assembler;
+    @Autowired AiAssistantProperties properties;
 
     @BeforeEach
     void setUp() {
@@ -243,6 +254,33 @@ class EvalRunServiceTest extends IntegrationTestBase {
         } finally {
             pool.shutdownNow();
         }
+    }
+
+    @Test
+    void rejectedSubmitFailsRunAndFreesTheSlot() {
+        ExecutorService rejecting = Executors.newSingleThreadExecutor();
+        rejecting.shutdown();
+        EvalRunService rejectingService = new EvalRunService(runs, configService, configs, validator, cache,
+                assembler, dataset, runner, rejecting, clock, properties);
+        AssistantConfig draft = draftWithMarker(KEY, "m");
+        List<LogEvent> events;
+        AssistantException e;
+        try (LogCapture capture = LogCapture.of(EvalRunService.class, Level.INFO)) {
+            e = thrown(() -> rejectingService.start(KEY, draft.getDocVersion(), ACTOR));
+            events = capture.events();
+        }
+
+        assertThat(e.code()).isEqualTo(ErrorCode.AI_INTERNAL_ERROR);
+        List<EvalRun> stored = runs.recent(KEY, 10);
+        assertThat(stored).hasSize(1);
+        assertThat(stored.get(0).status()).isEqualTo(EvalStatus.FAILED);
+        assertThat(stored.get(0).errorCode()).isEqualTo("AI_INTERNAL_ERROR");
+        assertThat(stored.get(0).finishedAt()).isNotNull();
+        List<String> lines = events.stream().map(LogCapture::render).toList();
+        assertThat(lines).containsExactly("eval run rejected runId=" + stored.get(0).id());
+        verify(runner, never()).run(any(), any());
+        // The slot is free again: the next start is accepted.
+        assertThat(service.start(KEY, draft.getDocVersion(), ACTOR).status()).isEqualTo(EvalStatus.RUNNING);
     }
 
     @Test

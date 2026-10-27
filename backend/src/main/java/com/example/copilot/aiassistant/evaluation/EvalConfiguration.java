@@ -15,10 +15,17 @@ import org.springframework.core.io.ResourceLoader;
 @Configuration
 public class EvalConfiguration {
 
+    /** The run validator (eval-run-validator.json) stores at most this many cases. */
+    static final int STORED_CASES_MAX = 30;
+
     /** Loaded and validated at startup; an invalid dataset fails the application start. */
     @Bean
     public EvalDataset evalDataset(AiAssistantProperties props, ResourceLoader loader, ToolRegistry registry) {
         AiAssistantProperties.Eval eval = props.eval();
+        if (eval.maxCases() < 1 || eval.maxCases() > STORED_CASES_MAX) {
+            throw new IllegalStateException("ai-assistant.eval.max-cases 必須介於 1 與 " + STORED_CASES_MAX
+                    + " 之間，目前為 " + eval.maxCases());
+        }
         Resource resource = loader.getResource(eval.dataset());
         byte[] bytes;
         try (InputStream in = resource.getInputStream()) {

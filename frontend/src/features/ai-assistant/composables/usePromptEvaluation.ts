@@ -22,6 +22,8 @@ export function usePromptEvaluation(configKey: Ref<string>) {
   let timer: ReturnType<typeof setTimeout> | null = null
   /** Bumped by stopPolling and key changes so late responses are dropped. */
   let epoch = 0
+  /** A run the admin asked to see (started or opened) before its detail is on screen. */
+  let followed: string | null = null
 
   function stopPolling() {
     epoch++
@@ -59,7 +61,8 @@ export function usePromptEvaluation(configKey: Ref<string>) {
       try {
         const run = await aiAssistantApi.getEvaluation(runId)
         if (at !== epoch) return
-        state.run = run
+        // Progress always updates; the run on screen is replaced only while the admin is still viewing this one.
+        if (isViewing(runId)) state.run = run
         if (run.status === 'RUNNING') {
           state.current = {
             runId,
@@ -81,6 +84,10 @@ export function usePromptEvaluation(configKey: Ref<string>) {
         else pollOwn(runId, at, failures + 1)
       }
     })
+  }
+
+  function isViewing(runId: string) {
+    return state.run === null || state.run.runId === runId || followed === runId
   }
 
   /** A run of another key only shows progress; it releases the start button when it ends. */
@@ -141,12 +148,14 @@ export function usePromptEvaluation(configKey: Ref<string>) {
         completedCases: 0,
       }
       state.current = started
+      followed = res.runId
       beginPolling(started, key)
     } catch (e) {
       if (!(e instanceof ApiError) || e.code !== EVAL_RUNNING) throw e
       const current = await aiAssistantApi.currentEvaluation()
       if (at !== epoch) return
       state.current = current
+      if (current?.configKey === key) followed = current.runId
       if (current) beginPolling(current, key)
     } finally {
       state.starting = false
@@ -155,6 +164,7 @@ export function usePromptEvaluation(configKey: Ref<string>) {
 
   async function open(runId: string) {
     const at = epoch
+    followed = runId
     const run = await aiAssistantApi.getEvaluation(runId)
     if (at === epoch) state.run = run
   }
@@ -167,6 +177,7 @@ export function usePromptEvaluation(configKey: Ref<string>) {
 
   watch(configKey, () => {
     stopPolling()
+    followed = null
     state.run = null
     state.history = []
     state.current = null

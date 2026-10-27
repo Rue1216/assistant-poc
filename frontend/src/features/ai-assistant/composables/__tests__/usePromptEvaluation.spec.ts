@@ -82,6 +82,53 @@ describe('usePromptEvaluation', () => {
     expect(api.getEvaluation).toHaveBeenCalledTimes(2)
   })
 
+  it('opening an older run while this key runs keeps it on screen', async () => {
+    let completed = 3
+    let status: EvalStatus = 'RUNNING'
+    api.currentEvaluation.mockResolvedValue(current('r5'))
+    api.listEvaluations.mockResolvedValue([summary('r5', 'RUNNING', 3), summary('r1')])
+    api.getEvaluation.mockImplementation(async (runId: string) =>
+      runId === 'r5' ? detail('r5', status, completed) : detail(runId))
+    const { state, refresh, open } = usePromptEvaluation(ref(KEY))
+    await refresh()
+    expect(state.run?.runId).toBe('r5')
+
+    await open('r1')
+    expect(state.run?.runId).toBe('r1')
+    for (let i = 0; i < 3; i++) {
+      completed += 2
+      await vi.advanceTimersByTimeAsync(POLL_MS)
+      expect(state.run?.runId).toBe('r1')
+      expect(state.current?.completedCases).toBe(completed)
+    }
+
+    status = 'COMPLETED'
+    api.listEvaluations.mockClear()
+    await vi.advanceTimersByTimeAsync(POLL_MS)
+    expect(state.current).toBeNull()
+    expect(state.run?.runId).toBe('r1')
+    expect(api.listEvaluations).toHaveBeenCalledWith(KEY)
+  })
+
+  it('start follows the new run even when an older run is on screen', async () => {
+    api.listEvaluations.mockResolvedValue([summary('r1')])
+    api.getEvaluation.mockResolvedValue(detail('r1'))
+    const { state, refresh, start } = usePromptEvaluation(ref(KEY))
+    await refresh()
+    expect(state.run?.runId).toBe('r1')
+
+    api.startEvaluation.mockResolvedValue({ runId: 'r3', status: 'RUNNING', totalCases: 16 })
+    api.getEvaluation
+      .mockResolvedValueOnce(detail('r3', 'RUNNING', 4))
+      .mockResolvedValueOnce(detail('r3', 'COMPLETED', 16))
+    await start(5)
+    await vi.advanceTimersByTimeAsync(POLL_MS)
+    expect(state.run?.runId).toBe('r3')
+    expect(state.run?.completedCases).toBe(4)
+    await vi.advanceTimersByTimeAsync(POLL_MS)
+    expect(state.run?.status).toBe('COMPLETED')
+  })
+
   it('running conflict loads current instead of failing', async () => {
     api.startEvaluation.mockRejectedValue(new ApiError(409, 'AI_EVAL_RUNNING', 'busy', 'req', [{ runId: 'r9' }]))
     api.currentEvaluation.mockResolvedValue(current('r9', 'other.key'))

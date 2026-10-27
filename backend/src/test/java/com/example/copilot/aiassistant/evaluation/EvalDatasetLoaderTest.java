@@ -131,6 +131,43 @@ class EvalDatasetLoaderTest {
     }
 
     @Test
+    void rejectsUnknownCaseKey() {
+        String yaml = valid("Q1") + """
+                - group: 顧客經營
+                  accessLevel: FULL
+                  customerId: C001
+                  question: ok
+                  expect:
+                    refusal: false
+                  rubric: [ok]
+                  note: 多的欄位
+                """ + valid("Q2").replace("  rubric:", "  rubrik: [x]\n  rubric:");
+
+        assertThatThrownBy(() -> parse(yaml, 30)).isInstanceOf(IllegalStateException.class)
+                .message()
+                .contains("eval-cases.yml: #2.note: 未知的欄位")
+                .contains("eval-cases.yml: Q2.rubrik: 未知的欄位")
+                .doesNotContain("Q1.");
+    }
+
+    @Test
+    void rejectsUnknownExpectKey() {
+        String yaml = valid("Q1").replace("    refusal: false", "    refusal: false\n    mustNotContian: [保證]");
+
+        assertThatThrownBy(() -> parse(yaml, 30)).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("eval-cases.yml: Q1.expect.mustNotContian: 未知的欄位");
+    }
+
+    @Test
+    void rejectsDuplicateKey() {
+        String yaml = valid("Q1").replace("  question: 整理近期互動", "  question: 整理近期互動\n  question: 另一題");
+
+        assertThatThrownBy(() -> parse(yaml, 30)).isInstanceOf(IllegalStateException.class)
+                .hasMessageStartingWith("eval-cases.yml: ")
+                .hasMessageContaining("重複的欄位");
+    }
+
+    @Test
     void bundledDatasetIsValid() throws IOException {
         byte[] bytes;
         try (InputStream in = getClass().getResourceAsStream("/eval/eval-cases.yml")) {
