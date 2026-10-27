@@ -8,7 +8,7 @@ public record CaseResult(String outcome, String errorCode, String answer, List<E
                          int modelCalls, int inputTokens, int outputTokens, int totalTokens, int durationMs,
                          List<String> unverifiedNumbers, boolean toolsOk, boolean numbersOk,
                          List<String> missingPhrases, List<String> forbiddenPhrases, JudgeVerdict judge,
-                         boolean passed) {
+                         boolean passed, Boolean routeOk, String routeSource, String instructionKey) {
 
     static final int MAX_ANSWER = 8000;
     static final int MAX_TOOL_CALLS = 10;
@@ -20,6 +20,7 @@ public record CaseResult(String outcome, String errorCode, String answer, List<E
         boolean passed = "ANSWERED".equals(r.outcome())
                 && checks.toolsOk() && checks.numbersOk()
                 && checks.missingPhrases().isEmpty() && checks.forbiddenPhrases().isEmpty()
+                && checks.routeOk() != Boolean.FALSE
                 && judge != null && judge.error() == null
                 && judge.refused() != null && judge.refused() == expectRefusal
                 && judge.rubric().stream().allMatch(JudgeVerdict.RubricResult::met);
@@ -30,7 +31,7 @@ public record CaseResult(String outcome, String errorCode, String answer, List<E
                 toInt(r.outputTokens()), toInt(r.totalTokens()), toInt(r.durationMs()),
                 first(r.unverifiedNumbers(), MAX_UNVERIFIED).stream().map(n -> clip(n, MAX_UNVERIFIED_LENGTH))
                         .toList(), checks.toolsOk(), checks.numbersOk(),
-                checks.missingPhrases(), checks.forbiddenPhrases(), judge, passed);
+                checks.missingPhrases(), checks.forbiddenPhrases(), judge, passed, checks.routeOk(), r.routeSource(), r.instructionKey());
     }
 
     /** Clips by code points so a surrogate pair is never split. */

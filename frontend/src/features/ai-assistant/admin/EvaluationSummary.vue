@@ -34,6 +34,12 @@ const rows = computed<Row[]>(() => {
       direction: rateDirection(b.toolsOk, c.toolsOk, b.total, true),
     },
     {
+      label: '分類正確率',
+      base: count(b.routeOk ?? 0, b.routeCases ?? 0),
+      cand: count(c.routeOk ?? 0, c.routeCases ?? 0),
+      direction: rateDirection(b.routeOk ?? 0, c.routeOk ?? 0, b.routeCases ?? 0, true),
+    },
+    {
       label: '拒答率（應拒答題）',
       base: count(b.refusedExpected, b.expectedRefusals),
       cand: count(c.refusedExpected, c.expectedRefusals),

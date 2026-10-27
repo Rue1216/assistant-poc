@@ -7,7 +7,7 @@ import com.example.copilot.aiassistant.common.RequestIdFilter;
 import com.example.copilot.aiassistant.privacy.CustomerContext;
 import com.example.copilot.aiassistant.port.UserContext;
 import com.example.copilot.aiassistant.privacy.CustomerContextFactory;
-import com.example.copilot.aiassistant.prompt.AssembledPrompt;
+import com.example.copilot.aiassistant.prompt.PublishedConfigCache.PublishedConfigs;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -107,7 +107,7 @@ public class EvalRunner {
             Side candidate = side(run, c, "candidate", snapshot.candidate(), customer, progress);
             EvalCaseRecord record = new EvalCaseRecord(c.id(), c.group(),
                     storedQuestion(c, baseline.report(), candidate.report()), c.expect().refusal(),
-                    baseline.result(), candidate.result());
+                    c.expect().category(), baseline.result(), candidate.result());
             if (!repository.appendCase(run.id(), progress.docVersion, record, clock.instant())) {
                 return "INTERRUPTED";
             }
@@ -127,8 +127,8 @@ public class EvalRunner {
     private record Side(CaseResult result, EvaluationReport report) {
     }
 
-    /** Answers the case with one prompt and judges the answer, but only when there is one. */
-    private Side side(EvalRun run, EvalCase c, String side, AssembledPrompt prompt,
+    /** Answers the case with one config set and judges the answer, but only when there is one. */
+    private Side side(EvalRun run, EvalCase c, String side, PublishedConfigs configs,
                       Optional<CustomerContext> customer, Progress progress) {
         EvaluationReport report;
         JudgeVerdict verdict = null;
@@ -140,7 +140,7 @@ public class EvalRunner {
             String previous = MDC.get(RequestIdFilter.MDC_KEY);
             MDC.put(RequestIdFilter.MDC_KEY, "e" + run.id().substring(run.id().length() - 7));
             try {
-                report = orchestrator.evaluate(c.question(), EVAL_USER, customer.get(), prompt);
+                report = orchestrator.evaluate(c.question(), EVAL_USER, customer.get(), configs);
                 if ("ANSWERED".equals(report.outcome())) {
                     verdict = judge.judge(report.redactedQuestion(), report.answer(), c.rubric(), customer.get());
                     progress.judgeTokens += verdict.tokens();

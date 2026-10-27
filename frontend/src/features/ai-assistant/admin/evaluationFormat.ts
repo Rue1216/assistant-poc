@@ -27,12 +27,18 @@ export function tokenChange(base: number, cand: number): string {
   return (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%'
 }
 
-/** Only cases with both results can show a difference. */
+/** Only cases with both results can show a difference; a different route counts as one too. */
 export function caseChanged(c: EvalCaseRecord): boolean {
   const b = c.baseline
   const n = c.candidate
   if (!b || !n) return false
-  return b.passed !== n.passed || b.toolsOk !== n.toolsOk || b.judge?.refused !== n.judge?.refused
+  return (
+    b.passed !== n.passed ||
+    b.toolsOk !== n.toolsOk ||
+    b.judge?.refused !== n.judge?.refused ||
+    b.routeOk !== n.routeOk ||
+    b.instructionKey !== n.instructionKey
+  )
 }
 
 export type VersionState = 'none' | 'not-evaluated' | 'evaluated' | 'modified'

@@ -22,6 +22,7 @@ import com.example.copilot.aiassistant.config.SaveCommand;
 import com.example.copilot.aiassistant.config.SaveMode;
 import com.example.copilot.aiassistant.config.SeedLoader;
 import com.example.copilot.aiassistant.config.ValidationError;
+import com.example.copilot.aiassistant.prompt.InstructionSelection;
 import com.example.copilot.aiassistant.prompt.PromptAssembler;
 import com.example.copilot.aiassistant.prompt.PromptVersion;
 import com.example.copilot.aiassistant.prompt.PublishedConfigCache;
@@ -94,6 +95,14 @@ class EvalRunServiceTest extends IntegrationTestBase {
         return captor.getValue();
     }
 
+    private String textOf(PublishedConfigCache.PublishedConfigs configs) {
+        return assembler.assemble(configs, InstructionSelection.all()).text();
+    }
+
+    private List<PromptVersion> versionsOf(PublishedConfigCache.PublishedConfigs configs) {
+        return assembler.assemble(configs, InstructionSelection.all()).versions();
+    }
+
     private EvalRun running(Instant heartbeat) {
         Instant now = clock.instant();
         return new EvalRun(null, KEY, 2, 0L, now, List.of(new PromptVersion(KEY, 1)), "h".repeat(64),
@@ -127,8 +136,8 @@ class EvalRunServiceTest extends IntegrationTestBase {
         assertThat(run.datasetHash()).isEqualTo(dataset.hash());
 
         EvalRunService.EvalSnapshot snapshot = capturedSnapshot();
-        assertThat(snapshot.candidate().text()).contains("marker-draft-text");
-        assertThat(snapshot.baseline().text()).doesNotContain("marker-draft-text");
+        assertThat(textOf(snapshot.candidate())).contains("marker-draft-text");
+        assertThat(textOf(snapshot.baseline())).doesNotContain("marker-draft-text");
         EvalRun stored = service.get(run.id());
         assertThat(stored.status()).isEqualTo(EvalStatus.RUNNING);
         assertThat(stored.baselineVersions()).isEqualTo(run.baselineVersions());
@@ -143,7 +152,7 @@ class EvalRunServiceTest extends IntegrationTestBase {
                 ACTOR);
 
         EvalRunService.EvalSnapshot snapshot = capturedSnapshot();
-        assertThat(snapshot.candidate().text()).contains("marker-old").doesNotContain("marker-new");
+        assertThat(textOf(snapshot.candidate())).contains("marker-old").doesNotContain("marker-new");
     }
 
     @Test
@@ -158,8 +167,8 @@ class EvalRunServiceTest extends IntegrationTestBase {
         EvalRun run = service.start(key, saved.getDocVersion(), ACTOR);
 
         EvalRunService.EvalSnapshot snapshot = capturedSnapshot();
-        assertThat(snapshot.baseline().versions()).hasSize(6).noneMatch(v -> v.configKey().equals(key));
-        assertThat(snapshot.candidate().versions()).hasSize(7).anyMatch(v -> v.configKey().equals(key));
+        assertThat(versionsOf(snapshot.baseline())).hasSize(6).noneMatch(v -> v.configKey().equals(key));
+        assertThat(versionsOf(snapshot.candidate())).hasSize(7).anyMatch(v -> v.configKey().equals(key));
         assertThat(run.baselineVersions()).hasSize(6);
     }
 
@@ -169,10 +178,10 @@ class EvalRunServiceTest extends IntegrationTestBase {
         service.start("system.main", draft.getDocVersion(), ACTOR);
 
         EvalRunService.EvalSnapshot snapshot = capturedSnapshot();
-        assertThat(snapshot.candidate().text()).contains("marker-main-draft");
-        assertThat(snapshot.baseline().text()).doesNotContain("marker-main-draft");
-        assertThat(snapshot.candidate().versions()).hasSize(6);
-        assertThat(snapshot.candidate().versions()).anyMatch(v -> v.configKey().equals("system.main")
+        assertThat(textOf(snapshot.candidate())).contains("marker-main-draft");
+        assertThat(textOf(snapshot.baseline())).doesNotContain("marker-main-draft");
+        assertThat(versionsOf(snapshot.candidate())).hasSize(6);
+        assertThat(versionsOf(snapshot.candidate())).anyMatch(v -> v.configKey().equals("system.main")
                 && v.version() == draft.getVersion());
     }
 
@@ -315,8 +324,9 @@ class EvalRunServiceTest extends IntegrationTestBase {
     private static EvalCaseRecord caseRecord(String id) {
         CaseResult side = new CaseResult("ANSWERED", null, "answer", List.of(new EvaluationReport.ToolCall("t", "SUCCESS")),
                 2, 100, 50, 150, 1200, List.of("123"), true, true, List.of(), List.of(),
-                new JudgeVerdict(false, List.of(new JudgeVerdict.RubricResult("r", true)), "ok", null, 40), true);
-        return new EvalCaseRecord(id, "g", "question?", false, side, side);
+                new JudgeVerdict(false, List.of(new JudgeVerdict.RubricResult("r", true)), "ok", null, 40), true,
+                true, "ROUTER", "instruction.contact-prep");
+        return new EvalCaseRecord(id, "g", "question?", false, "instruction.contact-prep", side, side);
     }
 
     @Test
@@ -338,7 +348,7 @@ class EvalRunServiceTest extends IntegrationTestBase {
         assertThat(appended.heartbeatAt().toEpochMilli()).isEqualTo(later.toEpochMilli());
         assertThat(appended.cases()).containsExactly(caseRecord("A1"));
 
-        EvalMetrics m = new EvalMetrics(1, 1, 1, 0, 0, 0, 1, 150, 100, 50, 1200);
+        EvalMetrics m = new EvalMetrics(1, 1, 1, 0, 0, 0, 1, 1, 1, 150, 100, 50, 1200);
         EvalSummary summary = new EvalSummary(m, m, 80);
         assertThat(runs.complete(id, 0L, summary, later)).isFalse();
         assertThat(runs.complete(id, 1L, summary, later)).isTrue();

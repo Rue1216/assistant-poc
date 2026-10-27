@@ -19,7 +19,8 @@ public record AuditRecord(@Id String id, String requestId, String userId, String
                           String outcome, String errorCode, List<ToolCall> toolCalls, int durationMs,
                           Instant createdAt, List<String> unverifiedNumbers, int modelCalls,
                           int inputTokens, int outputTokens, int totalTokens,
-                          List<PromptVersion> promptVersions) {
+                          List<PromptVersion> promptVersions, String routeSource,
+                          String instructionKey) {
 
     public static final String COLLECTION = "COLL_ICRM_AI_ASSISTANT_AUDIT";
 
@@ -52,6 +53,8 @@ public record AuditRecord(@Id String id, String requestId, String userId, String
                 .append("promptVersions", promptVersions.stream().map(v -> new Document()
                         .append("configKey", v.configKey()).append("version", v.version()))
                         .collect(Collectors.toList()))
+                .append("routeSource", routeSource)
+                .append("instructionKey", instructionKey)
                 // Filled in later by the feedback API; explicit nulls keep the field present.
                 .append("feedback", null)
                 .append("feedbackAt", null);

@@ -107,7 +107,8 @@
 
 1. 驗證路徑參數格式，不符 → 400 `AI_INPUT_INVALID`。
 2. `CustomerAccessPort` 判斷存取等級，`NONE` 或顧客不存在 → 404 `AI_CUSTOMER_NOT_FOUND`（兩者回應相同，不透露顧客是否存在）。
-3. 建立 `CustomerContext`，以 `PiiRedactor` 處理提問和歷史，進入 tool calling 迴圈。
+3. 建立 `CustomerContext`，以 `PiiRedactor` 處理提問和歷史。
+4. 決定載入哪個問題分類：request 帶有效的 `categoryKey` 時直接載入（`CHIP`），否則先以一次模型呼叫路由（`ROUTER`，失敗則 `FALLBACK` 載入全部），再進入 tool calling 迴圈（設計見 [instruction-routing-design](../superpowers/specs/2026-10-27-instruction-routing-design.md)）。
 
 #### Request
 
@@ -117,6 +118,7 @@
 | `history` | array | | 最多 20 則（10 輪），內容總長最多 8000 字；超過時後端從最舊的開始截掉 |
 | `history[].role` | string | ✓ | `user` 或 `assistant` |
 | `history[].content` | string | ✓ | 1–4000 字 |
+| `categoryKey` | string | | 選填。快捷按鈕所屬問題分類的 `configKey`，格式 `^instruction\.[a-z0-9-]{1,50}$`，格式不符 → 400 `AI_INPUT_INVALID`。格式正確但不是本次快照中已發布的問題分類（例如按鈕在分類下架前載入、之後才被點）時**忽略**，改走路由，不回錯誤。自行輸入的提問與輸入框上方的追問建議按鈕不帶此欄位，一律走路由 |
 
 ```json
 {
@@ -539,6 +541,7 @@ Request：
 
 - 依 `version` 由新到舊排列；沒有回饋的版本不出現。`version` 只供前端對應到各版本列，畫面仍以時間辨識版本。
 - 聚合範圍是稽核紀錄中 `feedback` 有值、且 `promptVersions` 含該 `configKey` 的回答，所以只涵蓋稽核保存期限（180 天）內的回答，畫面以小字註明。
+- **計入規則依設定類型**：`system.main`（`SYSTEM_PROMPT`）計入所有有回饋的回答；問題分類（`SYSTEM_INSTRUCTION`）只計入 `routeSource` 為 `ROUTER` 或 `CHIP` 的回答，`FALLBACK`（載入全部分類）與沒有 `routeSource` 的舊紀錄不計入。版本歷程的小字：問題分類為「回饋統計涵蓋 180 天內、且確定使用此分類的回答」，`system.main` 為「回饋統計涵蓋 180 天內的回答」。
 - **400** `AI_INPUT_INVALID`：`configKey` 格式錯誤
 - **404** `AI_CONFIG_NOT_FOUND`：`configKey` 不存在
 
@@ -603,10 +606,12 @@ Response 202：
     "totalCases": 17,
     "completedCases": 17,
     "summary": {
-      "baseline":  { "correct": 14, "total": 17, "toolsOk": 16, "refusedExpected": 6, "expectedRefusals": 6,
+      "baseline":  { "correct": 14, "total": 17, "toolsOk": 16, "routeOk": 13, "routeCases": 13,
+                     "refusedExpected": 6, "expectedRefusals": 6,
                      "refusedNormal": 0, "normalCases": 11, "avgTotalTokens": 7420, "avgInputTokens": 7080,
                      "avgOutputTokens": 340, "avgDurationMs": 6200 },
-      "candidate": { "correct": 16, "total": 17, "toolsOk": 16, "refusedExpected": 6, "expectedRefusals": 6,
+      "candidate": { "correct": 16, "total": 17, "toolsOk": 16, "routeOk": 12, "routeCases": 13,
+                     "refusedExpected": 6, "expectedRefusals": 6,
                      "refusedNormal": 1, "normalCases": 11, "avgTotalTokens": 7610, "avgInputTokens": 7230,
                      "avgOutputTokens": 380, "avgDurationMs": 6500 },
       "judgeTokens": 48200
@@ -660,6 +665,7 @@ Response 200：3.13 的欄位，加上 `configKey` 與 `cases`：
       "group": "顧客經營",
       "question": "整理近期互動，幫我準備下次聯繫重點",
       "expectRefusal": false,
+      "expectCategory": "instruction.contact-prep",
       "baseline": {
         "outcome": "ANSWERED",
         "errorCode": null,
@@ -673,6 +679,9 @@ Response 200：3.13 的欄位，加上 `configKey` 與 `cases`：
         "unverifiedNumbers": [],
         "toolsOk": true,
         "numbersOk": true,
+        "routeOk": true,
+        "routeSource": "ROUTER",
+        "instructionKey": "instruction.contact-prep",
         "missingPhrases": [],
         "forbiddenPhrases": [],
         "judge": {
@@ -693,7 +702,8 @@ Response 200：3.13 的欄位，加上 `configKey` 與 `cases`：
 - `answer` 是回應用的純 Markdown（不含引用標註），`question` 是去識別化後送給模型的提問；兩者與稽核紀錄同級敏感，所以只有 `AI_CONFIG_READ` 可讀。
 - 作答失敗（`outcome: FAILED`）時 `answer` 與 `judge` 為 `null`，`errorCode` 為對話錯誤碼（05 第 2.2 節）或 `AI_CUSTOMER_NOT_FOUND`。
 - 評審失敗時 `judge` 為 `{ "refused": null, "rubric": [], "comment": null, "error": "AI_EVAL_JUDGE_FAILED", "tokens": … }`（`rubric` 是空陣列，不是 `null`）。
-- 評審 system message 只存在程式碼，任何 API 都不回傳。
+- 路由欄位：`expectCategory` 是題目的 `expect.category`（未設定為 `null`）；`routeOk` 為 `true`／`false`，題目沒有預期分類時為 `null`；`routeSource` 為 `ROUTER` 或 `FALLBACK`（評測沒有快捷按鈕；路由前就失敗時為 `null`）；`instructionKey` 是實際載入的分類，`none` 與 `FALLBACK` 為 `null`。`summary` 的 `routeOk` 是通過題數、`routeCases` 是有預期分類的題數（舊紀錄沒有這兩個欄位）。
+- 評審 system message 與路由 system message 只存在程式碼，任何 API 都不回傳。
 
 ### 3.16 `GET /api/ai-assistant/admin/evaluation-cases`
 
@@ -716,7 +726,8 @@ Response 200：3.13 的欄位，加上 `configKey` 與 `cases`：
         "forbiddenTools": [],
         "refusal": false,
         "mustContain": [],
-        "mustNotContain": ["王小明", "A123456789", "0912-000-111"]
+        "mustNotContain": ["王小明", "A123456789", "0912-000-111"],
+        "category": "instruction.contact-prep"
       },
       "rubric": ["列出近期互動的日期與管道", "提到待辦事項「約定 10 月下旬面談」", "提出 2 到 3 個具體的下次聯繫重點"]
     }
@@ -726,6 +737,7 @@ Response 200：3.13 的欄位，加上 `configKey` 與 `cases`：
 
 - 資料集來自 `classpath:eval/eval-cases.yml`，隨 git 版控，管理頁不提供編輯；共 17 題（初版 16 題，第二輪新增 X2-indirect；題目清單見 [06-conversation-scenarios.md](06-conversation-scenarios.md) 1.3）。
 - `customerId` 是資料集指定的假測試顧客編號，不是真實顧客。
+- `expect.category` 是預期的問題分類（`configKey` 或 `none`），題目不檢查分類時為 `null`。
 
 ---
 

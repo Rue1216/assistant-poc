@@ -147,6 +147,17 @@ class MongoSchemaTest extends IntegrationTestBase {
     }
 
     @Test
+    void auditValidatorChecksRouteSource() {
+        mongo.getCollection(AUDIT).insertOne(auditDocWithFeedback("schema-route-ok", null)
+                .append("routeSource", "CHIP").append("instructionKey", "instruction.contact-prep"));
+        mongo.getCollection(AUDIT).insertOne(auditDocWithFeedback("schema-route-null", null)
+                .append("routeSource", null).append("instructionKey", null));
+        assertThatThrownBy(() -> mongo.getCollection(AUDIT).insertOne(
+                auditDocWithFeedback("schema-route-bad", null).append("routeSource", "OTHER")))
+                .isInstanceOf(MongoWriteException.class);
+    }
+
+    @Test
     void auditValidatorRejectsBadFeedback() {
         assertThatThrownBy(() -> mongo.getCollection(AUDIT).insertOne(auditDocWithFeedback("schema-bad-2", "MAYBE")))
                 .isInstanceOf(MongoWriteException.class);
@@ -229,6 +240,36 @@ class MongoSchemaTest extends IntegrationTestBase {
                 .append("triggeredBy", "t").append("startedAt", new Date()).append("heartbeatAt", new Date())
                 .append("finishedAt", null).append("totalCases", 16).append("completedCases", 0)
                 .append("summary", null).append("cases", list).append("docVersion", 0L);
+    }
+
+    @Test
+    void evalRunValidatorAcceptsRouteFields() {
+        mongo.getCollection(EVAL_RUN).deleteMany(new Document());
+        Document side = evalSide(1).append("routeOk", true).append("routeSource", "ROUTER")
+                .append("instructionKey", "instruction.contact-prep");
+        Document nullSide = evalSide(1).append("routeOk", null).append("routeSource", null)
+                .append("instructionKey", null);
+        Document metrics = evalMetrics(1).append("routeOk", 1).append("routeCases", 1);
+        mongo.getCollection(EVAL_RUN).insertOne(evalRunDoc("COMPLETED", 0)
+                .append("cases", java.util.List.of(
+                        evalCase("A1", side).append("expectCategory", "instruction.contact-prep"),
+                        evalCase("A2", nullSide).append("expectCategory", null)))
+                .append("summary", new Document("baseline", metrics).append("candidate", metrics)
+                        .append("judgeTokens", 5L)));
+        mongo.getCollection(EVAL_RUN).deleteMany(new Document());
+        assertEvalRejected(evalRunDoc("COMPLETED", 0).append("cases", java.util.List.of(
+                evalCase("A1", evalSide(1).append("routeSource", "OTHER")))));
+        assertEvalRejected(evalRunDoc("COMPLETED", 0).append("cases", java.util.List.of(
+                evalCase("A1", evalSide(1).append("routeOk", "yes")))));
+        assertEvalRejected(evalRunDoc("COMPLETED", 0).append("cases", java.util.List.of(
+                evalCase("A1", evalSide(1).append("instructionKey", "k".repeat(65))))));
+        assertEvalRejected(evalRunDoc("COMPLETED", 0).append("cases", java.util.List.of(
+                evalCase("A1", evalSide(1)).append("expectCategory", "k".repeat(65)))));
+        assertEvalRejected(evalRunDoc("COMPLETED", 0).append("summary", new Document("baseline",
+                evalMetrics(1).append("routeOk", -1)).append("candidate", evalMetrics(1)).append("judgeTokens", 5L)));
+        assertEvalRejected(evalRunDoc("COMPLETED", 0).append("summary", new Document("baseline",
+                evalMetrics(1).append("routeCases", "1")).append("candidate", evalMetrics(1))
+                .append("judgeTokens", 5L)));
     }
 
     @Test

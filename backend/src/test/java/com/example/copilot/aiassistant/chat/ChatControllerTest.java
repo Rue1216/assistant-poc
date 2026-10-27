@@ -59,6 +59,19 @@ class ChatControllerTest extends IntegrationTestBase {
     }
 
     @Test
+    void categoryKeyFormatIsValidated() throws Exception {
+        chat("C001", TestUsers.as("fc.officer"),
+                "{\"message\":\"hi\",\"categoryKey\":\"system.main\"}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("AI_INPUT_INVALID"));
+        verify(chatModel, never()).chat(any(ChatRequest.class));
+
+        chat("C001", TestUsers.as("fc.officer"),
+                "{\"message\":\"hi\",\"categoryKey\":\"instruction.contact-prep\"}")
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void acceptsValidHistory() throws Exception {
         chat("C001", TestUsers.as("fc.officer"), "{\"message\":\"追問\",\"history\":["
                 + "{\"role\":\"user\",\"content\":\"第一題\"},{\"role\":\"assistant\",\"content\":\"第一答\"}]}")

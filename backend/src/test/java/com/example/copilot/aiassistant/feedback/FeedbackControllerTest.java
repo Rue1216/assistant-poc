@@ -49,7 +49,7 @@ class FeedbackControllerTest extends IntegrationTestBase {
 
     private Document withVersion(Document d, String key, int version, String feedback) {
         return d.append("promptVersions", List.of(new Document("configKey", key).append("version", version)))
-                .append("feedback", feedback).append("feedbackAt", feedback == null ? null : new Date());
+                .append("routeSource", "ROUTER").append("feedback", feedback).append("feedbackAt", feedback == null ? null : new Date());
     }
 
     private void insert(Document d) {
@@ -141,6 +141,40 @@ class FeedbackControllerTest extends IntegrationTestBase {
                 .andExpect(jsonPath("$[1].version").value(2))
                 .andExpect(jsonPath("$[1].up").value(2))
                 .andExpect(jsonPath("$[1].down").value(1));
+    }
+
+    /** One answer per route source (plus a legacy record without the field) for the same key and version. */
+    private void insertRouteFixtures(String key, int version, String prefix) {
+        String[][] rows = {{"ROUTER", "UP"}, {"CHIP", "DOWN"}, {"FALLBACK", "UP"}, {null, "UP"}};
+        for (int i = 0; i < rows.length; i++) {
+            Document d = withVersion(audit(prefix + i, "fb-user", "ANSWERED", new Date()), key, version, rows[i][1]);
+            if (rows[i][0] == null) {
+                d.remove("routeSource");
+            } else {
+                d.put("routeSource", rows[i][0]);
+            }
+            insert(d);
+        }
+    }
+
+    @Test
+    void instructionStatsCountOnlyRoutedAndChip() throws Exception {
+        insertRouteFixtures(KEY, 91, "c000000");
+        mockMvc.perform(get(STATS_URL, KEY).with(TestUsers.as("it.admin")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].version").value(91))
+                .andExpect(jsonPath("$[0].up").value(1))
+                .andExpect(jsonPath("$[0].down").value(1));
+    }
+
+    @Test
+    void systemMainStatsCountEverything() throws Exception {
+        insertRouteFixtures("system.main", 91, "d000000");
+        mockMvc.perform(get(STATS_URL, "system.main").with(TestUsers.as("it.admin")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.version==91)].up").value(3))
+                .andExpect(jsonPath("$[?(@.version==91)].down").value(1));
     }
 
     @Test

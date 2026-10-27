@@ -13,11 +13,11 @@ class CaseCheckerTest {
     private static EvalCase caseOf(List<String> tools, List<String> forbidden, List<String> must,
                                    List<String> mustNot) {
         return new EvalCase("c1", "g", AccessLevel.values()[0], "C1", "q",
-                new EvalCase.Expect(tools, forbidden, false, must, mustNot), List.of());
+                new EvalCase.Expect(tools, forbidden, false, must, mustNot, null), List.of());
     }
 
     private static EvaluationReport report(String answer, List<ToolCall> calls, List<String> unverified) {
-        return new EvaluationReport("ANSWERED", null, "q", answer, calls, 1, 10, 5, 15, 100, unverified);
+        return new EvaluationReport("ANSWERED", null, "q", answer, calls, 1, 10, 5, 15, 100, unverified, null, null);
     }
 
     @Test
@@ -57,5 +57,42 @@ class CaseCheckerTest {
         assertThat(checks.numbersOk()).isFalse();
         assertThat(checks.missingPhrases()).containsExactly("月配息");
         assertThat(checks.forbiddenPhrases()).isEmpty();
+    }
+
+    private static EvalCase routeCase(String category) {
+        return new EvalCase("c1", "g", AccessLevel.values()[0], "C1", "q",
+                new EvalCase.Expect(List.of(), List.of(), false, List.of(), List.of(), category), List.of());
+    }
+
+    private static EvaluationReport routed(String outcome, String source, String key) {
+        return new EvaluationReport(outcome, null, "q", "ANSWERED".equals(outcome) ? "a" : null, List.of(), 1, 10, 5,
+                15, 100, List.of(), source, key);
+    }
+
+    @Test
+    void routeCheck() {
+        assertThat(CaseChecker.check(routeCase("instruction.contact-prep"),
+                routed("ANSWERED", "ROUTER", "instruction.contact-prep")).routeOk()).isTrue();
+        assertThat(CaseChecker.check(routeCase("instruction.contact-prep"),
+                routed("ANSWERED", "ROUTER", "instruction.opportunity")).routeOk()).isFalse();
+        assertThat(CaseChecker.check(routeCase("none"), routed("ANSWERED", "ROUTER", null)).routeOk()).isTrue();
+        assertThat(CaseChecker.check(routeCase("none"), routed("ANSWERED", "FALLBACK", null)).routeOk()).isFalse();
+        assertThat(CaseChecker.check(routeCase("none"), routed("ANSWERED", "ROUTER", "instruction.opportunity"))
+                .routeOk()).isFalse();
+        assertThat(CaseChecker.check(routeCase("instruction.contact-prep"),
+                routed("ANSWERED", "FALLBACK", null)).routeOk()).isFalse();
+        assertThat(CaseChecker.check(routeCase("instruction.contact-prep"),
+                EvaluationReport.failed("AI_LLM_TIMEOUT")).routeOk()).isFalse();
+        assertThat(CaseChecker.check(routeCase(null), routed("ANSWERED", "ROUTER", "instruction.opportunity"))
+                .routeOk()).isNull();
+        assertThat(CaseChecker.check(routeCase(null), EvaluationReport.failed("X")).routeOk()).isNull();
+    }
+
+    @Test
+    void expectedCategoryMissingFromSnapshotFailsRouteCheck() {
+        // The category was removed from the candidate snapshot, so the router can only answer "none" or fall back.
+        EvalCase c = routeCase("instruction.removed");
+        assertThat(CaseChecker.check(c, routed("ANSWERED", "ROUTER", null)).routeOk()).isFalse();
+        assertThat(CaseChecker.check(c, routed("ANSWERED", "FALLBACK", null)).routeOk()).isFalse();
     }
 }

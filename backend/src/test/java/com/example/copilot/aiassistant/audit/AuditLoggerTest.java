@@ -41,7 +41,7 @@ class AuditLoggerTest extends IntegrationTestBase {
     private static final Set<String> DOC_KEYS = Set.of("_id", "requestId", "userId", "roleKey", "customerId",
             "accessLevel", "question", "answer", "answerTruncated", "outcome", "errorCode", "toolCalls",
             "durationMs", "createdAt", "unverifiedNumbers", "modelCalls", "inputTokens", "outputTokens",
-            "totalTokens", "promptVersions", "feedback", "feedbackAt");
+            "totalTokens", "promptVersions", "routeSource", "instructionKey", "feedback", "feedbackAt");
 
     @Autowired AuditLogger auditLogger;
     @Autowired MongoTemplate mongo;
@@ -78,12 +78,12 @@ class AuditLoggerTest extends IntegrationTestBase {
 
     private AuditEntry citedEntry(String requestId, boolean truncated, String answer, List<String> unverified) {
         return new AuditEntry(requestId, USER, CUSTOMER, "q", answer, truncated, "ANSWERED", null,
-                List.of(citedTool()), java.util.Map.of("S1", 1), unverified, 10, 1, 0, 0, 0, List.of());
+                List.of(citedTool()), java.util.Map.of("S1", 1), unverified, 10, 1, 0, 0, 0, List.of(), null, null);
     }
 
     private AuditEntry entry(String requestId, String question, String answer, List<ToolOutcome> tools) {
         return new AuditEntry(requestId, USER, CUSTOMER, question, answer, false, "ANSWERED", null, tools,
-                java.util.Map.of(), List.of(), 2840, 1, 0, 0, 0, List.of());
+                java.util.Map.of(), List.of(), 2840, 1, 0, 0, 0, List.of(), null, null);
     }
 
     private Document find(String requestId) {
@@ -153,7 +153,7 @@ class AuditLoggerTest extends IntegrationTestBase {
                 new CitationDetail("t", "王小明 0912-000-111", "e", null, 1));
         ToolOutcome o = new ToolOutcome("getStockQuote", "p", result, PAYLOAD, 7, "S1");
         auditLogger.record(new AuditEntry("req-cite-7", USER, CUSTOMER, "q", "a", false, "ANSWERED", null,
-                List.of(o), java.util.Map.of("S1", 1), List.of(), 10, 1, 0, 0, 0, List.of()));
+                List.of(o), java.util.Map.of("S1", 1), List.of(), 10, 1, 0, 0, 0, List.of(), null, null));
         String target = find("req-cite-7").getList("toolCalls", Document.class).get(0).getString("target");
         assertThat(target).doesNotContain("王小明", "0912", "【本顧客】").contains("本顧客");
     }
@@ -262,7 +262,7 @@ class AuditLoggerTest extends IntegrationTestBase {
     void overlongIdentifiersAreClippedAndNullsTolerated() {
         ToolOutcome t = tool("n".repeat(100), ToolStatus.ERROR, "E".repeat(100), 1);
         auditLogger.record(new AuditEntry("r".repeat(100), USER, CUSTOMER, null, "a", false, "FAILED",
-                "X".repeat(100), List.of(t), java.util.Map.of(), List.of(), 5, 1, 0, 0, 0, List.of()));
+                "X".repeat(100), List.of(t), java.util.Map.of(), List.of(), 5, 1, 0, 0, 0, List.of(), null, null));
         Document doc = mongo.getCollection(COLL).find(new Document("requestId", "r".repeat(64))).first();
         assertThat(doc).isNotNull();
         assertThat(doc.getString("question")).isEmpty();
@@ -277,7 +277,7 @@ class AuditLoggerTest extends IntegrationTestBase {
         UserContext user = new UserContext("u".repeat(100), "Officer", "R".repeat(50), Set.of());
         CustomerContext customer = new CustomerContext("C".repeat(50), AccessLevel.LIMITED, Set.of(), Set.of());
         auditLogger.record(new AuditEntry("req-clip-1", user, customer, "q", "a", false, "ANSWERED", null,
-                List.of(), java.util.Map.of(), List.of(), 1, 1, 0, 0, 0, List.of()));
+                List.of(), java.util.Map.of(), List.of(), 1, 1, 0, 0, 0, List.of(), null, null));
         Document doc = find("req-clip-1");
         assertThat(doc.getString("userId")).hasSize(64);
         assertThat(doc.getString("roleKey")).hasSize(32);
@@ -287,7 +287,7 @@ class AuditLoggerTest extends IntegrationTestBase {
     @Test
     void failedEntryStoresNullAnswerAndErrorCode() {
         auditLogger.record(new AuditEntry("req-fail-1", USER, CUSTOMER, "q", null, false, "FAILED",
-                "AI_LLM_TIMEOUT", List.of(), java.util.Map.of(), List.of(), 100, 1, 0, 0, 0, List.of()));
+                "AI_LLM_TIMEOUT", List.of(), java.util.Map.of(), List.of(), 100, 1, 0, 0, 0, List.of(), null, null));
         Document doc = find("req-fail-1");
         assertThat(doc.get("answer")).isNull();
         assertThat(doc.getBoolean("answerTruncated")).isFalse();
@@ -295,9 +295,26 @@ class AuditLoggerTest extends IntegrationTestBase {
         assertThat(doc.getString("errorCode")).isEqualTo("AI_LLM_TIMEOUT");
     }
 
+    @Test
+    void routeFieldsAreWrittenAndExplicitNullWhenUnknown() {
+        auditLogger.record(new AuditEntry("req-route-1", USER, CUSTOMER, "q", "a", false, "ANSWERED", null,
+                List.of(), java.util.Map.of(), List.of(), 10, 2, 0, 0, 0, List.of(), "CHIP",
+                "instruction.contact-prep"));
+        Document doc = find("req-route-1");
+        assertThat(doc.getString("routeSource")).isEqualTo("CHIP");
+        assertThat(doc.getString("instructionKey")).isEqualTo("instruction.contact-prep");
+
+        auditLogger.record(entry("req-route-2", "q", "a", List.of()));
+        Document unknown = find("req-route-2");
+        assertThat(unknown.containsKey("routeSource")).isTrue();
+        assertThat(unknown.get("routeSource")).isNull();
+        assertThat(unknown.containsKey("instructionKey")).isTrue();
+        assertThat(unknown.get("instructionKey")).isNull();
+    }
+
     private AuditEntry versionedEntry(String requestId, List<PromptVersion> versions) {
         return new AuditEntry(requestId, USER, CUSTOMER, "q", "a", false, "ANSWERED", null, List.of(),
-                java.util.Map.of(), List.of(), 10, 2, 6500, 350, 6850, versions);
+                java.util.Map.of(), List.of(), 10, 2, 6500, 350, 6850, versions, null, null);
     }
 
     @Test

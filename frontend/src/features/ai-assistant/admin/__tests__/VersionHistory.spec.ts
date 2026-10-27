@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import VersionHistory from '../VersionHistory.vue'
-import type { ConfigStatus, VersionFeedback, VersionHistoryItem } from '../../types'
+import type { ConfigStatus, ConfigType, VersionFeedback, VersionHistoryItem } from '../../types'
 
 function item(version: number, status: ConfigStatus, updatedAt: string, extra: Partial<VersionHistoryItem> = {}) {
   return {
@@ -28,8 +28,13 @@ const VERSIONS: VersionHistoryItem[] = [
   item(9138, 'SCHEDULED', '2026-10-19T11:00:00+08:00', { scheduledAt: '2026-10-24T09:00:00+08:00' }),
 ]
 
-function mountHistory(versions = VERSIONS, canEdit = true, feedback: Record<number, VersionFeedback> = {}) {
-  return mount(VersionHistory, { props: { versions, activeVersions: [], canEdit, busy: false, feedback } })
+function mountHistory(
+  versions = VERSIONS,
+  canEdit = true,
+  feedback: Record<number, VersionFeedback> = {},
+  configType: ConfigType = 'SYSTEM_PROMPT',
+) {
+  return mount(VersionHistory, { props: { versions, activeVersions: [], canEdit, busy: false, feedback, configType } })
 }
 
 const rows = (w: ReturnType<typeof mountHistory>) => w.findAll('.pm-ver')
@@ -185,5 +190,15 @@ describe('VersionHistory', () => {
       const w = mountHistory([item(1, 'DRAFT', '2026-10-19T08:00:00+08:00')], true, { 1: fb(1, 2, 2) })
       expect(w.text()).not.toContain('回饋統計涵蓋')
     })
+  })
+
+  it('words the footnote for instruction categories as confirmed-use answers only', () => {
+    const w = mountHistory(VERSIONS, true, { 9136: { version: 9136, up: 3, down: 1 } }, 'SYSTEM_INSTRUCTION')
+    expect(w.find('.pm-versions__note').text()).toBe('回饋統計涵蓋 180 天內、且確定使用此分類的回答')
+  })
+
+  it('keeps the plain footnote for the system prompt', () => {
+    const w = mountHistory(VERSIONS, true, { 9136: { version: 9136, up: 3, down: 1 } }, 'SYSTEM_PROMPT')
+    expect(w.find('.pm-versions__note').text()).toBe('回饋統計涵蓋 180 天內的回答')
   })
 })

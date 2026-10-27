@@ -3,7 +3,9 @@ package com.example.copilot.aiassistant.feedback;
 import com.example.copilot.aiassistant.audit.AuditRecord;
 import com.example.copilot.aiassistant.common.AssistantException;
 import com.example.copilot.aiassistant.common.ErrorCode;
+import com.example.copilot.aiassistant.config.AssistantConfig;
 import com.example.copilot.aiassistant.config.AssistantConfigRepository;
+import com.example.copilot.aiassistant.config.ConfigType;
 import java.time.Clock;
 import java.util.Date;
 import java.util.List;
@@ -46,14 +48,22 @@ public class FeedbackService {
         }
     }
 
-    /** Counts per version of the given key, newest version first. Versions without any rating are absent. */
+    /**
+     * Counts per version of the given key, newest version first. Versions without any rating are absent.
+     * An instruction counts only answers it actually shaped (routed or chip-selected); fallback answers and
+     * legacy records without a route source are excluded. The system prompt counts every answer.
+     */
     public List<VersionFeedback> stats(String configKey) {
-        if (configs.findTopByConfigKeyOrderByVersionDesc(configKey).isEmpty()) {
-            throw new AssistantException(ErrorCode.AI_CONFIG_NOT_FOUND);
+        AssistantConfig latest = configs.findTopByConfigKeyOrderByVersionDesc(configKey)
+                .orElseThrow(() -> new AssistantException(ErrorCode.AI_CONFIG_NOT_FOUND));
+        // The leading predicates stay as they were so the partial feedback index remains usable.
+        Criteria first = Criteria.where("feedback").type(JsonSchemaObject.Type.STRING)
+                .and("promptVersions").elemMatch(Criteria.where("configKey").is(configKey));
+        if (latest.getConfigType() == ConfigType.SYSTEM_INSTRUCTION) {
+            first = first.and("routeSource").in("ROUTER", "CHIP");
         }
         Aggregation aggregation = Aggregation.newAggregation(
-                Aggregation.match(Criteria.where("feedback").type(JsonSchemaObject.Type.STRING)
-                        .and("promptVersions").elemMatch(Criteria.where("configKey").is(configKey))),
+                Aggregation.match(first),
                 Aggregation.unwind("promptVersions"),
                 Aggregation.match(Criteria.where("promptVersions.configKey").is(configKey)),
                 Aggregation.group("promptVersions.version")

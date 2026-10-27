@@ -34,6 +34,8 @@ onMounted(() => void evaluation.refresh().catch(swallow))
 
 const casesOpen = ref(false)
 
+const nameOfKey = (key: string) => (key === props.configKey ? props.name : (props.nameOf?.(key) ?? key))
+
 const latestCompleted = computed(() => state.history.find((r) => r.status === 'COMPLETED'))
 const vState = computed(() => versionState(latestCompleted.value, props.workingCopy))
 const VERSION_TEXT = { none: '', 'not-evaluated': '尚未評測', evaluated: '已評測', modified: '評測後內容已修改' } as const
@@ -130,7 +132,7 @@ const progress = computed(() => state.current)
         <EvaluationSummary v-if="run.summary" :summary="run.summary" />
         <p v-else-if="run.status === 'FAILED'" class="ev-hint">這次評測沒有完成，已完成的題目仍列在下方。</p>
         <h3 class="ev-h">題目</h3>
-        <EvaluationCaseList :key="run.runId" :cases="run.cases" />
+        <EvaluationCaseList :key="run.runId" :cases="run.cases" :name-of="nameOfKey" />
       </template>
       <p v-else class="ev-hint">還沒有評測紀錄。</p>
 
@@ -140,7 +142,7 @@ const progress = computed(() => state.current)
       </template>
     </div>
 
-    <EvaluationCasesDialog :open="casesOpen" :cases="state.cases" @close="casesOpen = false" />
+    <EvaluationCasesDialog :open="casesOpen" :cases="state.cases" :name-of="nameOfKey" @close="casesOpen = false" />
   </section>
 </template>
 

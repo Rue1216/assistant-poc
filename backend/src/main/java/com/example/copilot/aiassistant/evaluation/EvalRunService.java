@@ -9,7 +9,7 @@ import com.example.copilot.aiassistant.config.ConfigService;
 import com.example.copilot.aiassistant.config.ConfigType;
 import com.example.copilot.aiassistant.config.ConfigValidator;
 import com.example.copilot.aiassistant.config.ValidationError;
-import com.example.copilot.aiassistant.prompt.AssembledPrompt;
+import com.example.copilot.aiassistant.prompt.InstructionSelection;
 import com.example.copilot.aiassistant.prompt.PromptAssembler;
 import com.example.copilot.aiassistant.prompt.PublishedConfigCache;
 import com.example.copilot.aiassistant.prompt.PublishedConfigCache.PublishedConfigs;
@@ -40,8 +40,8 @@ public class EvalRunService {
     private static final int RECENT_LIMIT = 10;
     private static final String INTERNAL_ERROR = "AI_INTERNAL_ERROR";
 
-    /** The two assembled prompts of a run, frozen when it starts. */
-    public record EvalSnapshot(AssembledPrompt baseline, AssembledPrompt candidate) {
+    /** The two config sets of a run, frozen when it starts; each turn routes and assembles from its side. */
+    public record EvalSnapshot(PublishedConfigs baseline, PublishedConfigs candidate) {
     }
 
     private final EvalRunRepository repository;
@@ -92,10 +92,10 @@ public class EvalRunService {
         }
 
         PublishedConfigs published = cache.loadFresh();
-        EvalSnapshot snapshot = new EvalSnapshot(assembler.assemble(published),
-                assembler.assemble(withCandidate(published, workingCopy)));
+        EvalSnapshot snapshot = new EvalSnapshot(published, withCandidate(published, workingCopy));
         EvalRun draft = new EvalRun(null, configKey, workingCopy.getVersion(), workingCopy.getDocVersion(),
-                workingCopy.getUpdatedAt(), snapshot.baseline().versions(), dataset.hash(), EvalStatus.RUNNING,
+                workingCopy.getUpdatedAt(), assembler.assemble(snapshot.baseline(), InstructionSelection.all()).versions(),
+                dataset.hash(), EvalStatus.RUNNING,
                 null, actor, now, now, null, dataset.cases().size(), 0, null, List.of(), 0L);
         String id;
         try {

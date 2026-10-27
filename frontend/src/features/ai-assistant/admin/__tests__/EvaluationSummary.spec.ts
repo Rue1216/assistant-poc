@@ -63,4 +63,26 @@ describe('EvaluationSummary', () => {
     const r = row(w, '拒答率（應拒答題）')
     expect(r.findAll('td').slice(0, 2).map((c) => c.text())).toEqual(['—', '—'])
   })
+
+  it('shows the category accuracy row as rate and counts', () => {
+    const w = mount(EvaluationSummary, { props: { summary: summary({ routeOk: 11, routeCases: 13 }, { routeOk: 13, routeCases: 13 }) } })
+    const r = row(w, '分類正確率')
+    const cells = r.findAll('td')
+    expect(cells[0]!.text()).toBe('85%（11/13）')
+    expect(cells[1]!.text()).toBe('100%（13/13）')
+    expect(r.find('.ev-dir').attributes('aria-label')).toBe('變好')
+  })
+
+  it('does not mark a one-case difference in category accuracy', () => {
+    const w = mount(EvaluationSummary, { props: { summary: summary({ routeOk: 12 }, { routeOk: 11 }) } })
+    expect(row(w, '分類正確率').find('.ev-dir').exists()).toBe(false)
+  })
+
+  it('shows a dash for category accuracy when no case has an expected category', () => {
+    const none = { routeOk: undefined, routeCases: undefined }
+    const w = mount(EvaluationSummary, { props: { summary: summary(none, { routeOk: 0, routeCases: 0 }) } })
+    const cells = row(w, '分類正確率').findAll('td')
+    expect(cells[0]!.text()).toBe('—')
+    expect(cells[1]!.text()).toBe('—')
+  })
 })

@@ -24,6 +24,8 @@ public class PromptAssembler {
 
     private static final ZoneId TAIPEI = ZoneId.of("Asia/Taipei");
 
+    private static final String NO_INSTRUCTION = "（本題沒有適用的問題分類）";
+
     private final PublishedConfigCache cache;
     private final Clock clock;
     private final AtomicBoolean warnedMissingMain = new AtomicBoolean();
@@ -33,13 +35,16 @@ public class PromptAssembler {
         this.clock = clock;
     }
 
-    /** Assembles the prompt from the cached published configs. */
-    public AssembledPrompt current() {
-        return assemble(cache.current());
+    /** The cached published configs; routing and assembling one question must use the same snapshot. */
+    public PublishedConfigs snapshot() {
+        return cache.current();
     }
 
-    /** Assembles the prompt from the given configs; instructions are ordered by configKey here. */
-    public AssembledPrompt assemble(PublishedConfigs configs) {
+    /**
+     * Assembles the prompt from the given configs; instructions are ordered by configKey here. Only the selected
+     * instructions are loaded and listed in the versions.
+     */
+    public AssembledPrompt assemble(PublishedConfigs configs, InstructionSelection selection) {
         List<PromptVersion> versions = new ArrayList<>();
         StringBuilder sb = new StringBuilder();
         AssistantConfig main = configs.systemPrompt();
@@ -52,7 +57,15 @@ public class PromptAssembler {
         }
         sb.append("# 問題分類\n\n");
         List<AssistantConfig> instructions = configs.instructions().stream()
+                .filter(i -> switch (selection.kind()) {
+                    case ALL -> true;
+                    case NONE -> false;
+                    case ONLY -> i.getConfigKey().equals(selection.configKey());
+                })
                 .sorted(Comparator.comparing(AssistantConfig::getConfigKey)).toList();
+        if (selection.kind() == InstructionSelection.Kind.NONE) {
+            sb.append(NO_INSTRUCTION).append("\n\n");
+        }
         for (AssistantConfig instruction : instructions) {
             sb.append("## ").append(instruction.getName()).append('\n')
                     .append(instruction.getContent().strip()).append("\n\n");

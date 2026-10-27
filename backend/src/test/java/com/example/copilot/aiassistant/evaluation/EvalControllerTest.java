@@ -85,12 +85,12 @@ class EvalControllerTest extends IntegrationTestBase {
         CaseResult side = new CaseResult("ANSWERED", null, "answer", List.of(new EvaluationReport.ToolCall("t", "SUCCESS")),
                 2, 100, 50, 150, 1200, List.of("123"), true, true, List.of(), List.of(),
                 new JudgeVerdict(false, List.of(new JudgeVerdict.RubricResult("rubric text", true)), "ok", null, 40),
-                true);
-        return new EvalCaseRecord(id, "g", "question?", false, side, side);
+                true, true, "ROUTER", "instruction.contact-prep");
+        return new EvalCaseRecord(id, "g", "question?", false, "instruction.contact-prep", side, side);
     }
 
     private String insertRun(EvalStatus status, Instant startedAt, String hash, List<EvalCaseRecord> cases) {
-        EvalMetrics m = new EvalMetrics(1, 1, 1, 0, 0, 0, 1, 150, 100, 50, 1200);
+        EvalMetrics m = new EvalMetrics(1, 1, 1, 0, 0, 0, 1, 1, 1, 150, 100, 50, 1200);
         EvalSummary summary = status == EvalStatus.COMPLETED ? new EvalSummary(m, m, 80) : null;
         Instant finished = status == EvalStatus.RUNNING ? null : startedAt.plusSeconds(30);
         return runs.insert(new EvalRun(null, KEY, 2, 7L, startedAt, List.of(new PromptVersion(KEY, 1)), hash, status,

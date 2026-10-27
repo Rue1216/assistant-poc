@@ -123,6 +123,17 @@ describe('AssistantPanel', () => {
     await flushPromises()
     expect(chat.mock.calls[0]![1].message).toBe('這位顧客有哪些標籤？')
     expect(wrapper.find('.ai-user, .ai-msg--user').exists()).toBe(true)
+    expect(chat.mock.calls[0]![1].categoryKey).toBe('instruction.customer-overview')
+  })
+
+  it('typing in the composer sends no categoryKey', async () => {
+    chat.mockResolvedValue(answer())
+    const { wrapper } = await mountPanel()
+    const input = wrapper.find('textarea')
+    await input.setValue('你好')
+    await input.trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+    expect('categoryKey' in chat.mock.calls[0]![1]).toBe(false)
   })
 
   it('shows all categories for LIMITED users without the limited note', async () => {

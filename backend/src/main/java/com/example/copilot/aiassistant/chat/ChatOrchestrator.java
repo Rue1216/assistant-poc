@@ -13,14 +13,20 @@ import com.example.copilot.aiassistant.chat.ChatResult.ToolCallSummary;
 import com.example.copilot.aiassistant.common.AssistantException;
 import com.example.copilot.aiassistant.common.ErrorCode;
 import com.example.copilot.aiassistant.common.RequestIdFilter;
+import com.example.copilot.aiassistant.config.AssistantConfig;
 import com.example.copilot.aiassistant.llm.LlmErrorMapper;
 import com.example.copilot.aiassistant.port.UserContext;
 import com.example.copilot.aiassistant.privacy.CustomerContext;
 import com.example.copilot.aiassistant.privacy.CustomerDeidentifier;
 import com.example.copilot.aiassistant.privacy.PiiRedactor;
 import com.example.copilot.aiassistant.prompt.AssembledPrompt;
+import com.example.copilot.aiassistant.prompt.InstructionRouter;
+import com.example.copilot.aiassistant.prompt.InstructionSelection;
 import com.example.copilot.aiassistant.prompt.PromptAssembler;
 import com.example.copilot.aiassistant.prompt.PromptVersion;
+import com.example.copilot.aiassistant.prompt.PublishedConfigCache.PublishedConfigs;
+import com.example.copilot.aiassistant.prompt.RouteDecision;
+import com.example.copilot.aiassistant.prompt.RouteSource;
 import com.example.copilot.aiassistant.tool.AssistantTool;
 import com.example.copilot.aiassistant.tool.CitationDetail;
 import com.example.copilot.aiassistant.tool.CitationIds;
@@ -62,7 +68,8 @@ import org.springframework.stereotype.Component;
  * a {@link PiiRedactor}-processed user/assistant text, or a payload built by {@link ToolExecutor}; the customer is
  * never named. Every model request carries the answer schema; {@link AnswerAssembler} turns the final JSON into
  * blocks and citations (answer-citations spec 2). The application log carries counters only, never question,
- * answer, raw model output or tool data (05 section 5).
+ * answer, raw model output or tool data (05 section 5). Each turn first picks the one instruction to load, through
+ * a quick-question chip's key or {@link InstructionRouter}, and then assembles the system message from that choice.
  */
 @Component
 public class ChatOrchestrator {
@@ -77,6 +84,7 @@ public class ChatOrchestrator {
     private final ToolExecutor executor;
     private final PiiRedactor redactor;
     private final PromptAssembler promptAssembler;
+    private final InstructionRouter router;
     private final AnswerAssembler answerAssembler;
     private final AuditLogger auditLogger;
     private final LlmErrorMapper errorMapper;
@@ -84,14 +92,15 @@ public class ChatOrchestrator {
     private final Clock clock;
 
     public ChatOrchestrator(ChatModel chatModel, ToolRegistry registry, ToolExecutor executor, PiiRedactor redactor,
-                            PromptAssembler promptAssembler, AnswerAssembler answerAssembler,
-                            AuditLogger auditLogger, LlmErrorMapper errorMapper, AiAssistantProperties props,
-                            Clock clock) {
+                            PromptAssembler promptAssembler, InstructionRouter router,
+                            AnswerAssembler answerAssembler, AuditLogger auditLogger, LlmErrorMapper errorMapper,
+                            AiAssistantProperties props, Clock clock) {
         this.chatModel = chatModel;
         this.registry = registry;
         this.executor = executor;
         this.redactor = redactor;
         this.promptAssembler = promptAssembler;
+        this.router = router;
         this.answerAssembler = answerAssembler;
         this.auditLogger = auditLogger;
         this.errorMapper = errorMapper;
@@ -104,17 +113,18 @@ public class ChatOrchestrator {
         Turn turn = new Turn(user, customer, true);
         try {
             // Inside the handling so that a prompt that cannot be loaded is audited and logged like any failure.
-            turn.prompt = promptAssembler.current();
+            turn.configs = promptAssembler.snapshot();
             ChatResult result = turn.result(turn.answer(command));
             turn.audit(turn.assembled, "ANSWERED", null);
             long citedBlocks = result.blocks().stream()
                     .filter(b -> b.type() != BlockType.HEADING && !b.citations().isEmpty()).count();
             log.info("chat answered requestId={} userId={} durationMs={} modelCalls={} toolCalls={} totalTokens={} "
                             + "inputTokens={} outputTokens={} "
-                            + "blocks={} citedBlocks={} peakOutputTokens={}", turn.requestId, user.userId(),
+                            + "blocks={} citedBlocks={} peakOutputTokens={} routeSource={} instructionKey={}",
+                    turn.requestId, user.userId(),
                     turn.elapsedMs(), turn.modelCalls, turn.executed.size(), turn.totalTokens, turn.inputTokens,
                     turn.outputTokens, result.blocks().size(),
-                    citedBlocks, turn.peakOutputTokens);
+                    citedBlocks, turn.peakOutputTokens, turn.routeSource, turn.instructionKey);
             return result;
         } catch (AssistantException e) {
             turn.fail(e.code());
@@ -126,15 +136,16 @@ public class ChatOrchestrator {
     }
 
     /**
-     * Runs one question against the given prompt for the evaluation: the same loop and the same redaction as
-     * {@link #chat}, but no audit entry and no chat log line. Never throws; a failed turn is reported by its code.
+     * Runs one question against the given configs for the evaluation: the same routing, loop and redaction as
+     * {@link #chat} (never with a chip key), but no audit entry and no chat log line. Never throws; a failed turn is
+     * reported by its code.
      */
     public EvaluationReport evaluate(String question, UserContext user, CustomerContext customer,
-                                     AssembledPrompt prompt) {
+                                     PublishedConfigs configs) {
         Turn turn = new Turn(user, customer, false);
-        turn.prompt = prompt;
+        turn.configs = configs;
         try {
-            ChatResult result = turn.result(turn.answer(new ChatCommand(question, List.of())));
+            ChatResult result = turn.result(turn.answer(new ChatCommand(question, List.of(), null)));
             return turn.report("ANSWERED", null, result.answer());
         } catch (RuntimeException e) {
             ErrorCode code = e instanceof AssistantException a ? a.code() : ErrorCode.AI_INTERNAL_ERROR;
@@ -159,8 +170,12 @@ public class ChatOrchestrator {
         private final ToolContext toolContext;
         /** False for an evaluation turn: no audit entry. */
         private final boolean audited;
-        /** Set right after construction; stays null only if the prompt could not be loaded. */
+        /** Set right after construction; stays null only if the configs could not be loaded. */
+        private PublishedConfigs configs;
+        /** Set once the instruction is chosen, before any answer round; null until then. */
         private AssembledPrompt prompt;
+        private String routeSource;
+        private String instructionKey;
         private final List<ExecutedTool> executed = new ArrayList<>();
         /** Calls beyond the cap: reported in the summary, never executed, never audited as tool calls. */
         private final List<ToolOutcome> skipped = new ArrayList<>();
@@ -186,9 +201,11 @@ public class ChatOrchestrator {
          */
         String answer(ChatCommand command) {
             redactedQuestion = redact(command.message());
+            List<ChatMessage> redactedHistory = history(command.history());
+            prompt = promptAssembler.assemble(configs, route(command.categoryKey(), redactedHistory));
             List<ChatMessage> messages = new ArrayList<>();
             messages.add(SystemMessage.from(prompt.text()));
-            messages.addAll(history(command.history()));
+            messages.addAll(redactedHistory);
             messages.add(UserMessage.from(redactedQuestion));
 
             List<AssistantTool<?>> tools = registry.toolsFor(customer.accessLevel());
@@ -208,6 +225,34 @@ public class ChatOrchestrator {
                 toolRounds++;
                 runTools(reply, messages, offered);
             }
+        }
+
+        /**
+         * Decides which instruction this turn loads and records the decision before any answer round, so that a
+         * later failure still audits it. A chip key counts only when it names an instruction of this turn's own
+         * snapshot (so the selection can never point at an absent key); otherwise the router decides.
+         */
+        private InstructionSelection route(String categoryKey, List<ChatMessage> redactedHistory) {
+            RouteDecision decision;
+            if (categoryKey != null && configs.instructions().stream()
+                    .map(AssistantConfig::getConfigKey).anyMatch(categoryKey::equals)) {
+                decision = new RouteDecision(categoryKey, RouteSource.CHIP, false, 0, 0, 0);
+            } else {
+                checkDeadline();
+                decision = router.route(redactedQuestion, redactedHistory, configs.instructions());
+            }
+            routeSource = decision.source().name();
+            instructionKey = decision.instructionKey();
+            if (decision.modelCalled()) {
+                modelCalls++;
+                totalTokens += decision.totalTokens();
+                inputTokens += decision.inputTokens();
+                outputTokens += decision.outputTokens();
+                if (totalTokens > limits.tokenBudget()) {
+                    throw new AssistantException(ErrorCode.AI_TOKEN_BUDGET_EXCEEDED);
+                }
+            }
+            return decision.selection();
         }
 
         /** Keeps the newest messages that fit both the message-count and the character limits. */
@@ -350,7 +395,8 @@ public class ChatOrchestrator {
                     .map(o -> new EvaluationReport.ToolCall(o.toolName(), o.result().status().name())).toList();
             List<String> unverified = assembled == null ? List.of() : assembled.unverifiedNumbers();
             return new EvaluationReport(outcome, errorCode, redactedQuestion, answer, toolCalls, modelCalls,
-                    inputTokens, outputTokens, totalTokens, elapsedMs(), unverified);
+                    inputTokens, outputTokens, totalTokens, elapsedMs(), unverified, routeSource,
+                    instructionKey);
         }
 
         void fail(ErrorCode code) {
@@ -359,9 +405,9 @@ public class ChatOrchestrator {
             }
             audit(null, "FAILED", code.name());
             log.warn("chat failed requestId={} userId={} code={} durationMs={} modelCalls={} toolCalls={} "
-                            + "totalTokens={} inputTokens={} outputTokens={}", requestId, user.userId(), code,
-                    elapsedMs(), modelCalls,
-                    executed.size(), totalTokens, inputTokens, outputTokens);
+                            + "totalTokens={} inputTokens={} outputTokens={} routeSource={} instructionKey={}",
+                    requestId, user.userId(), code, elapsedMs(), modelCalls,
+                    executed.size(), totalTokens, inputTokens, outputTokens, routeSource, instructionKey);
         }
 
         /** {@code answer} is null for a failed question: no answer text and no citation data are audited. */
@@ -374,11 +420,11 @@ public class ChatOrchestrator {
             auditLogger.record(answer == null
                     ? new AuditEntry(requestId, user, customer, redactedQuestion, null, false, outcome, errorCode,
                             outcomes, Map.of(), List.of(), elapsedMs(), modelCalls, inputTokens,
-                            outputTokens, totalTokens, versions)
+                            outputTokens, totalTokens, versions, routeSource, instructionKey)
                     : new AuditEntry(requestId, user, customer, redactedQuestion, answer.annotatedAnswer(),
                             answer.truncated(), outcome, errorCode, outcomes, answer.citationNumbers(),
                             answer.unverifiedNumbers(), elapsedMs(), modelCalls, inputTokens, outputTokens, totalTokens,
-                            versions));
+                            versions, routeSource, instructionKey));
         }
 
         long elapsedMs() {

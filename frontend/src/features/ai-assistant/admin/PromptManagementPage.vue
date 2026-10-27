@@ -280,6 +280,7 @@ async function onCreateInstruction(keySuffix: string, name: string) {
             :can-edit="canEdit"
             :busy="state.busy"
             :feedback="state.feedback"
+            :config-type="tab"
             @view="onView"
             @compare="onCompare"
             @apply="onApply"

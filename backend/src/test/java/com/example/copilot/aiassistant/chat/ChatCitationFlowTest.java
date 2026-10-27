@@ -39,6 +39,7 @@ class ChatCitationFlowTest extends IntegrationTestBase {
     @Test
     void answerCitesToolResultInResponseAndAudit() throws Exception {
         when(chatModel.chat(any(ChatRequest.class))).thenReturn(
+                text("{\"category\":\"none\"}", 10), // the routing round comes first
                 toolCalls(100, call("c1", "getCustomerHoldings", "{}")),
                 text(blocks(block("paragraph", "本顧客持有多項商品", "S1")), 200));
 

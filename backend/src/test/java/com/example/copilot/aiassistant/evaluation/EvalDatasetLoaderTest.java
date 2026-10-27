@@ -159,6 +159,24 @@ class EvalDatasetLoaderTest {
     }
 
     @Test
+    void acceptsCategoryKeyAndNone() {
+        for (String category : List.of("instruction.contact-prep", "none")) {
+            String yaml = valid("Q1").replace("    refusal: false", "    refusal: false\n    category: " + category);
+            assertThat(parse(yaml, 30).cases().get(0).expect().category()).isEqualTo(category);
+        }
+        assertThat(parse(valid("Q1"), 30).cases().get(0).expect().category()).isNull();
+    }
+
+    @Test
+    void rejectsBadCategory() {
+        for (String category : List.of("system.main", "Contact", "instruction.Bad", "'123'")) {
+            String yaml = valid("Q1").replace("    refusal: false", "    refusal: false\n    category: " + category);
+            assertThatThrownBy(() -> parse(yaml, 30)).isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("eval-cases.yml: Q1.expect.category: ");
+        }
+    }
+
+    @Test
     void rejectsDuplicateKey() {
         String yaml = valid("Q1").replace("  question: 整理近期互動", "  question: 整理近期互動\n  question: 另一題");
 
@@ -182,5 +200,25 @@ class EvalDatasetLoaderTest {
                 .map(EvalCase::id).toList();
         assertThat(refusals).containsExactly("P5-limited-contact", "D4-identity", "D5-other-customer",
                 "X1-system-prompt", "X3-action", "X5-advice-refuse");
+        java.util.Map<String, String> categories = new java.util.HashMap<>();
+        dataset.cases().forEach(c -> categories.put(c.id(), c.expect().category()));
+        assertThat(categories).hasSize(17)
+                .containsEntry("Q1-overview", "instruction.customer-overview")
+                .containsEntry("P5-limited-profile", "instruction.customer-overview")
+                .containsEntry("Q2-opportunity", "instruction.opportunity")
+                .containsEntry("Q3-contact-prep", "instruction.contact-prep")
+                .containsEntry("P5-limited-contact", "instruction.contact-prep")
+                .containsEntry("D1-name", "instruction.contact-prep")
+                .containsEntry("X2-indirect", "instruction.contact-prep")
+                .containsEntry("Q4-contact-topic", "instruction.contact-topic")
+                .containsEntry("K1-index", "instruction.market-brief")
+                .containsEntry("K2-quote", "instruction.market-brief")
+                .containsEntry("K3-announcement", "instruction.market-brief")
+                .containsEntry("X1-system-prompt", "none")
+                .containsEntry("X3-action", "none")
+                .containsEntry("Q5-opening", null)
+                .containsEntry("D4-identity", null)
+                .containsEntry("D5-other-customer", null)
+                .containsEntry("X5-advice-refuse", null);
     }
 }

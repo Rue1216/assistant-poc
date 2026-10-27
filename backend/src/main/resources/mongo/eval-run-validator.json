@@ -175,6 +175,14 @@
                   "long"
                 ],
                 "minimum": 0
+              },
+              "routeOk": {
+                "bsonType": "int",
+                "minimum": 0
+              },
+              "routeCases": {
+                "bsonType": "int",
+                "minimum": 0
               }
             }
           },
@@ -248,6 +256,14 @@
                   "int",
                   "long"
                 ],
+                "minimum": 0
+              },
+              "routeOk": {
+                "bsonType": "int",
+                "minimum": 0
+              },
+              "routeCases": {
+                "bsonType": "int",
                 "minimum": 0
               }
             }
@@ -456,6 +472,27 @@
                       "minimum": 0
                     }
                   }
+                },
+                "routeOk": {
+                  "bsonType": [
+                    "bool",
+                    "null"
+                  ]
+                },
+                "routeSource": {
+                  "enum": [
+                    "ROUTER",
+                    "CHIP",
+                    "FALLBACK",
+                    null
+                  ]
+                },
+                "instructionKey": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 64
                 }
               }
             },
@@ -625,8 +662,36 @@
                       "minimum": 0
                     }
                   }
+                },
+                "routeOk": {
+                  "bsonType": [
+                    "bool",
+                    "null"
+                  ]
+                },
+                "routeSource": {
+                  "enum": [
+                    "ROUTER",
+                    "CHIP",
+                    "FALLBACK",
+                    null
+                  ]
+                },
+                "instructionKey": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 64
                 }
               }
+            },
+            "expectCategory": {
+              "bsonType": [
+                "string",
+                "null"
+              ],
+              "maxLength": 64
             }
           }
         }

@@ -53,6 +53,8 @@ export interface HistoryItem {
 export interface ChatRequestBody {
   message: string
   history: HistoryItem[]
+  /** configKey of a quick-question category; present only for chip questions (skips routing). */
+  categoryKey?: string
 }
 
 export type FeedbackRating = 'UP' | 'DOWN'
@@ -70,6 +72,8 @@ export interface ChatMessage {
   state: 'done' | 'pending' | 'cancelled' | 'error'
   /** ISO timestamp the message was created in the browser (used for the time divider). */
   createdAt: string
+  /** User messages only: the category a chip question came from, reused on retry. */
+  categoryKey?: string
   /** Server processing time of an assistant answer (ISO 8601). */
   queriedAt?: string
   blocks?: AnswerBlock[]
@@ -202,6 +206,9 @@ export interface EvalMetrics {
   avgInputTokens: number
   avgOutputTokens: number
   avgDurationMs: number
+  /** Absent on runs made before instruction routing; read as 0. */
+  routeOk?: number
+  routeCases?: number
 }
 
 export interface EvalSummary {
@@ -236,6 +243,10 @@ export interface CaseResult {
   forbiddenPhrases: string[]
   judge: JudgeVerdict | null
   passed: boolean
+  /** null when the case has no expected category; all three absent on runs before routing */
+  routeOk?: boolean | null
+  routeSource?: 'ROUTER' | 'CHIP' | 'FALLBACK' | null
+  instructionKey?: string | null
 }
 
 export interface EvalCaseRecord {
@@ -243,6 +254,8 @@ export interface EvalCaseRecord {
   group: string
   question: string
   expectRefusal: boolean
+  /** configKey, 'none', or absent/null (the backend serialises unchecked cases as null) */
+  expectCategory?: string | null
   baseline: CaseResult | null
   candidate: CaseResult | null
 }
@@ -290,6 +303,8 @@ export interface EvalCase {
     refusal: boolean
     mustContain: string[]
     mustNotContain: string[]
+    /** configKey, 'none', or absent/null (the backend serialises unchecked cases as null) */
+    category?: string | null
   }
   rubric: string[]
 }

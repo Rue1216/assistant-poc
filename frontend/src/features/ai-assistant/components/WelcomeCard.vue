@@ -3,7 +3,7 @@ import type { SuggestionCategory } from '../types'
 import QuickQuestions from './QuickQuestions.vue'
 
 defineProps<{ categories: SuggestionCategory[] }>()
-defineEmits<{ ask: [question: string] }>()
+defineEmits<{ ask: [question: string, categoryKey: string] }>()
 </script>
 
 <template>
@@ -13,7 +13,7 @@ defineEmits<{ ask: [question: string] }>()
       <h3 class="ai-welcome__title">您好，我可以協助您掌握本顧客</h3>
       <p class="ai-welcome__desc">整理顧客概況、互動與經營機會，或查詢市場資訊。選一個問題開始，或直接輸入。</p>
     </div>
-    <QuickQuestions :categories="categories" @ask="$emit('ask', $event)" />
+    <QuickQuestions :categories="categories" @ask="(q, k) => $emit('ask', q, k)" />
   </div>
 </template>
 

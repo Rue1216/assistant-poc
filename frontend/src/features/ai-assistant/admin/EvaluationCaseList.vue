@@ -4,9 +4,13 @@ import SafeMarkdown from '../markdown/SafeMarkdown'
 import type { CaseResult, EvalCaseRecord } from '../types'
 import { caseChanged, caseErrorMessage } from './evaluationFormat'
 
-const props = defineProps<{ cases: EvalCaseRecord[] }>()
+const props = defineProps<{
+  cases: EvalCaseRecord[]
+  /** Display name of a category by configKey (falls back to the key). */
+  nameOf: (configKey: string) => string
+}>()
 
-const onlyChanged = ref(false)
+const onlyChanged = ref(true)
 const open = reactive(new Set<string>())
 
 const shown = computed(() => (onlyChanged.value ? props.cases.filter(caseChanged) : props.cases))
@@ -16,18 +20,29 @@ function toggle(id: string) {
   else open.add(id)
 }
 
-const verdict = (r: CaseResult | null) => (r === null ? '執行中' : r.passed ? '通過' : '未通過')
-
-/** Only when both sides are done and the verdict differs. */
-function change(c: EvalCaseRecord): 'better' | 'worse' | null {
-  if (!c.baseline || !c.candidate || c.baseline.passed === c.candidate.passed) return null
+/**
+ * The one label of a row: running while a side is missing, else how the verdict moved.
+ * Defensive: the runner stores a case only after both sides finished, so a stored run never has a null side.
+ */
+function status(c: EvalCaseRecord): 'running' | 'better' | 'worse' | null {
+  if (!c.baseline || !c.candidate) return 'running'
+  if (c.baseline.passed === c.candidate.passed) return null
   return c.candidate.passed ? 'better' : 'worse'
 }
 
-const CHANGE_LABEL = { better: '變好', worse: '變差' }
+const STATUS_LABEL = { running: '執行中', better: '變好', worse: '變差' }
 const tick = (ok: boolean) => (ok ? '✓' : '✗')
 
-function failures(r: CaseResult, expectRefusal: boolean): string[] {
+/** 'none' and an absent value both read as no category. */
+const categoryName = (key: string | null | undefined) => (key && key !== 'none' ? props.nameOf(key) : '無')
+
+function routeText(r: CaseResult): string {
+  if (r.routeSource === 'FALLBACK') return '路由失敗，載入全部'
+  return categoryName(r.instructionKey)
+}
+
+function failures(r: CaseResult, c: EvalCaseRecord): string[] {
+  const expectRefusal = c.expectRefusal
   const out: string[] = []
   if (r.missingPhrases.length) out.push(`未提到：${r.missingPhrases.join('、')}`)
   if (r.forbiddenPhrases.length) out.push(`出現禁止字詞：${r.forbiddenPhrases.join('、')}`)
@@ -35,6 +50,7 @@ function failures(r: CaseResult, expectRefusal: boolean): string[] {
   if (!r.numbersOk) out.push('有未核對的數字')
   const j = r.judge
   if (j && !j.error && j.refused !== expectRefusal) out.push(expectRefusal ? '應拒答但未拒答' : '不應拒答卻拒答')
+  if (r.routeOk === false) out.push(`分類不符：預期 ${categoryName(c.expectCategory)}`)
   return out
 }
 
@@ -54,7 +70,9 @@ const unmet = (r: CaseResult) => (r.judge?.rubric ?? []).filter((x) => !x.met).m
       <input v-model="onlyChanged" type="checkbox" />
       只看結果不同的題目
     </label>
-    <p v-if="shown.length === 0" class="ev-cases__empty">沒有符合的題目</p>
+    <p v-if="shown.length === 0" class="ev-cases__empty">
+      {{ onlyChanged ? '兩個版本的結果沒有差異（取消勾選可看全部）' : '沒有符合的題目' }}
+    </p>
     <div v-for="c in shown" :key="c.caseId" class="ev-case">
       <button
         class="ev-case__toggle"
@@ -66,9 +84,7 @@ const unmet = (r: CaseResult) => (r.judge?.rubric ?? []).filter((x) => !x.met).m
         <span class="ev-case__id">{{ c.caseId }}</span>
         <span class="ev-case__group">{{ c.group }}</span>
         <span class="ev-case__marks">
-          <span class="ev-case__verdict">已發布：{{ verdict(c.baseline) }}</span>
-          <span class="ev-case__verdict">編輯中：{{ verdict(c.candidate) }}</span>
-          <span v-if="change(c)" class="ev-dir" :class="`is-${change(c)}`">{{ CHANGE_LABEL[change(c)!] }}</span>
+          <span v-if="status(c)" class="ev-dir" :class="`is-${status(c)}`">{{ STATUS_LABEL[status(c)!] }}</span>
         </span>
       </button>
       <div v-if="open.has(c.caseId)" class="ev-case__body">
@@ -85,6 +101,7 @@ const unmet = (r: CaseResult) => (r.judge?.rubric ?? []).filter((x) => !x.met).m
             <h4 class="ev-col__title">{{ side.title }}</h4>
             <p v-if="!side.r" class="ev-col__pending">尚未完成</p>
             <template v-else>
+              <p v-if="side.r.routeSource" class="ev-col__route">路由：{{ routeText(side.r) }}</p>
               <p v-if="side.r.outcome === 'FAILED'" class="ev-col__error">
                 {{ caseErrorMessage(side.r.errorCode) || '作答失敗' }}
               </p>
@@ -94,8 +111,8 @@ const unmet = (r: CaseResult) => (r.judge?.rubric ?? []).filter((x) => !x.met).m
                 {{ tick(side.r.missingPhrases.length === 0 && side.r.forbiddenPhrases.length === 0) }} 數字
                 {{ tick(side.r.numbersOk) }}
               </p>
-              <ul v-if="failures(side.r, c.expectRefusal).length" class="ev-col__fails">
-                <li v-for="f in failures(side.r, c.expectRefusal)" :key="f">{{ f }}</li>
+              <ul v-if="failures(side.r, c).length" class="ev-col__fails">
+                <li v-for="f in failures(side.r, c)" :key="f">{{ f }}</li>
               </ul>
               <p v-if="judgeText(side.r)" class="ev-col__judge" :class="{ 'is-failed': side.r.judge?.error }">
                 {{ judgeText(side.r) }}
@@ -157,8 +174,8 @@ const unmet = (r: CaseResult) => (r.judge?.rubric ?? []).filter((x) => !x.met).m
   margin-left: auto;
   font-weight: 600;
 }
-.ev-case__verdict {
-  white-space: nowrap;
+.ev-dir.is-running {
+  color: var(--color-text-muted);
 }
 .ev-dir.is-better {
   color: var(--green-700);
@@ -195,6 +212,11 @@ const unmet = (r: CaseResult) => (r.judge?.rubric ?? []).filter((x) => !x.met).m
 .ev-col__fails,
 .ev-col__judge.is-failed {
   color: var(--red-700);
+}
+.ev-col__route {
+  margin-bottom: 6px;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
 }
 .ev-col__pending {
   color: var(--color-text-muted);

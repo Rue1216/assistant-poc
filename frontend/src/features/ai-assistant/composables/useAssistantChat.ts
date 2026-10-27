@@ -27,8 +27,8 @@ export function useAssistantChat() {
     void store.send(text)
   }
 
-  function ask(question: string): void {
-    void store.send(question)
+  function ask(question: string, categoryKey?: string): void {
+    void store.send(question, categoryKey)
   }
 
   return {

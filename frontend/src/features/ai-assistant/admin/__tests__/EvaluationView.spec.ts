@@ -118,7 +118,7 @@ describe('EvaluationView', () => {
       runId: 'r5', configKey: KEY, triggeredBy: 'it.admin', startedAt: 's', totalCases: 16, completedCases: 7,
     })
     api.listEvaluations.mockResolvedValue([runSummary({ runId: 'r5', status: 'RUNNING', summary: null, completedCases: 7 })])
-    api.getEvaluation.mockResolvedValue(run({ runId: 'r5', status: 'RUNNING', summary: null, completedCases: 7, cases: [rec('Q1', result(), result())] }))
+    api.getEvaluation.mockResolvedValue(run({ runId: 'r5', status: 'RUNNING', summary: null, completedCases: 7, cases: [rec('Q1', result(), result({ passed: false }))] }))
     const w = await mountView()
     const bar = w.find('[role="progressbar"]')
     expect(bar.attributes('aria-valuenow')).toBe('7')

@@ -73,6 +73,26 @@ describe('useAssistantStore', () => {
     expect(store.pending).toBe(false)
   })
 
+  it('sends categoryKey when given, and omits the property otherwise', async () => {
+    chat.mockResolvedValue(response('x'))
+    const store = useAssistantStore()
+    store.bindCustomer('C001')
+    await store.send('q', 'instruction.contact-prep')
+    expect(chat.mock.calls[0]![1]).toEqual({ message: 'q', history: [], categoryKey: 'instruction.contact-prep' })
+    await store.send('q2')
+    expect('categoryKey' in chat.mock.calls[1]![1]).toBe(false)
+  })
+
+  it('retry keeps the categoryKey of a chip question', async () => {
+    chat.mockRejectedValueOnce(new ApiError(429, 'AI_RATE_LIMITED', 'x'))
+    const store = useAssistantStore()
+    store.bindCustomer('C001')
+    await store.send('hello', 'instruction.market')
+    chat.mockResolvedValueOnce(response('ok'))
+    await store.retry(store.messages[1]!.id)
+    expect(chat.mock.calls[1]![1].categoryKey).toBe('instruction.market')
+  })
+
   it('prevents double submit while pending', async () => {
     const d = deferred<ChatResponse>()
     chat.mockReturnValue(d.promise)

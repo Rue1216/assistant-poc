@@ -37,7 +37,7 @@ class EvalRunnerTest extends EvalRunnerTestBase {
         EvalDataset threeCaseDataset() {
             return new EvalDataset(List.of(
                     new EvalCase("c1", "g", AccessLevel.FULL, "C001", "王小明 question of c1",
-                            new EvalCase.Expect(List.of(), List.of(), false, List.of(), List.of()),
+                            new EvalCase.Expect(List.of(), List.of(), false, List.of(), List.of(), null),
                             List.of("rubric of c1")),
                     evalCase("c2", "C001", AccessLevel.LIMITED, false),
                     evalCase("c3", "C001", AccessLevel.FULL, true)), "d".repeat(64));
@@ -84,6 +84,33 @@ class EvalRunnerTest extends EvalRunnerTestBase {
         assertThat(scripted.requests()).hasSize(12);
         assertThat(scripted.requests().get(0).messages().toString()).contains("BASELINE-PROMPT");
         assertThat(scripted.requests().get(2).messages().toString()).contains("CANDIDATE-PROMPT");
+    }
+
+    @Test
+    void candidateScopeReachesRouter() {
+        for (int i = 0; i < 3; i++) {
+            routeStep();
+            answerStep();
+            judgeStep();
+            routeStep();
+            answerStep();
+            judgeStep();
+        }
+        EvalRun run = insertRun(3, Duration.ofSeconds(1));
+
+        runner.run(run, snapshot(
+                List.of(config("instruction.contact-prep", 1, "## 適用問題\nSCOPE-PUBLISHED\n\n## 回答方式\nx")),
+                List.of(config("instruction.contact-prep", 2, "## 適用問題\nSCOPE-DRAFT\n\n## 回答方式\nx"))));
+
+        assertThat(reload(run).status()).isEqualTo(EvalStatus.COMPLETED);
+        String baselineRoute = routerInput(scripted.requests().get(0));
+        String candidateRoute = routerInput(scripted.requests().get(3));
+        assertThat(baselineRoute).contains("SCOPE-PUBLISHED").doesNotContain("SCOPE-DRAFT");
+        assertThat(candidateRoute).contains("SCOPE-DRAFT").doesNotContain("SCOPE-PUBLISHED");
+    }
+
+    private static String routerInput(ChatRequest request) {
+        return ((dev.langchain4j.data.message.UserMessage) request.messages().get(1)).singleText();
     }
 
     @Test

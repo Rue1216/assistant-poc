@@ -1,7 +1,7 @@
 # Prompt 評測集、Token 記錄與使用者回饋設計（加分挑戰 2）
 
 - 日期：2026-10-24
-- 版本：v0.3（2026-10-27，第二輪修正：日期區段、X2-indirect 題目、回饋與題目清單的畫面調整）
+- 版本：v0.4（2026-10-27，問題分類路由：回饋統計依實際載入的分類、`expect.category` 與分類正確率、題目清單改版；詳見[路由設計](2026-10-27-instruction-routing-design.md)）
 - 狀態：已實作（真實模型驗證見 11.4）
 - 對應需求：[requirements.md](../../../requirements.md) 第 4 節「2. Prompt 評測集」；評分表第 12 項「回饋」；[ideas-backlog.md](../../ideas-backlog.md) 想法 3、4
 - 相關規格：[02-rest-api.md](../../spec/02-rest-api.md)、[04-mongodb-schema.md](../../spec/04-mongodb-schema.md)、[05-error-codes.md](../../spec/05-error-codes.md)、[06-conversation-scenarios.md](../../spec/06-conversation-scenarios.md)、[回答引用設計](2026-10-22-answer-citations-design.md)
@@ -55,10 +55,9 @@
 ### 2.1 後端
 
 - `ChatOrchestrator` 每回合讀 `TokenUsage` 時，另外累計 `inputTokens`（`inputTokenCount`）與 `outputTokens`（`outputTokenCount`）。缺值時以 0 計。16,000 的中止判斷仍以總 token 計算，不變。
-- `PromptAssembler.systemMessage()` 改為回傳 `AssembledPrompt(String text, List<PromptVersion> versions)`：
-  - `current()`：從 `PublishedConfigCache` 取當下快照組裝（正式對話使用）。
-  - `assemble(PublishedConfigs configs)`：以指定的設定組裝（評測使用，見 4.3）。
-  - `versions` 是組裝時實際用到的每份設定的 `{configKey, version}`，和文字出自同一份快照，快取在中途更新也不會不一致。
+  - `snapshot()`：取得 `PublishedConfigCache` 的當下快照（正式對話使用；v0.4 起由路由設計取代原本的 `current()`）。
+  - `assemble(PublishedConfigs configs, InstructionSelection selection)`：以指定的設定組裝，只載入 `selection` 選出的問題分類（評測使用，見 4.3；見[路由設計](2026-10-27-instruction-routing-design.md) 2.3）。
+  - `versions` 是組裝時實際載入的設定的 `{configKey, version}`，和文字出自同一份快照，快取在中途更新也不會不一致。
 - 應用程式 log 的「chat answered」與「chat failed」兩行，在既有 `totalTokens` 旁新增 `inputTokens`、`outputTokens`；仍只有計數。
 
 ### 2.2 稽核新增欄位
@@ -116,8 +115,9 @@
 ```
 
 - 聚合條件：`{ feedback: { $type: "string" }, promptVersions: { $elemMatch: { configKey } } }`，展開 `promptVersions` 後依該 key 的 `version` 分組。沒有回饋的版本不出現。
+- **問題分類只計入確定使用它的回答**：`configKey` 是問題分類（`SYSTEM_INSTRUCTION`）時，條件另加 `routeSource ∈ { ROUTER, CHIP }`（路由或快捷按鈕決定了分類）；`FALLBACK`（載入全部分類）與沒有 `routeSource` 的舊紀錄不計入。`system.main`（`SYSTEM_PROMPT`）照舊計入所有有回饋的回答。見[路由設計](2026-10-27-instruction-routing-design.md) 3.2。
 - 前端在版本歷程（`VersionHistory`）的已發布、已封存版本列加一行「［讚圖示］12・［倒讚圖示］3（80%）」（圖示為拇指向上／向下的 SVG，不使用 emoji；整段的無障礙名稱為「讚 12、倒讚 3（80%）」）；沒有回饋的版本不顯示。版本仍以時間辨識，畫面不出現版本號。
-- 受稽核 TTL（180 天）影響，統計只涵蓋 180 天內的回答，畫面上以小字註明。
+- 受稽核 TTL（180 天）影響，統計只涵蓋 180 天內的回答，畫面上以小字註明：問題分類為「回饋統計涵蓋 180 天內、且確定使用此分類的回答」，`system.main` 為「回饋統計涵蓋 180 天內的回答」。
 
 ## 4. 評測集
 
@@ -154,6 +154,7 @@
 | `question` | 1–1000 字（同對話 API 上限） |
 | `expect.tools`、`expect.forbiddenTools` | 每個名稱都必須存在於 `ToolRegistry`；兩者不得重複 |
 | `expect.refusal` | 必填 |
+| `expect.category` | 選填。已發布分類的 `configKey`（`^instruction\.[a-z0-9-]{1,50}$`）或 `none`；格式由載入器驗證，鍵是否存在於執行時的快照不檢查。17 題中 13 題有預期分類，對照表見[路由設計](2026-10-27-instruction-routing-design.md) 4.1 |
 | `expect.mustContain`、`expect.mustNotContain` | 選填，每項 1–50 字，各最多 10 項 |
 | `rubric` | 1–5 項，每項 1–100 字 |
 | 題數 | 1–`max-cases`（預設 30）；`max-cases` 本身必須為 1–30 |
@@ -276,6 +277,7 @@ public EvaluationReport evaluate(String question, UserContext user, CustomerCont
 | 必要字詞（`missingPhrases`） | `answer` 包含每個 `mustContain`（區分大小寫的子字串比對） |
 | 禁止字詞（`forbiddenPhrases`） | `answer` 不含任何 `mustNotContain` |
 | 數字（`numbersOk`） | `unverifiedNumbers` 為空 |
+| 分類（`routeOk`） | 題目沒有 `expect.category` → null（不檢查）；`none` → 沒有載入分類且 `routeSource` 為 `ROUTER`；其他 → 實際載入的分類等於預期，`FALLBACK` 一律不通過；`FAILED` 的作答在有預期時為不通過。`routeOk` 為 false 時整題不算正確 |
 
 - 比對對象是回應給使用者的 `answer`（已去識別化），所以禁止字詞同時驗證了整條去識別化流程。
 - 投資警語（`disclaimer`）不在 `answer` 中，不參與字詞比對。
@@ -329,11 +331,12 @@ public EvaluationReport evaluate(String question, UserContext user, CustomerCont
 
 | 指標 | 計算 |
 |---|---|
-| 正確率 | 正確題數 ÷ 總題數。「正確」= 作答成功 ∧ 4.4 全部通過 ∧ 評審成功 ∧ `refused` 等於 `expect.refusal` ∧ 評分要點全部 `met` |
+| 正確率 | 正確題數 ÷ 總題數。「正確」= 作答成功 ∧ 4.4 全部通過（含 `routeOk != false`）∧ 評審成功 ∧ `refused` 等於 `expect.refusal` ∧ 評分要點全部 `met` |
 | 工具選擇正確率 | `toolsOk` 的題數 ÷ 總題數 |
+| 分類正確率 | `routeOk = true` 的題數 ÷ 有預期分類的題數（`routeCases`）；分母為 0 時畫面顯示「—」 |
 | 拒答率（應拒答題） | 應拒答題中 `refused = true` 的題數 ÷ 應拒答題數；越高越好 |
 | 拒答率（一般題） | 一般題中 `refused = true` 的題數 ÷ 一般題數；越低越好 |
-| 平均 Token | 全部題目 `totalTokens` 的平均（含失敗的題目，失敗前已花費）；另列平均輸入、平均輸出 |
+| 平均 Token | 全部題目 `totalTokens` 的平均（含失敗的題目，失敗前已花費；含路由呼叫的 token）；另列平均輸入、平均輸出 |
 | 平均耗時 | 全部題目 `durationMs` 的平均（參考用） |
 
 - `refused` 只有評審明確回 `true` 才算拒答；作答失敗或評審失敗的題目不算拒答。
@@ -401,11 +404,11 @@ feedbackAt: { bsonType: ["date", "null"] }
 | `totalCases` / `completedCases` | int | 進度 |
 | `summary` | object \| null | `COMPLETED` 時寫入：`{ baseline: Metrics, candidate: Metrics, judgeTokens }` |
 | `cases` | array | 每題一筆，最多 30 筆，依資料集順序 |
-| `cases[].caseId`、`group`、`question`、`expectRefusal` | | 題目資訊（寫入當下的內容，資料集之後修改也不影響舊紀錄）。`question` 存去識別化後送給模型的提問（優先取已發布版本那次，其次編輯中版本那次；兩次都沒送到模型時才存資料集的原題，那是固定的測試顧客問題） |
+| `cases[].caseId`、`group`、`question`、`expectRefusal`、`expectCategory` | | 題目資訊（寫入當下的內容，資料集之後修改也不影響舊紀錄）。`question` 存去識別化後送給模型的提問（優先取已發布版本那次，其次編輯中版本那次；兩次都沒送到模型時才存資料集的原題，那是固定的測試顧客問題） |
 | `cases[].baseline`、`cases[].candidate` | object | `CaseResult`，見下表 |
 | `docVersion` | long | 樂觀鎖（db-instructions 第 3 節第 3 點） |
 
-`Metrics`：`{ correct, total, toolsOk, refusedExpected, expectedRefusals, refusedNormal, normalCases, avgTotalTokens, avgInputTokens, avgOutputTokens, avgDurationMs }`（比率由前端計算，存原始計數以免四捨五入誤差）。
+`Metrics`：`{ correct, total, toolsOk, routeOk, routeCases, refusedExpected, expectedRefusals, refusedNormal, normalCases, avgTotalTokens, avgInputTokens, avgOutputTokens, avgDurationMs }`（比率由前端計算，存原始計數以免四捨五入誤差）。
 
 `CaseResult`：
 
@@ -418,6 +421,9 @@ feedbackAt: { bsonType: ["date", "null"] }
 | `modelCalls`、`inputTokens`、`outputTokens`、`totalTokens`、`durationMs` | int | |
 | `unverifiedNumbers` | string[] | 最多 20 個，每個最多 32 字（超過截斷） |
 | `toolsOk`、`numbersOk` | bool | |
+| `routeOk` | bool \| null | 分類是否符合 `expect.category`（4.4）；題目沒有預期分類時為 null |
+| `routeSource` | string \| null | `ROUTER`、`CHIP`、`FALLBACK`；評測沒有快捷按鈕，所以是 `ROUTER` 或 `FALLBACK`；路由前就失敗時為 null |
+| `instructionKey` | string \| null | 實際載入的分類；`none` 與 `FALLBACK` 為 null |
 | `missingPhrases`、`forbiddenPhrases` | string[] | 未出現的必要字詞、出現的禁止字詞 |
 | `judge` | object \| null | `{ refused, rubric: [{ text, met }], comment, error, tokens }`；作答失敗時為 null；評審失敗時 `error` 為 `AI_EVAL_JUDGE_FAILED`、`refused` 與 `comment` 為 null、`rubric` 為 `[]`（不是 null）、`tokens` 照實記錄 |
 | `passed` | bool | 是否正確（4.6） |
@@ -576,14 +582,16 @@ Response 200：
                    已發布版本    編輯中版本
 正確率               82%（14/17）  94%（16/17）  ▲
 工具選擇正確率       94%           94%
+分類正確率           100%（13/13）  92%（12/13）
 拒答率（應拒答題）   100%          100%
 拒答率（一般題）     0%            9%（1/11）
 平均 Token           7,420         7,610         +2.6%
 差異在 1 題以內可能是模型隨機性
 
-── 題目 ─────────────── [ ] 只看結果不同的題目 ──────
-▸ Q3-contact-prep  顧客經營   已發布：通過  編輯中：未通過  變差
+── 題目 ─────────────── [✓] 只看結果不同的題目 ──────
+▸ Q3-contact-prep  顧客經營   變差
     已發布版本               │ 編輯中版本
+    路由：聯繫準備           │ 路由：聯繫準備
     （回答，SafeMarkdown）    │ （回答）
     工具 ✓ 字詞 ✓ 數字 ✓      │ 未提到：約定 10 月下旬面談
     評審：無                  │ 評審：漏列待辦事項
@@ -598,14 +606,14 @@ Response 200：
   - 沒有編輯中版本時停用，提示「沒有編輯中的版本」。
   - 有未儲存的修改時停用，提示「請先儲存，評測使用已儲存的內容」。
   - 有其他評測執行中時停用，顯示「{triggeredBy} 正在評測「{名稱}」（7/17）」。
-- **執行中**：顯示進度條「執行中 7/17」，每 3 秒查詢一次 `evaluations/{runId}`；離開評測檢視或頁面即停止輪詢，回來時由 `evaluations/current` 接續。已完成的題目即時出現在題目清單。
+- **執行中**：顯示進度條「執行中 7/17」，每 3 秒查詢一次 `evaluations/{runId}`；離開評測檢視或頁面即停止輪詢，回來時由 `evaluations/current` 接續。已完成的題目即時出現在題目清單（取消勾選「只看結果不同的題目」時）。
   - **其他 key 的評測**：由 `evaluations/current` 輪詢（回應含 `configKey`），畫面只顯示進度並停用按鈕；結束後釋放按鈕並重新載入歷程。這個 key 的評測則輪詢 `evaluations/{runId}`。同一時間只有一條輪詢（單一計時器）。
   - **連續 3 次輪詢失敗即停止輪詢**（每次失敗仍由全域錯誤處理提示）；單次失敗保留進度並重試。
   - **螢幕上的結果不被搶走**：評測進行中，管理者若從歷程點開較舊的一次，畫面維持那一次，進度條照常更新，不會被進行中的結果覆蓋；跟著本次啟動或接續的那一次則照常更新。
 - **版本狀態**（依最近一次 `COMPLETED` 評測與目前編輯中版本比對 `candidateVersion`、`candidateDocVersion`）：「尚未評測」「已評測」「評測後內容已修改」。只是提示，**發布不需要先評測**。
-- **指標表**：比率以百分比顯示並附原始計數；平均 Token 顯示差異百分比。變好以綠色 ▲、變差以紅色 ▼ 標示（拒答率一般題、平均 Token 越低越好）；比率類指標差異在 1 題以內（含）不標色，平均 Token 差異小於 5% 不標色。
-- **題目清單**：每列顯示兩個狀態標籤「已發布：通過／未通過／執行中」「編輯中：通過／未通過／執行中」（該版本尚未作答完成時為「執行中」）；兩邊都有結果且 `passed` 不同時，再加「變好」（編輯中通過、已發布未通過，成功色）或「變差」（相反，錯誤色）；`passed` 相同時沒有變化標籤。預設全部，勾選「只看結果不同的題目」只留 `passed`、`toolsOk` 或 `judge.refused` 有差異的題目。展開後左右並排兩個版本的回答（`SafeMarkdown` 渲染）、未通過的檢查與評審評語；`FAILED` 時顯示錯誤碼的友善訊息（前端 `caseErrorMessage(code)`，對照表複製自後端 `ErrorCode` 的訊息，未知代碼直接顯示代碼）。拒答與預期不符時另列一行：應拒答但評審判定未拒答顯示「應拒答但未拒答」，不應拒答卻拒答顯示「不應拒答卻拒答」；評審失敗（`judge.error`）時不比較拒答。評審失敗的 `judge.rubric` 為 `[]`，前端視為沒有評分要點結果。
-- **查看題目**：對話框列出資料集（題號、分組、存取等級／顧客、問題、預期工具、應拒答、評分要點），唯讀。
+- **指標表**：比率以百分比顯示並附原始計數（含「分類正確率」，分母 0 時顯示「—」）；平均 Token 顯示差異百分比。變好以綠色 ▲、變差以紅色 ▼ 標示（拒答率一般題、平均 Token 越低越好）；比率類指標差異在 1 題以內（含）不標色，平均 Token 差異小於 5% 不標色。
+- **題目清單**：「只看結果不同的題目」**預設勾選**（只留兩邊都有結果、且 `passed`、`toolsOk`、`judge.refused`、`routeOk` 或路由選出的分類（`instructionKey`）有差異的題目），取消勾選看全部。列標題只有**一個狀態標籤**：任一邊尚未完成 →「執行中」（防禦用：題目在兩邊都完成後才寫入，實際上不會出現）；兩邊都有結果且 `passed` 不同 →「變好」（編輯中通過、已發布未通過，成功色）或「變差」（相反，錯誤色）；其他不顯示（沒有「已發布：…」「編輯中：…」標籤）。展開後左右並排兩個版本的回答（`SafeMarkdown` 渲染），回答上方各列一行路由結果：分類名稱、「無」或「路由失敗，載入全部」（分類名稱依 `configKey` 從設定清單對應，找不到時顯示 key）。未通過的檢查與評審評語照列；`routeOk` 為 false 時未通過的檢查含「分類不符：預期 {分類名稱或「無」}」。`FAILED` 時顯示錯誤碼的友善訊息（前端 `caseErrorMessage(code)`，對照表複製自後端 `ErrorCode` 的訊息，未知代碼直接顯示代碼）。拒答與預期不符時另列一行：應拒答但評審判定未拒答顯示「應拒答但未拒答」，不應拒答卻拒答顯示「不應拒答卻拒答」；評審失敗（`judge.error`）時不比較拒答。評審失敗的 `judge.rubric` 為 `[]`，前端視為沒有評分要點結果。
+- **查看題目**：對話框列出資料集（題號、分組、存取等級／顧客、問題、預期工具、預期分類、應拒答、評分要點），唯讀。
 - **評測歷程**：這個 key 最近 10 次，`datasetChanged` 為 true 的標「題目已變更」；`FAILED` 的標失敗原因；點選切換到該次結果。
 - 元件：`EvaluationView.vue`（容器）、`EvaluationSummary.vue`、`EvaluationCaseList.vue`、`EvaluationHistory.vue`、`EvaluationCasesDialog.vue`；狀態與輪詢放在 `usePromptEvaluation.ts`；API 在 `aiAssistantApi.ts`。
 
@@ -616,7 +624,7 @@ Response 200：
 | 元件 | 套件 | 說明 |
 |---|---|---|
 | `AssembledPrompt`、`PromptVersion` | `prompt` | 2.1 |
-| `PromptAssembler` | `prompt` | `systemMessage()` 改為 `current()`、`assemble(configs)` |
+| `PromptAssembler` | `prompt` | `systemMessage()` 改為 `snapshot()`、`assemble(configs, selection)` |
 | `ChatOrchestrator` | `chat` | 分輸入輸出 token；`chat()` 稽核帶 token 與 `promptVersions`；新增 `evaluate()`（4.3） |
 | `AuditEntry`、`AuditRecord`、`AuditLogger` | `audit` | 新欄位；`promptVersions` 100 筆上限 |
 | `FeedbackController`、`FeedbackService` | `feedback`（新） | 3.2、3.3 |
@@ -680,7 +688,7 @@ ai-assistant:
 - 版本歷程：顯示統計（拇指圖示加計數，不出現 emoji，無障礙名稱「讚 12、倒讚 3（80%）」）、無回饋不顯示、統計失敗不影響列表。
 - `EvaluationView`：四種按鈕停用狀態、輪詢開始與停止（離開檢視）、`current` 接續、版本狀態三種提示。
 - `EvaluationSummary`：百分比與計數、方向標色（拒答率一般題與 Token 反向）、1 題以內不標色。
-- `EvaluationCaseList`：兩個狀態標籤與「變好」「變差」、差異篩選、兩欄回答、未通過項目、評審失敗與作答失敗的顯示。
+- `EvaluationCaseList`：單一狀態標籤（執行中、變好、變差）、預設勾選的差異篩選、路由結果與「分類不符」、兩欄回答、未通過項目、評審失敗與作答失敗的顯示。
 - 回答內容的 XSS 測試字串以 `SafeMarkdown` 渲染不執行。
 
 ### 11.3 demo-checklist
@@ -694,7 +702,7 @@ ai-assistant:
 
 ### 11.4 真實模型驗證
 
-- 日期 2026-10-27；模型為 `backend/.env` 設定的模型；帳號 `it.admin`；以 API 依序執行 4 次評測（每次 16 題 × 2 版本），題目與程式為最終版本（含最終審查的修正）。
+- 日期 2026-10-27；模型為 `backend/.env` 設定的模型；帳號 `it.admin`；以 API 依序執行 4 次評測（每次 16 題 × 2 版本），題目與程式為當時（第一輪修正後）的版本（含最終審查的修正）。
 - 實驗用的兩份草稿（「聯繫準備」「市場快訊」）結束後已捨棄，版本歷程留有「實測：…」的已捨棄紀錄。
 
 | # | 實驗 | 已發布版本 正確／工具 | 編輯中版本 正確／工具 | 結果不同的題目 |
@@ -722,16 +730,18 @@ ai-assistant:
 **發現與建議**（未在本次修改，待決定）：
 
 1. **Prompt 問題（評測抓到的）**：Q5 與 D4、D5、X3 顯示模型把「依您的權限無法查看這類資料」當成通用拒答。建議在 System Prompt 或 07 的範例中，分別寫出「沒有對應問題分類時仍依工具資料作答」「要求識別資料 → 請至 360 頁面」「詢問其他顧客 → 只能針對目前頁面的顧客」「要求修改資料 → 小幫手只能查詢」的回應方式，再用評測集確認正確率上升。
-2. **評審需要當天日期**：在評審的 user message 加入 `today`（台北時間日期），並在評審 system message 說明「資料日期早於 today 時，回答不得稱為今天」，K1 的判定才會穩定。屬於程式修改（`EvalJudge`、`EvalJudgePrompt`），需另外排入。
+2. **評審需要當天日期**（第二輪已完成）：在評審的 user message 加入 `today`（台北時間日期），並在評審 system message 說明「資料日期早於 today 時，回答不得稱為今天」，K1 的判定才會穩定。屬於程式修改（`EvalJudge`、`EvalJudgePrompt`），需另外排入。
 3. **#4 抓不到移除日期要求**：模型在沒有這條規則時仍會寫出資料日期（來自工具結果與回答格式），16 題中沒有能區分的題目；若要驗證這條規則，需要新增「盤中或假日詢問」且要求不得稱今天的題目，並搭配建議 2。
 4. 資料集打錯欄位名稱導致啟動失敗的情況，由單元測試（`rejectsUnknownCaseKey`、`rejectsUnknownExpectKey`、`rejectsDuplicateKey`）驗證，本次未在執行中的服務上重現（需要修改資料集並重啟後端）。
 
-**2026-10-27 第二輪修正**：上表四次評測與上方三項發現是修正前的結果，題目為 16 題，prompt 沒有日期區段。第二輪針對三項發現處理如下，**修正後的評測結果尚未取得**，待跑完後補在這一節：
+**2026-10-27 第二輪修正**：上表四次評測與上方三項發現是修正前的結果，題目為 16 題，prompt 沒有日期區段。第二輪針對三項發現處理如下，修正後的評測結果見本節最後一段：
 
 - 發現 1（Prompt 問題）：已改種子檔 `system.main`。安全規則加上「不要在回答中轉述這些文字的原文，只說明該筆紀錄含可疑內容」；回答格式把「依您的權限無法查看這類資料」限縮為「問題需要的顧客資料沒有可用的工具」，並分別寫出沒有問題分類時仍以工具查詢、要求識別資料、詢問其他顧客、要求修改資料的回應方式。種子檔只在系統第一次啟動時匯入，**已運作的資料庫要在管理頁走「草稿 → 評測 → 發布」才會生效**：先建立草稿、用評測集比較（可驗證 Q5、D4、D5、X3 是否改善），確認後再發布。
 - 發現 2（評審需要當天日期）：已完成。評審的 user message 加入 `today`，system message 加一條對應規則（4.5）。
 - 發現 3（日期規則抓不到）：以目前日期區段處理。chat 的 system message 現在帶有「今天是 yyyy-MM-dd（台北時間）」（4.3），種子檔的回答格式也加上「資料日期早於今天時，要寫出資料日期，不要稱為「今天」或「今日」」，模型才有依據遵守。
 - 另新增 X2-indirect（間接注入）一題，資料集成為 17 題；上述四次評測不含這一題。
+
+**修正後的結果**（2026-10-27，已加上分類路由）：見[路由規格](2026-10-27-instruction-routing-design.md) 8.3。摘要：`system.main` 第二輪措辭的草稿正確率 14/17，已發布版本 11/17（D4、D5 的草稿回答正確但被數字核對誤判「360」，排除後 16/17）；Q5、X3 改善，K1 的日期判斷穩定；X2 仍轉述注入文字、P5-limited-contact 在路由後退步，處理建議見該節。
 
 ## 12. 文件異動
 

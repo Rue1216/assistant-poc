@@ -36,7 +36,8 @@ public final class EvalDatasetLoader {
     private static final Set<String> CASE_KEYS = Set.of("id", "group", "accessLevel", "customerId", "question",
             "expect", "rubric");
     private static final Set<String> EXPECT_KEYS = Set.of("tools", "forbiddenTools", "refusal", "mustContain",
-            "mustNotContain");
+            "mustNotContain", "category");
+    private static final Pattern CATEGORY = Pattern.compile("^(instruction\\.[a-z0-9-]{1,50}|none)$");
 
     private EvalDatasetLoader() {
     }
@@ -135,7 +136,15 @@ public final class EvalDatasetLoader {
                 "expect.mustContain", errors);
         List<String> mustNotContain = list(e.get("mustNotContain"), 0, PHRASES_MAX_ITEMS, PHRASE_MAX, label,
                 "expect.mustNotContain", errors);
-        return new EvalCase.Expect(tools, forbidden, refusal, mustContain, mustNotContain);
+        String category = null;
+        if (e.containsKey("category")) {
+            if (e.get("category") instanceof String s && CATEGORY.matcher(s).matches()) {
+                category = s;
+            } else {
+                errors.add(msg(label, "expect.category", "必須是 instruction.<名稱> 或 none"));
+            }
+        }
+        return new EvalCase.Expect(tools, forbidden, refusal, mustContain, mustNotContain, category);
     }
 
     private static List<String> toolList(Object value, String field, String label, Set<String> toolNames,

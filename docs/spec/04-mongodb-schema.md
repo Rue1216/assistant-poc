@@ -272,7 +272,9 @@ stateDiagram-v2
 | `inputTokens` | int | 各回合輸入 token 合計（選填） |
 | `outputTokens` | int | 各回合輸出 token 合計（選填） |
 | `totalTokens` | int | 各回合總 token 合計，供應商回報的值，可能略大於前兩者相加（選填）；**失敗的提問也記錄**，失敗前已花費的 token 仍算成本 |
-| `promptVersions` | array | `[{ configKey, version }]`，本次組裝 system message 用到的已發布版本，依 `configKey` 排序，與 system message 出自同一份快照；最多 100 筆，超過時截斷並記 WARN log（只含 `requestId` 與筆數）。用陣列是因為 `system.main` 含 `.`，不適合當欄位名稱 |
+| `promptVersions` | array | `[{ configKey, version }]`，本次組裝 system message **實際載入**的已發布版本（`system.main` 加上路由選出的 0 或 1 個問題分類；路由失敗時為全部），依 `configKey` 排序，與 system message 出自同一份快照；最多 100 筆，超過時截斷並記 WARN log（只含 `requestId` 與筆數）。用陣列是因為 `system.main` 含 `.`，不適合當欄位名稱 |
+| `routeSource` | string \| null | 問題分類的決定方式：`ROUTER`（路由）、`CHIP`（快捷按鈕）、`FALLBACK`（路由失敗，載入全部分類）；選填，舊紀錄沒有此欄位，路由前就失敗的提問為 null。回饋統計用它判斷問題分類是否確定被使用（見 02 3.11） |
+| `instructionKey` | string \| null | 實際載入的問題分類 `configKey`；路由為 `none` 與 `FALLBACK` 時為 null；選填，最多 64 字 |
 | `feedback` | string \| null | `UP`、`DOWN`；使用者回饋（`PUT /chat/{requestId}/feedback`，見 02 2.3）。寫入稽核時為 null |
 | `feedbackAt` | date \| null | 最後一次變更回饋（含取消）的時間；寫入稽核時為 null |
 | `createdAt` | date | |
@@ -322,6 +324,8 @@ stateDiagram-v2
     { "configKey": "instruction.contact-prep", "version": 2 },
     { "configKey": "system.main", "version": 1 }
   ],
+  "routeSource": "ROUTER",
+  "instructionKey": "instruction.contact-prep",
   "feedback": "UP",
   "feedbackAt": { "$date": "2026-10-19T06:04:10Z" },
   "durationMs": 2840,
@@ -379,7 +383,7 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_AUDIT", {
           }
         },
         unverifiedNumbers: { bsonType: "array", maxItems: 20, items: { bsonType: "string", maxLength: 32 } },
-        // 以下 7 個欄位為選填，舊紀錄仍合法
+        // 以下 9 個欄位為選填，舊紀錄仍合法
         modelCalls:     { bsonType: "int", minimum: 0 },
         inputTokens:    { bsonType: "int", minimum: 0 },
         outputTokens:   { bsonType: "int", minimum: 0 },
@@ -394,6 +398,8 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_AUDIT", {
             }
           }
         },
+        routeSource:    { enum: ["ROUTER", "CHIP", "FALLBACK", null] },
+        instructionKey: { bsonType: ["string", "null"], maxLength: 64 },
         feedback:   { enum: ["UP", "DOWN", null] },
         feedbackAt: { bsonType: ["date", "null"] },
         durationMs: { bsonType: "int", minimum: 0 },
@@ -434,7 +440,7 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_AUDIT", {
 
 - 寫入量平均每秒約 7 筆、尖峰數十筆，壓力在累積的資料量，不在寫入速度。
 - 引用相關欄位（`citationId`、`target`、`resultHash` 等）讓每筆約增加 0.3～0.5 KB，不影響上面的估算。
-- token 與回饋相關欄位（`modelCalls`、三個 token 欄位、`promptVersions`、`feedback`、`feedbackAt`）每筆再增加約 0.2～0.4 KB（主要是 `promptVersions`），同樣不影響估算結論。新增的兩個 index 中，`IX_ICRM_AI_AUDIT_4` 每筆都有一個 entry；`IX_ICRM_AI_AUDIT_5` 是 partial，只收有回饋的紀錄，很小。
+- token、回饋與路由相關欄位（`modelCalls`、三個 token 欄位、`promptVersions`、`routeSource`、`instructionKey`、`feedback`、`feedbackAt`）每筆再增加約 0.2～0.4 KB（主要是 `promptVersions`），同樣不影響估算結論。新增的兩個 index 中，`IX_ICRM_AI_AUDIT_4` 每筆都有一個 entry；`IX_ICRM_AI_AUDIT_5` 是 partial，只收有回饋的紀錄，很小。
 - 如果開啟 `store-tool-results` 保存工具查到的原始資料（預設不保存，見 3.1），每筆可能增加到 10～20 KB（`tool-result-max-bytes` 4 KB × 最多 5 次工具呼叫），資料量放大 5～10 倍。
 
 ### 5.2 各 collection 的建議
@@ -494,11 +500,11 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_AUDIT", {
 | `totalCases` / `completedCases` | int | 進度，各 0–30 |
 | `summary` | object \| null | `COMPLETED` 時寫入：`{ baseline: Metrics, candidate: Metrics, judgeTokens }` |
 | `cases` | array | 每題一筆，最多 30 筆，依資料集順序 |
-| `cases[].caseId`、`group`、`question`、`expectRefusal` | | 題目資訊（寫入當下的內容）。`question` 是去識別化後送給模型的提問（已發布版本那次，其次編輯中版本那次，兩次都沒送到模型時才是資料集原題），最多 1000 字 |
+| `cases[].caseId`、`group`、`question`、`expectRefusal`、`expectCategory` | | 題目資訊（寫入當下的內容）。`expectCategory` 是 `expect.category`（`configKey` 或 `none`，未設定為 null，選填，最多 64 字）。`question` 是去識別化後送給模型的提問（已發布版本那次，其次編輯中版本那次，兩次都沒送到模型時才是資料集原題），最多 1000 字 |
 | `cases[].baseline`、`cases[].candidate` | object | `CaseResult`，見下表 |
 | `docVersion` | long | 樂觀鎖 |
 
-`Metrics`：`{ correct, total, toolsOk, refusedExpected, expectedRefusals, refusedNormal, normalCases, avgTotalTokens, avgInputTokens, avgOutputTokens, avgDurationMs }`（存原始計數，比率由前端計算）。
+`Metrics`：`{ correct, total, toolsOk, routeOk, routeCases, refusedExpected, expectedRefusals, refusedNormal, normalCases, avgTotalTokens, avgInputTokens, avgOutputTokens, avgDurationMs }`（存原始計數，比率由前端計算）。
 
 `CaseResult`：
 
@@ -511,6 +517,9 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_AUDIT", {
 | `modelCalls`、`inputTokens`、`outputTokens`、`totalTokens`、`durationMs` | int | |
 | `unverifiedNumbers` | string[] | 最多 20 個，每個最多 32 字 |
 | `toolsOk`、`numbersOk` | bool | |
+| `routeOk` | bool \| null | 分類是否符合 `expect.category`；題目沒有預期分類為 null |
+| `routeSource` | string \| null | `ROUTER`、`CHIP`、`FALLBACK`（評測只會是 `ROUTER` 或 `FALLBACK`） |
+| `instructionKey` | string \| null | 實際載入的分類，最多 64 字；`none` 與 `FALLBACK` 為 null |
 | `missingPhrases`、`forbiddenPhrases` | string[] | 未出現的必要字詞、出現的禁止字詞，各最多 10 個、每個最多 50 字 |
 | `judge` | object \| null | `{ refused, rubric: [{ text, met }], comment, error, tokens }`；作答失敗時為 null；評審失敗時 `error` 為 `AI_EVAL_JUDGE_FAILED`、`refused` 與 `comment` 為 null、`rubric` 為 `[]` |
 | `passed` | bool | 作答成功 ∧ 規則全部通過 ∧ 評審成功 ∧ `refused` 等於預期 ∧ 評分要點全部達成 |
@@ -540,12 +549,14 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_AUDIT", {
   "cases": [
     {
       "caseId": "Q3-contact-prep", "group": "顧客經營", "expectRefusal": false,
+      "expectCategory": "instruction.contact-prep",
       "question": "整理近期互動，幫我準備下次聯繫重點",
       "baseline": {
         "outcome": "ANSWERED", "errorCode": null, "answer": "### 近期互動……",
         "toolCalls": [ { "toolName": "getRecentInteractions", "status": "SUCCESS" } ],
         "modelCalls": 2, "inputTokens": 7080, "outputTokens": 340, "totalTokens": 7420, "durationMs": 6200,
         "unverifiedNumbers": [], "toolsOk": true, "numbersOk": true,
+        "routeOk": true, "routeSource": "ROUTER", "instructionKey": "instruction.contact-prep",
         "missingPhrases": [], "forbiddenPhrases": [],
         "judge": { "refused": false, "rubric": [ { "text": "列出近期互動的日期與管道", "met": true } ],
                    "comment": "無", "error": null, "tokens": 1500 },
@@ -572,6 +583,7 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_AUDIT", {
 
 - 頂層必填：`configKey`、`candidateVersion`、`candidateDocVersion`、`candidateUpdatedAt`、`baselineVersions`、`datasetHash`、`status`、`triggeredBy`、`startedAt`、`heartbeatAt`、`totalCases`、`completedCases`、`cases`、`docVersion`；`status` 為 enum；`datasetHash` 固定 64 字元；`totalCases`／`completedCases` 0–30；`cases` 最多 30 筆。
 - `cases[]` 必填 `caseId`、`group`、`question`、`expectRefusal`、`baseline`、`candidate`；`baseline`／`candidate`（`CaseResult`）的每個子欄位（型別、長度、陣列上限、`judge` 與 `rubric` 的子欄位）和 `summary` 的 `Metrics` 每個計數欄位都在 validator 內強制，與 6.1 的上限一致。
+- 路由新增的欄位（`Metrics.routeOk`、`Metrics.routeCases`、`cases[].expectCategory`、`CaseResult.routeOk`、`routeSource`、`instructionKey`）都是選填，舊的評測紀錄仍合法；`routeSource` 為 enum（含 null），`instructionKey`、`expectCategory` 最多 64 字。
 - 寫入前 `CaseResult` 已先截斷到這些上限，所以不會因長度超限而寫入失敗。
 
 ### 6.4 寫入方式

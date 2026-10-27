@@ -129,14 +129,15 @@ public class EvalRunRepository {
         return new Document().append("correct", m.correct()).append("total", m.total())
                 .append("toolsOk", m.toolsOk()).append("refusedExpected", m.refusedExpected())
                 .append("expectedRefusals", m.expectedRefusals()).append("refusedNormal", m.refusedNormal())
-                .append("normalCases", m.normalCases()).append("avgTotalTokens", m.avgTotalTokens())
+                .append("normalCases", m.normalCases()).append("routeOk", m.routeOk())
+                .append("routeCases", m.routeCases()).append("avgTotalTokens", m.avgTotalTokens())
                 .append("avgInputTokens", m.avgInputTokens()).append("avgOutputTokens", m.avgOutputTokens())
                 .append("avgDurationMs", m.avgDurationMs());
     }
 
     private static Document caseDocument(EvalCaseRecord c) {
         return new Document().append("caseId", c.caseId()).append("group", c.group())
-                .append("question", c.question()).append("expectRefusal", c.expectRefusal())
+                .append("question", c.question()).append("expectRefusal", c.expectRefusal()).append("expectCategory", c.expectCategory())
                 .append("baseline", resultDocument(c.baseline())).append("candidate", resultDocument(c.candidate()));
     }
 
@@ -151,7 +152,8 @@ public class EvalRunRepository {
                 .append("toolsOk", r.toolsOk()).append("numbersOk", r.numbersOk())
                 .append("missingPhrases", r.missingPhrases()).append("forbiddenPhrases", r.forbiddenPhrases())
                 .append("judge", r.judge() == null ? null : judgeDocument(r.judge()))
-                .append("passed", r.passed());
+                .append("passed", r.passed()).append("routeOk", r.routeOk())
+                .append("routeSource", r.routeSource()).append("instructionKey", r.instructionKey());
     }
 
     private static Document judgeDocument(JudgeVerdict j) {
@@ -191,14 +193,15 @@ public class EvalRunRepository {
         return new EvalMetrics(num(m, "correct").intValue(), num(m, "total").intValue(),
                 num(m, "toolsOk").intValue(), num(m, "refusedExpected").intValue(),
                 num(m, "expectedRefusals").intValue(), num(m, "refusedNormal").intValue(),
-                num(m, "normalCases").intValue(), num(m, "avgTotalTokens").longValue(),
+                num(m, "normalCases").intValue(), intOrZero(m, "routeOk"), intOrZero(m, "routeCases"),
+                num(m, "avgTotalTokens").longValue(),
                 num(m, "avgInputTokens").longValue(), num(m, "avgOutputTokens").longValue(),
                 num(m, "avgDurationMs").longValue());
     }
 
     private static EvalCaseRecord caseRecord(Document c) {
         return new EvalCaseRecord(c.getString("caseId"), c.getString("group"), c.getString("question"),
-                c.getBoolean("expectRefusal"), resultRecord(c.get("baseline", Document.class)),
+                c.getBoolean("expectRefusal"), c.getString("expectCategory"), resultRecord(c.get("baseline", Document.class)),
                 resultRecord(c.get("candidate", Document.class)));
     }
 
@@ -212,7 +215,8 @@ public class EvalRunRepository {
                 num(r, "outputTokens").intValue(), num(r, "totalTokens").intValue(),
                 num(r, "durationMs").intValue(), strings(r, "unverifiedNumbers"), r.getBoolean("toolsOk"),
                 r.getBoolean("numbersOk"), strings(r, "missingPhrases"), strings(r, "forbiddenPhrases"),
-                judge == null ? null : judgeRecord(judge), r.getBoolean("passed"));
+                judge == null ? null : judgeRecord(judge), r.getBoolean("passed"), r.getBoolean("routeOk"),
+                r.getString("routeSource"), r.getString("instructionKey"));
     }
 
     private static JudgeVerdict judgeRecord(Document j) {
@@ -234,6 +238,12 @@ public class EvalRunRepository {
 
     private static Number num(Document d, String key) {
         return d.get(key, Number.class);
+    }
+
+    /** Fields added later are missing from older runs. */
+    private static int intOrZero(Document d, String key) {
+        Number n = num(d, key);
+        return n == null ? 0 : n.intValue();
     }
 
     private static Instant instant(Date date) {

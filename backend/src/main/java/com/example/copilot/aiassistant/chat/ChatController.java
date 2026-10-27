@@ -59,6 +59,7 @@ public class ChatController {
                 .orElseThrow(() -> new AssistantException(ErrorCode.AI_CUSTOMER_NOT_FOUND));
         List<HistoryMessage> history = body.history() == null ? List.of()
                 : body.history().stream().map(h -> new HistoryMessage(h.role(), h.content())).toList();
-        return ChatResponseBody.from(orchestrator.chat(new ChatCommand(message, history), user, customer));
+        return ChatResponseBody.from(orchestrator.chat(new ChatCommand(message, history, body.categoryKey()), user,
+                customer));
     }
 }

@@ -8,8 +8,9 @@ import static org.mockito.Mockito.when;
 import com.example.copilot.IntegrationTestBase;
 import com.example.copilot.aiassistant.chat.ScriptedChatModel;
 import com.example.copilot.aiassistant.port.AccessLevel;
-import com.example.copilot.aiassistant.prompt.AssembledPrompt;
+import com.example.copilot.aiassistant.config.AssistantConfig;
 import com.example.copilot.aiassistant.prompt.PromptVersion;
+import com.example.copilot.aiassistant.prompt.PublishedConfigCache.PublishedConfigs;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import java.time.Clock;
 import java.time.Duration;
@@ -47,7 +48,7 @@ abstract class EvalRunnerTestBase extends IntegrationTestBase {
 
     static EvalCase evalCase(String id, String customerId, AccessLevel level, boolean refusal) {
         return new EvalCase(id, "g", level, customerId, "question of " + id,
-                new EvalCase.Expect(List.of(), List.of(), refusal, List.of(), List.of()), List.of("rubric of " + id));
+                new EvalCase.Expect(List.of(), List.of(), refusal, List.of(), List.of(), null), List.of("rubric of " + id));
     }
 
     /** Inserts a RUNNING run started (and last beating) {@code age} ago and returns it as stored. */
@@ -59,10 +60,24 @@ abstract class EvalRunnerTestBase extends IntegrationTestBase {
         return runs.findById(runs.insert(draft)).orElseThrow();
     }
 
+    static AssistantConfig config(String key, int version, String content) {
+        AssistantConfig c = new AssistantConfig();
+        c.setConfigKey(key);
+        c.setVersion(version);
+        c.setName(key);
+        c.setContent(content);
+        return c;
+    }
+
     static EvalRunService.EvalSnapshot snapshot() {
+        return snapshot(List.of(), List.of());
+    }
+
+    static EvalRunService.EvalSnapshot snapshot(List<AssistantConfig> baselineInstructions,
+                                                List<AssistantConfig> candidateInstructions) {
         return new EvalRunService.EvalSnapshot(
-                new AssembledPrompt("BASELINE-PROMPT", List.of(new PromptVersion("system-prompt", 1))),
-                new AssembledPrompt("CANDIDATE-PROMPT", List.of(new PromptVersion("system-prompt", 2))));
+                new PublishedConfigs(config("system.main", 1, "BASELINE-PROMPT"), baselineInstructions),
+                new PublishedConfigs(config("system.main", 2, "CANDIDATE-PROMPT"), candidateInstructions));
     }
 
     /** Scripts one chat answer (no sources, no digits). */
@@ -74,6 +89,11 @@ abstract class EvalRunnerTestBase extends IntegrationTestBase {
     void judgeStep() {
         scripted.reply(text("{\"refused\":false,\"rubric\":[{\"index\":1,\"met\":true}],\"comment\":\"評語內容\"}",
                 JUDGE_TOKENS));
+    }
+
+    /** Scripts one routing reply that picks no instruction. */
+    void routeStep() {
+        scripted.reply(text("{\"category\":\"none\"}", 10));
     }
 
     /** answer, judge, answer, judge: one case with both sides answered. */

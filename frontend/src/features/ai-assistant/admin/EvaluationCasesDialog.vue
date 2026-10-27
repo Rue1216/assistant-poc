@@ -3,7 +3,12 @@ import { nextTick, ref, useId, watch } from 'vue'
 import type { EvalCases } from '../types'
 import './prompt-admin.css'
 
-const props = defineProps<{ open: boolean; cases: EvalCases | null }>()
+const props = defineProps<{
+  open: boolean
+  cases: EvalCases | null
+  /** Display name of a category by configKey (falls back to the key). */
+  nameOf: (configKey: string) => string
+}>()
 const emit = defineEmits<{ close: [] }>()
 
 const id = useId()
@@ -17,6 +22,9 @@ watch(
     closeButton.value?.focus()
   },
 )
+
+/** Absent or null reads as —; 'none' (expects no category) as 無. */
+const expectedCategory = (key: string | null | undefined) => (key == null ? '—' : key === 'none' ? '無' : props.nameOf(key))
 
 const list = (items: string[]) => (items.length ? items.join('、') : '—')
 </script>
@@ -37,6 +45,7 @@ const list = (items: string[]) => (items.length ? items.join('、') : '—')
               <th scope="col">問題</th>
               <th scope="col">預期工具</th>
               <th scope="col">應拒答</th>
+              <th scope="col">預期分類</th>
               <th scope="col">評分要點</th>
             </tr>
           </thead>
@@ -48,6 +57,7 @@ const list = (items: string[]) => (items.length ? items.join('、') : '—')
               <td>{{ c.question }}</td>
               <td>{{ list(c.expect.tools) }}</td>
               <td>{{ c.expect.refusal ? '是' : '否' }}</td>
+              <td>{{ expectedCategory(c.expect.category) }}</td>
               <td>
                 <ul v-if="c.rubric.length" class="ev-dialog__rubric">
                   <li v-for="r in c.rubric" :key="r">{{ r }}</li>

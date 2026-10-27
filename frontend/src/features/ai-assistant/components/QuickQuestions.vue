@@ -2,7 +2,7 @@
 import type { SuggestionCategory } from '../types'
 
 defineProps<{ categories: SuggestionCategory[] }>()
-defineEmits<{ ask: [question: string] }>()
+defineEmits<{ ask: [question: string, categoryKey: string] }>()
 </script>
 
 <template>
@@ -12,7 +12,7 @@ defineEmits<{ ask: [question: string] }>()
         <span class="ai-cat" :class="`ai-cat--${(i % 5) + 1}`" aria-hidden="true"></span>{{ c.name }}
       </h4>
       <div class="ai-quick-group__chips">
-        <button v-for="q in c.questions" :key="q" class="chip" type="button" @click="$emit('ask', q)">{{ q }}</button>
+        <button v-for="q in c.questions" :key="q" class="chip" type="button" @click="$emit('ask', q, c.configKey)">{{ q }}</button>
       </div>
     </div>
   </div>

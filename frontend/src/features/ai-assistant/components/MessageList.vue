@@ -13,7 +13,7 @@ const props = defineProps<{
   categories: SuggestionCategory[]
   unavailable: boolean
 }>()
-defineEmits<{ ask: [question: string]; cancel: []; retry: [id: string]; rate: [id: string, rating: FeedbackRating | null] }>()
+defineEmits<{ ask: [question: string, categoryKey: string]; cancel: []; retry: [id: string]; rate: [id: string, rating: FeedbackRating | null] }>()
 
 const box = ref<HTMLElement | null>(null)
 const firstTime = computed(() => {
@@ -38,7 +38,7 @@ watch(
 <template>
   <div ref="box" class="ai-messages" role="log" aria-live="polite">
     <p v-if="unavailable" class="ai-unavailable" role="alert">查無此顧客或您沒有查看權限</p>
-    <WelcomeCard v-else-if="messages.length === 0" :categories="categories" @ask="$emit('ask', $event)" />
+    <WelcomeCard v-else-if="messages.length === 0" :categories="categories" @ask="(q, k) => $emit('ask', q, k)" />
     <div v-else class="ai-thread">
       <div class="ai-divider">
         <span>{{ firstTime }}</span>

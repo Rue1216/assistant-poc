@@ -50,6 +50,8 @@
           }
         }
       },
+      "routeSource":    { "enum": ["ROUTER", "CHIP", "FALLBACK", null] },
+      "instructionKey": { "bsonType": ["string", "null"], "maxLength": 64 },
       "feedback":   { "enum": ["UP", "DOWN", null] },
       "feedbackAt": { "bsonType": ["date", "null"] },
       "durationMs": { "bsonType": "int", "minimum": 0 },

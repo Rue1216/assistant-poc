@@ -61,7 +61,7 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
     unavailable.value = true
   }
 
-  async function send(text: string): Promise<void> {
+  async function send(text: string, categoryKey?: string): Promise<void> {
     const message = text.trim()
     const cid = customerId.value
     if (!message || !cid || pending.value || unavailable.value) return
@@ -69,7 +69,7 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
     const history = buildHistory()
     const now = new Date().toISOString()
     messages.value.push(
-      { id: nextId(), role: 'user', content: message, state: 'pending', createdAt: now },
+      { id: nextId(), role: 'user', content: message, state: 'pending', createdAt: now, ...(categoryKey ? { categoryKey } : {}) },
       { id: nextId(), role: 'assistant', content: '', state: 'pending', createdAt: now },
     )
     // take the reactive proxies so later mutations re-render
@@ -81,7 +81,7 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
     pending.value = true
 
     try {
-      const res = await aiAssistantApi.chat(cid, { message, history }, controller.signal)
+      const res = await aiAssistantApi.chat(cid, { message, history, ...(categoryKey ? { categoryKey } : {}) }, controller.signal)
       if (current !== controller) return
       user.state = 'done'
       bot.state = 'done'
@@ -129,8 +129,9 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
     const question = i > 0 ? messages.value[i - 1] : undefined
     if (!question || question.role !== 'user') return
     const text = question.content
+    const categoryKey = question.categoryKey
     messages.value.splice(i - 1, 2)
-    await send(text)
+    await send(text, categoryKey)
   }
 
   function clear(): void {

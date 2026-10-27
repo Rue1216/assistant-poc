@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { formatTaipeiShort, formatTaipeiShortSeconds } from '../taipeiTime'
-import type { ConfigStatus, VersionFeedback, VersionHistoryItem } from '../types'
+import type { ConfigStatus, ConfigType, VersionFeedback, VersionHistoryItem } from '../types'
 import ThumbIcon from '../components/ThumbIcon.vue'
 import { APPLICABLE, STATUS_LABEL, STATUS_VERB } from './promptLabels'
 
@@ -13,6 +13,8 @@ const props = defineProps<{
   busy: boolean
   /** Thumbs counts by version; shown on published and archived rows only. */
   feedback: Record<number, VersionFeedback>
+  /** Decides the wording of the feedback footnote. */
+  configType: ConfigType
 }>()
 const emit = defineEmits<{
   view: [version: number]
@@ -143,7 +145,9 @@ function onCompare() {
         </button>
       </li>
     </ol>
-    <p v-if="showFeedbackNote" class="pm-versions__note">回饋統計涵蓋 180 天內的回答</p>
+    <p v-if="showFeedbackNote" class="pm-versions__note">
+      {{ configType === 'SYSTEM_INSTRUCTION' ? '回饋統計涵蓋 180 天內、且確定使用此分類的回答' : '回饋統計涵蓋 180 天內的回答' }}
+    </p>
     <div v-if="versions.length > 1" class="pm-versions__foot">
       <label v-if="discardedCount" class="pm-versions__toggle">
         <input v-model="showDiscarded" type="checkbox" /> 顯示已捨棄的版本（{{ discardedCount }}）
