@@ -175,12 +175,14 @@ sequenceDiagram
      - 套版只提供結構與要點；每個區塊的 text 要寫出依工具結果整理的實際內容，不可只照抄套版文字
      - 每個區塊的 sources 填入支持該段內容的工具結果 citationId；沒有工具依據的內容留空
      - 只能使用本次工具結果中出現的 citationId，不得自行編造
+  ⑤ # 目前日期（寫死在 Java，管理頁無法修改，任何 API 都不回傳；每次組裝時依 Asia/Taipei 產生，放在最後）
+     今天是 yyyy-MM-dd（台北時間）
 [歷史訊息]  user / assistant 純文字（經 PiiRedactor 處理）
 [User Message]  本次提問（經 PiiRedactor 處理）
 ```
 
 - ① ② 的範例內容見 [07-prompt-examples.md](07-prompt-examples.md)。
-- 組裝順序為 System Prompt → 問題分類 → 安全規則 → 回答格式規則；兩份寫死的規則都放在最後，即使 ① ② 被改壞仍然有效。
+- 組裝順序為 System Prompt → 問題分類 → 安全規則 → 回答格式規則 → 目前日期；後三段都寫死在程式碼並放在最後，即使 ① ② 被改壞仍然有效。目前日期讓模型知道「今天」是哪一天，才能分辨資料日期是否早於今天；`PromptAssembler` 為此注入 `Clock`。
 - 顧客編號、姓名等識別資料不會出現在任何一則訊息中。
 
 工具結果回送給模型時，一律包成以下格式，提醒模型這是資料：

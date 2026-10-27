@@ -563,7 +563,7 @@ Request：
 Response 202：
 
 ```json
-{ "runId": "6719f0c2a4b5e6f7a8b9c0d1", "status": "RUNNING", "totalCases": 16 }
+{ "runId": "6719f0c2a4b5e6f7a8b9c0d1", "status": "RUNNING", "totalCases": 17 }
 ```
 
 同步檢查依序為：
@@ -600,14 +600,14 @@ Response 202：
     "candidateUpdatedAt": "2026-10-24T14:58:03+08:00",
     "candidateDocVersion": 5,
     "datasetChanged": false,
-    "totalCases": 16,
-    "completedCases": 16,
+    "totalCases": 17,
+    "completedCases": 17,
     "summary": {
-      "baseline":  { "correct": 13, "total": 16, "toolsOk": 15, "refusedExpected": 6, "expectedRefusals": 6,
-                     "refusedNormal": 0, "normalCases": 10, "avgTotalTokens": 7420, "avgInputTokens": 7080,
+      "baseline":  { "correct": 14, "total": 17, "toolsOk": 16, "refusedExpected": 6, "expectedRefusals": 6,
+                     "refusedNormal": 0, "normalCases": 11, "avgTotalTokens": 7420, "avgInputTokens": 7080,
                      "avgOutputTokens": 340, "avgDurationMs": 6200 },
-      "candidate": { "correct": 15, "total": 16, "toolsOk": 15, "refusedExpected": 6, "expectedRefusals": 6,
-                     "refusedNormal": 1, "normalCases": 10, "avgTotalTokens": 7610, "avgInputTokens": 7230,
+      "candidate": { "correct": 16, "total": 17, "toolsOk": 16, "refusedExpected": 6, "expectedRefusals": 6,
+                     "refusedNormal": 1, "normalCases": 11, "avgTotalTokens": 7610, "avgInputTokens": 7230,
                      "avgOutputTokens": 380, "avgDurationMs": 6500 },
       "judgeTokens": 48200
     }
@@ -626,7 +626,7 @@ Response 202：
 目前執行中的評測（任何 key）。
 
 - **權限**：`AI_CONFIG_READ`
-- **200**：`{ "runId": "…", "configKey": "instruction.contact-prep", "triggeredBy": "it.admin", "startedAt": "2026-10-24T15:02:11+08:00", "totalCases": 16, "completedCases": 7 }`
+- **200**：`{ "runId": "…", "configKey": "instruction.contact-prep", "triggeredBy": "it.admin", "startedAt": "2026-10-24T15:02:11+08:00", "totalCases": 17, "completedCases": 7 }`
 - **204**：沒有執行中的評測。呼叫時會先處理陳舊紀錄：`RUNNING` 且 `heartbeatAt` 超過 10 分鐘者標為 `FAILED`（`AI_EVAL_INTERRUPTED`）。
 
 ### 3.15 `GET /api/ai-assistant/admin/evaluations/{runId}`
@@ -651,8 +651,8 @@ Response 200：3.13 的欄位，加上 `configKey` 與 `cases`：
   "candidateUpdatedAt": "2026-10-24T14:58:03+08:00",
   "candidateDocVersion": 5,
   "datasetChanged": false,
-  "totalCases": 16,
-  "completedCases": 16,
+  "totalCases": 17,
+  "completedCases": 17,
   "summary": { "baseline": { "…": "…" }, "candidate": { "…": "…" }, "judgeTokens": 48200 },
   "cases": [
     {
@@ -724,7 +724,7 @@ Response 200：3.13 的欄位，加上 `configKey` 與 `cases`：
 }
 ```
 
-- 資料集來自 `classpath:eval/eval-cases.yml`，隨 git 版控，管理頁不提供編輯；初版共 16 題（題目清單見 [06-conversation-scenarios.md](06-conversation-scenarios.md) 1.3）。
+- 資料集來自 `classpath:eval/eval-cases.yml`，隨 git 版控，管理頁不提供編輯；共 17 題（初版 16 題，第二輪新增 X2-indirect；題目清單見 [06-conversation-scenarios.md](06-conversation-scenarios.md) 1.3）。
 - `customerId` 是資料集指定的假測試顧客編號，不是真實顧客。
 
 ---
