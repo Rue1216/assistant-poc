@@ -1,6 +1,6 @@
 # 02 REST API 規格
 
-> 版本：v0.9（POC）・2026-10-21
+> 版本：v1.0（POC）・2026-10-26
 
 ## 1. 共通規則
 
@@ -30,9 +30,9 @@
 | 權限碼 | 用途 |
 |---|---|
 | `CUSTOMER_360_VIEW` | 進入個人 360 頁面（平台既有權限，POC 由 `mockplatform` 模擬） |
-| `AI_ASSISTANT_USE` | 使用對話小幫手 |
-| `AI_CONFIG_READ` | 進入 Prompt 管理頁、檢視設定與版本 |
-| `AI_CONFIG_EDIT` | 新增設定、編輯與捨棄草稿、套用歷史版本為草稿 |
+| `AI_ASSISTANT_USE` | 使用對話小幫手、對回答按讚／倒讚 |
+| `AI_CONFIG_READ` | 進入 Prompt 管理頁、檢視設定與版本、查看回饋統計與評測結果 |
+| `AI_CONFIG_EDIT` | 新增設定、編輯與捨棄草稿、套用歷史版本為草稿、開始評測 |
 | `AI_CONFIG_PUBLISH` | 立即發布、預約發布 |
 
 | 角色 key | 帳號 | 角色 | 分行 / 區域 / 單位 | 權限 |
@@ -228,13 +228,42 @@
 
 - 錯誤：同 2.1 的 400、401、403、404。
 
+### 2.3 `PUT /api/ai-assistant/chat/{requestId}/feedback`
+
+對一則成功的回答按讚／倒讚，或取消。設計見 [prompt-evaluation-design](../superpowers/specs/2026-10-24-prompt-evaluation-design.md) 第 3 節。
+
+- **權限**：`AI_ASSISTANT_USE`
+- **`requestId`**：對話回應中的 `requestId`，格式 `^[0-9a-f]{8}$`，不符 → 400 `AI_INPUT_INVALID`
+- **不計入提問頻率限制**（`AI_RATE_LIMITED` 只針對對話 API）。
+
+Request：
+
+```json
+{ "rating": "UP" }
+```
+
+| 欄位 | 型別 | 規則 |
+|---|---|---|
+| `rating` | string \| null | `UP`（有幫助）、`DOWN`（沒有幫助）或 `null`（取消）；其他值 → 400 `AI_INPUT_INVALID` |
+
+- **204**，沒有 body。
+- 處理：更新符合 `{ requestId, userId: 目前使用者, outcome: "ANSWERED" }` 的稽核紀錄，寫入 `feedback` 與 `feedbackAt`（取消時 `feedback` 為 null，`feedbackAt` 仍更新）。`requestId` 只有 8 碼十六進位，所以一定同時比對 `userId`；同一人有兩筆相同 `requestId` 時更新 `createdAt` 最新的一筆。
+- 對同一則回答可重複呼叫，以最後一次為準；前端對同一則訊息的請求逐一送出，所以伺服器最後保存的是最後一次點擊。
+
+| HTTP | code | 情境 |
+|---|---|---|
+| 400 | `AI_INPUT_INVALID` | `requestId` 格式錯誤、`rating` 不是 `UP`／`DOWN`／`null` |
+| 401 | `AI_UNAUTHENTICATED` | 未登入 |
+| 403 | `AI_FORBIDDEN` | 沒有 `AI_ASSISTANT_USE` |
+| 404 | `AI_FEEDBACK_NOT_FOUND` | 找不到自己的、成功的對應回答。別人的 `requestId`、不存在的 `requestId`、失敗的提問、稽核寫入失敗的回答，一律回同樣的 404，不透露紀錄是否存在 |
+
 ---
 
 ## 3. Prompt 管理 API
 
 - **權限**：
-  - 查詢類（3.1、3.3、3.4）：`AI_CONFIG_READ`
-  - 編輯類（3.2、3.5–3.8、3.10）：`AI_CONFIG_EDIT`
+  - 查詢類（3.1、3.3、3.4、3.11、3.13–3.16）：`AI_CONFIG_READ`
+  - 編輯類（3.2、3.5–3.8、3.10、3.12 開始評測）：`AI_CONFIG_EDIT`
   - 發布類（3.9）：`AI_CONFIG_PUBLISH`
 - **版本的辨識**：`version` 是內部流水號，只用於 API 路徑與唯一索引（需求 3-5），**畫面上不顯示**。畫面一律以時間辨識版本：已發布 / 已封存的版本顯示 `updatedAt`（即生效時間）與 `updatedBy`，草稿顯示「最後儲存」時間，已捨棄的版本顯示捨棄時間與捨棄者。
 - **設定類型**：
@@ -272,6 +301,7 @@
 - 「發布」由前端 composable 依序呼叫儲存與發布，用儲存回傳的 `docVersion` 接著發布。
 - 已排程時，編輯頁頂端顯示預約時間；「發布方式」預設選「預約發布」並帶入目前的預約時間。
 - 「編輯 / 預覽」是同一區塊的兩個分頁；切到預覽時以目前 textarea 的內容（含未儲存的修改）渲染。
+- 編輯頁標題列（設定名稱與狀態標籤同一列）另有「評測」按鈕，切換到評測檢視（3.11–3.16）。評測使用**已儲存**的編輯中版本，有未儲存的修改時不能執行；發布不需要先評測。
 
 ### 3.0.1 版本歷程：比較與套用
 
@@ -493,6 +523,209 @@
 - **409** `AI_CONFIG_OVERWRITE_PENDING`：已有編輯中版本但未確認
 - **409** `AI_CONFIG_CONFLICT`：`workingCopyDocVersion` 不一致（有人剛修改，或排程剛到期而已發布）
 - **409** `AI_CONFIG_INVALID_STATE`：來源版本是 `DRAFT` 或 `SCHEDULED`（只能套用已發布、已封存或已捨棄的版本）
+
+### 3.11 `GET /api/ai-assistant/admin/configs/{configKey}/feedback-stats`
+
+各版本的使用者回饋統計，供版本歷程顯示。
+
+- **權限**：`AI_CONFIG_READ`
+
+```json
+[
+  { "version": 3, "up": 12, "down": 3 },
+  { "version": 2, "up": 40, "down": 15 }
+]
+```
+
+- 依 `version` 由新到舊排列；沒有回饋的版本不出現。`version` 只供前端對應到各版本列，畫面仍以時間辨識版本。
+- 聚合範圍是稽核紀錄中 `feedback` 有值、且 `promptVersions` 含該 `configKey` 的回答，所以只涵蓋稽核保存期限（180 天）內的回答，畫面以小字註明。
+- **400** `AI_INPUT_INVALID`：`configKey` 格式錯誤
+- **404** `AI_CONFIG_NOT_FOUND`：`configKey` 不存在
+
+### 3.12 `POST /api/ai-assistant/admin/configs/{configKey}/evaluations`
+
+開始評測：以固定題目比較「目前已發布的全部設定」與「把這個 key 的編輯中版本換進去的同一組設定」。非同步執行，立即回 202。
+
+- **權限**：`AI_CONFIG_EDIT`（`AI_CONFIG_READ` 不能開始評測）
+
+Request：
+
+```json
+{ "docVersion": 5 }
+```
+
+| 欄位 | 型別 | 必填 | 規則 |
+|---|---|---|---|
+| `docVersion` | number | ✓ | 編輯中版本目前的 `docVersion` |
+
+請求**不含**顧客或存取等級的欄位：評測的顧客與存取等級只來自資料集檔案，管理者無法藉評測查詢任意顧客。
+
+Response 202：
+
+```json
+{ "runId": "6719f0c2a4b5e6f7a8b9c0d1", "status": "RUNNING", "totalCases": 16 }
+```
+
+同步檢查依序為：
+
+| 順序 | HTTP | code | 情境 |
+|---|---|---|---|
+| 1 | 404 | `AI_CONFIG_NOT_FOUND` | `configKey` 不存在 |
+| 2 | 409 | `AI_CONFIG_INVALID_STATE` | 沒有編輯中版本（`DRAFT` 或 `SCHEDULED`） |
+| 3 | 409 | `AI_CONFIG_CONFLICT` | `docVersion` 不一致 |
+| 4 | 422 | `AI_CONFIG_VALIDATION_FAILED` | 編輯中版本未通過發布前驗證；`details` 同 3.8 的 `errors` |
+| 5 | 409 | `AI_EVAL_RUNNING` | 任何 key 已有執行中的評測；`details` 為 `[{ runId, configKey, triggeredBy, completedCases, totalCases }]` |
+
+另有 400 `AI_INPUT_INVALID`（`configKey` 格式錯誤或缺少 `docVersion`）、401、403，以及評測任務無法交給執行緒時的 500 `AI_INTERNAL_ERROR`。
+
+- 快照在回應前建立：已發布設定直接讀 MongoDB（不經 60 秒快取）加上編輯中版本的內容；執行期間有人修改、發布或捨棄草稿都不影響這次評測。
+- 沒有被取消的 API；執行中的評測要等它結束，或超過 `run-timeout`（30 分鐘）。
+
+### 3.13 `GET /api/ai-assistant/admin/configs/{configKey}/evaluations`
+
+這個 key 最近 10 次評測（摘要，不含 `cases`），由新到舊。
+
+- **權限**：`AI_CONFIG_READ`
+
+```json
+[
+  {
+    "runId": "6719f0c2a4b5e6f7a8b9c0d1",
+    "status": "COMPLETED",
+    "errorCode": null,
+    "triggeredBy": "it.admin",
+    "startedAt": "2026-10-24T15:02:11+08:00",
+    "finishedAt": "2026-10-24T15:07:40+08:00",
+    "candidateVersion": 6,
+    "candidateUpdatedAt": "2026-10-24T14:58:03+08:00",
+    "candidateDocVersion": 5,
+    "datasetChanged": false,
+    "totalCases": 16,
+    "completedCases": 16,
+    "summary": {
+      "baseline":  { "correct": 13, "total": 16, "toolsOk": 15, "refusedExpected": 6, "expectedRefusals": 6,
+                     "refusedNormal": 0, "normalCases": 10, "avgTotalTokens": 7420, "avgInputTokens": 7080,
+                     "avgOutputTokens": 340, "avgDurationMs": 6200 },
+      "candidate": { "correct": 15, "total": 16, "toolsOk": 15, "refusedExpected": 6, "expectedRefusals": 6,
+                     "refusedNormal": 1, "normalCases": 10, "avgTotalTokens": 7610, "avgInputTokens": 7230,
+                     "avgOutputTokens": 380, "avgDurationMs": 6500 },
+      "judgeTokens": 48200
+    }
+  }
+]
+```
+
+- `status`：`RUNNING`、`COMPLETED`、`FAILED`；`FAILED` 時 `errorCode` 為 `AI_EVAL_TIMEOUT`、`AI_EVAL_INTERRUPTED` 或 `AI_INTERNAL_ERROR`。`finishedAt` 只有執行中為 `null`（失敗時與 `FAILED` 一起寫入）；`summary` 在執行中或失敗時為 `null`。
+- `datasetChanged`：這次的 `datasetHash` 與目前載入的資料集不同。
+- `candidateVersion` 只供前端比對「目前編輯中版本是否已評測」，畫面不顯示版本號。`candidateDocVersion` 與 `candidateUpdatedAt` 用來判斷「評測後內容已修改」。
+- 比率（正確率等）不在回應中，前端由原始計數計算。
+- **400** `AI_INPUT_INVALID`：`configKey` 格式錯誤
+
+### 3.14 `GET /api/ai-assistant/admin/evaluations/current`
+
+目前執行中的評測（任何 key）。
+
+- **權限**：`AI_CONFIG_READ`
+- **200**：`{ "runId": "…", "configKey": "instruction.contact-prep", "triggeredBy": "it.admin", "startedAt": "2026-10-24T15:02:11+08:00", "totalCases": 16, "completedCases": 7 }`
+- **204**：沒有執行中的評測。呼叫時會先處理陳舊紀錄：`RUNNING` 且 `heartbeatAt` 超過 10 分鐘者標為 `FAILED`（`AI_EVAL_INTERRUPTED`）。
+
+### 3.15 `GET /api/ai-assistant/admin/evaluations/{runId}`
+
+單次評測的進度與完整結果；執行中也可查詢，`cases` 只含已完成的題目。
+
+- **權限**：`AI_CONFIG_READ`
+- **`runId`**：24 碼十六進位，格式不符 → 400 `AI_INPUT_INVALID`；不存在或已過期 → 404 `AI_EVAL_NOT_FOUND`
+
+Response 200：3.13 的欄位，加上 `configKey` 與 `cases`：
+
+```json
+{
+  "runId": "6719f0c2a4b5e6f7a8b9c0d1",
+  "configKey": "instruction.contact-prep",
+  "status": "COMPLETED",
+  "errorCode": null,
+  "triggeredBy": "it.admin",
+  "startedAt": "2026-10-24T15:02:11+08:00",
+  "finishedAt": "2026-10-24T15:07:40+08:00",
+  "candidateVersion": 6,
+  "candidateUpdatedAt": "2026-10-24T14:58:03+08:00",
+  "candidateDocVersion": 5,
+  "datasetChanged": false,
+  "totalCases": 16,
+  "completedCases": 16,
+  "summary": { "baseline": { "…": "…" }, "candidate": { "…": "…" }, "judgeTokens": 48200 },
+  "cases": [
+    {
+      "caseId": "Q3-contact-prep",
+      "group": "顧客經營",
+      "question": "整理近期互動，幫我準備下次聯繫重點",
+      "expectRefusal": false,
+      "baseline": {
+        "outcome": "ANSWERED",
+        "errorCode": null,
+        "answer": "### 近期互動\n\n- 10/02 電話：……",
+        "toolCalls": [ { "toolName": "getRecentInteractions", "status": "SUCCESS" } ],
+        "modelCalls": 2,
+        "inputTokens": 7080,
+        "outputTokens": 340,
+        "totalTokens": 7420,
+        "durationMs": 6200,
+        "unverifiedNumbers": [],
+        "toolsOk": true,
+        "numbersOk": true,
+        "missingPhrases": [],
+        "forbiddenPhrases": [],
+        "judge": {
+          "refused": false,
+          "rubric": [ { "text": "列出近期互動的日期與管道", "met": true } ],
+          "comment": "無",
+          "error": null,
+          "tokens": 1500
+        },
+        "passed": true
+      },
+      "candidate": { "…": "…" }
+    }
+  ]
+}
+```
+
+- `answer` 是回應用的純 Markdown（不含引用標註），`question` 是去識別化後送給模型的提問；兩者與稽核紀錄同級敏感，所以只有 `AI_CONFIG_READ` 可讀。
+- 作答失敗（`outcome: FAILED`）時 `answer` 與 `judge` 為 `null`，`errorCode` 為對話錯誤碼（05 第 2.2 節）或 `AI_CUSTOMER_NOT_FOUND`。
+- 評審失敗時 `judge` 為 `{ "refused": null, "rubric": [], "comment": null, "error": "AI_EVAL_JUDGE_FAILED", "tokens": … }`（`rubric` 是空陣列，不是 `null`）。
+- 評審 system message 只存在程式碼，任何 API 都不回傳。
+
+### 3.16 `GET /api/ai-assistant/admin/evaluation-cases`
+
+瀏覽評測資料集（唯讀）。
+
+- **權限**：`AI_CONFIG_READ`
+
+```json
+{
+  "datasetHash": "3f9a…（SHA-256，共 64 字元）",
+  "cases": [
+    {
+      "id": "Q3-contact-prep",
+      "group": "顧客經營",
+      "accessLevel": "FULL",
+      "customerId": "C001",
+      "question": "整理近期互動，幫我準備下次聯繫重點",
+      "expect": {
+        "tools": ["getRecentInteractions", "getCampaignResults"],
+        "forbiddenTools": [],
+        "refusal": false,
+        "mustContain": [],
+        "mustNotContain": ["王小明", "A123456789", "0912-000-111"]
+      },
+      "rubric": ["列出近期互動的日期與管道", "提到待辦事項「約定 10 月下旬面談」", "提出 2 到 3 個具體的下次聯繫重點"]
+    }
+  ]
+}
+```
+
+- 資料集來自 `classpath:eval/eval-cases.yml`，隨 git 版控，管理頁不提供編輯；初版共 16 題（題目清單見 [06-conversation-scenarios.md](06-conversation-scenarios.md) 1.3）。
+- `customerId` 是資料集指定的假測試顧客編號，不是真實顧客。
 
 ---
 

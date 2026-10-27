@@ -1,6 +1,6 @@
 # 05 錯誤碼清單
 
-> 版本：v0.9（POC）・2026-10-21
+> 版本：v1.0（POC）・2026-10-26
 
 ## 1. 原則
 
@@ -63,6 +63,27 @@
 
 `rule` 的值：`NOT_EMPTY`、`MAX_SIZE`、`REQUIRED_SECTION`、`EXAMPLE_QUESTIONS`、`FORBIDDEN_CONTENT`
 
+### 2.4 回饋與評測
+
+| code | HTTP | 友善訊息 | 情境 |
+|---|---|---|---|
+| `AI_FEEDBACK_NOT_FOUND` | 404 | 這則回答已無法評分 | 找不到「自己的、成功的」對應回答：別人的 `requestId`、不存在的 `requestId`、失敗的提問、稽核寫入失敗的回答，一律同樣的 404，不透露紀錄是否存在 |
+| `AI_EVAL_RUNNING` | 409 | 目前已有評測執行中，請稍後再試 | 任何 key 已有執行中的評測；`details` 為單一物件的陣列：`runId`、`configKey`、`triggeredBy`、`completedCases`、`totalCases`（兩個請求同時搶、對方又恰好結束時可能是空陣列） |
+| `AI_EVAL_NOT_FOUND` | 404 | 找不到指定的評測紀錄 | `runId` 不存在或已過期（紀錄 180 天後自動刪除） |
+
+開始評測（02 3.12）還會回既有的 `AI_CONFIG_NOT_FOUND`（404）、`AI_CONFIG_INVALID_STATE`（409，沒有編輯中版本）、`AI_CONFIG_CONFLICT`（409，`docVersion` 不一致）、`AI_CONFIG_VALIDATION_FAILED`（422，`details` 同 2.3）；評測任務無法交給執行緒時回 `AI_INTERNAL_ERROR`（500）。
+
+**只寫入評測紀錄、不由 API 回傳**的代碼（字串常數，不在 `ErrorCode` enum）：
+
+| 代碼 | 寫在哪裡 | 情境 |
+|---|---|---|
+| `AI_EVAL_TIMEOUT` | 評測紀錄 `errorCode`（`status: FAILED`） | 整次評測超過 `run-timeout`（預設 30 分鐘） |
+| `AI_EVAL_INTERRUPTED` | 評測紀錄 `errorCode`（`status: FAILED`） | `RUNNING` 紀錄的 `heartbeatAt` 超過 `stale-after`（預設 10 分鐘）：後端重啟或執行緒異常中斷 |
+| `AI_EVAL_JUDGE_FAILED` | `cases[].baseline／candidate.judge.error` | 評審 GPT 逾時、供應商錯誤、回傳不是合法 JSON，或 `rubric` 的 index 沒有剛好涵蓋 1..n；不重試，該題不算正確 |
+
+- 評測紀錄的 `errorCode` 另可能是 `AI_INTERNAL_ERROR`（執行緒內的未預期例外，或任務無法交給執行緒）。
+- 評測中單題作答失敗時，`cases[].*.errorCode` 沿用 2.2 的對話錯誤碼與 `AI_CUSTOMER_NOT_FOUND`（資料集的測試顧客不存在）；模型呼叫失敗與 `chat()` 同樣對應（例如 `AI_LLM_UNAVAILABLE`、`AI_LLM_TIMEOUT`），不會中止整次評測。
+
 ## 3. 工具錯誤碼
 
 工具錯誤不會變成 HTTP 錯誤，對話仍回傳 200。
@@ -94,16 +115,23 @@
 | 管理 API 422 驗證失敗 | 在編輯器下方列出每條 `details` |
 | 使用者按「取消」 | 不視為錯誤，訊息標示「已取消」，不跳 Toast |
 | 網路中斷、無回應 | Toast「網路連線異常，請稍後再試」 |
+| 回饋 404 `AI_FEEDBACK_NOT_FOUND` | 全域 Toast 顯示友善訊息，回答的按鈕還原為伺服器最後確認的狀態 |
+| 版本歷程的回饋統計失敗 | 靜默（不跳 Toast、不顯示統計）：`AI_FORBIDDEN`、`AI_CONFIG_NOT_FOUND`、網路錯誤、`AI_INTERNAL_ERROR`；`AI_UNAUTHENTICATED` 不靜默，交給 401 的登入逾時處理 |
+| 開始評測 409 `AI_EVAL_RUNNING` | 不跳 Toast；改查 `evaluations/current`，顯示正在評測的人與進度並停用按鈕 |
+| 評測輪詢失敗 | 單次失敗保留畫面並重試；連續 3 次失敗停止輪詢 |
+| 評測題目作答失敗 | 在題目清單顯示該錯誤碼的友善訊息（前端 `caseErrorMessage`，未知代碼直接顯示代碼）；評測歷程的 `FAILED` 列依 `errorCode` 顯示「逾時」「已中斷」「系統錯誤」 |
 | 未知錯誤碼 | Toast 顯示通用訊息，不顯示後端原始內容 |
 
 ## 5. Log 規範
 
 | 等級 | 內容 |
 |---|---|
-| INFO | requestId、userId、耗時、模型往返次數、tool call 次數、token 數、回答區塊數（`blocks`）、有引用的區塊數（`citedBlocks`，不含 heading）、單次回應的最大輸出 token 數（`peakOutputTokens`） |
+| INFO | requestId、userId、耗時、模型往返次數、tool call 次數、token 數（總數，另分 `inputTokens`、`outputTokens`）、回答區塊數（`blocks`）、有引用的區塊數（`citedBlocks`，不含 heading）、單次回應的最大輸出 token 數（`peakOutputTokens`） |
 | WARN | 工具失敗、限流、驗證失敗（只記錯誤碼） |
 | ERROR | GPT 或 TWSE 錯誤類型、未預期例外（stack trace 只在後端 log，敏感字串遮罩） |
 
-**任何等級都不記錄**：使用者提問全文、模型回答全文、模型回傳的原始 JSON、工具參數、工具結果、API key。
+**評測與回饋的 log** 同樣只有計數與代碼（INFO 的 `eval run started／finished`、`eval case done`；WARN／ERROR 的 `eval run stopped／rejected／failed`、`eval judge failed`、`eval turn failed`，格式見 [prompt-evaluation-design](../superpowers/specs/2026-10-24-prompt-evaluation-design.md) 4.2）。評測作答時 MDC 的 `requestId` 為 `e` + runId 後 7 碼。評測不寫「chat answered／failed」兩行。稽核寫入的 `promptVersions` 超過 100 筆時截斷並記 WARN（只含 requestId 與筆數）。
+
+**任何等級都不記錄**：使用者提問全文、模型回答全文、模型回傳的原始 JSON、工具參數、工具結果、評測題目與評審評語、API key。
 
 > 提問與回答依需求 3-4 只寫入稽核 collection `COLL_ICRM_AI_ASSISTANT_AUDIT`（見 [04-mongodb-schema.md](04-mongodb-schema.md) 第 3 節），不進應用程式 log。

@@ -1,6 +1,6 @@
 # 01 架構說明
 
-> 版本：v0.9（POC）・2026-10-21
+> 版本：v1.0（POC）・2026-10-26
 
 ## 1. 系統元件
 
@@ -23,6 +23,9 @@ flowchart LR
     T[工具們]
     CS[ConfigService]
     AU[AuditLogger]
+    FB[FeedbackController<br/>FeedbackService]
+    EV[EvalController<br/>EvalRunService<br/>EvalRunner 評測執行緒]
+    EJ[EvalJudge]
     MP[mockplatform<br/>假登入 / 範圍規則 / 假顧客]
   end
   GPT[(OpenAI)]
@@ -33,6 +36,10 @@ flowchart LR
   CC -->|CustomerAccessPort| MP
   CC --> O
   A --> AC --> CS --> DB
+  A --> EV --> DB
+  EV -->|同一套 Turn，換入指定 prompt| O
+  EV --> EJ -->|評審 GPT| GPT
+  W --> FB --> DB
   O --> RD
   O --> PA --> CS
   O --> AA
@@ -142,10 +149,12 @@ sequenceDiagram
 2. 模型往返上限 3 輪；tool call 總數上限 5 次。
 3. tool call 次數用完時，再送一次**不附工具**的請求，要求模型用現有結果作答。這次仍沒有文字（只回 tool call）時，視為回答為空，回傳 `AI_ANSWER_FORMAT_INVALID`。
 4. **每一輪**請求都附回答的 JSON Schema（strict）：模型決定呼叫工具時回 tool call，決定回答時回符合 schema 的 JSON。`sources` 的 `enum` 依當下已配發的引用編號重建；還沒有成功的呼叫時改用不含 `enum` 的字串陣列。最終 JSON 交給 `AnswerAssembler` 驗證與組裝（設計見 [answer-citations-design](../superpowers/specs/2026-10-22-answer-citations-design.md)）；格式不符回傳 `AI_ANSWER_FORMAT_INVALID`，不自動重試。
-5. 每次回應後累計 `TokenUsage`，超過 16,000 就中止並回傳 `AI_TOKEN_BUDGET_EXCEEDED`。
+5. 每次回應後累計 `TokenUsage`（分別累計輸入、輸出與總 token，缺值以 0 計），總 token 超過 16,000 就中止並回傳 `AI_TOKEN_BUDGET_EXCEEDED`。輸入、輸出 token、模型呼叫次數與本次用到的 Prompt 版本都寫入稽核（見 [04-mongodb-schema.md](04-mongodb-schema.md) 3.1），失敗的提問也記錄已花費的 token。
 6. 整體超過 60 秒就中止並回傳 `AI_REQUEST_TIMEOUT`。
 
 ## 4. Prompt 組裝
+
+`PromptAssembler` 回傳 `AssembledPrompt(text, versions)`：`current()` 從 `PublishedConfigCache` 的當下快照組裝（正式對話用）；`assemble(PublishedConfigs)` 以指定的設定組裝（評測用）。`versions` 是組裝時實際用到的每份設定的 `{configKey, version}`，與文字出自同一份快照。
 
 ```
 [System Message]
@@ -180,6 +189,25 @@ sequenceDiagram
 { "untrustedData": true, "status": "SUCCESS", "citationId": "S1", "data": { ... } }
 ```
 
+### 4.1 評測流程
+
+Prompt 管理頁可以用固定題目比較「目前已發布的設定」與「某個 key 的編輯中版本」（設計見 [prompt-evaluation-design](../superpowers/specs/2026-10-24-prompt-evaluation-design.md)）。
+
+```
+EvalController.start → EvalRunService（同步檢查、快照、寫入 RUNNING 紀錄）→ 202
+                              │ evalExecutor（單一 daemon 執行緒）
+                              ▼
+                         EvalRunner：每題兩個版本依序
+                           ChatOrchestrator.evaluate(question, 評測身分, 固定測試顧客, prompt)
+                           → CaseChecker（規則）→ EvalJudge（GPT 評審）→ 寫入該題結果
+                         → EvalMetrics → COMPLETED
+```
+
+- `evaluate()` 與 `chat()` 共用同一個 `Turn`（去識別化、工具上限、逾時、token 上限、回答 schema 完全相同），差別只有：prompt 由呼叫端傳入、不寫對話稽核、不丟例外（失敗以錯誤碼回報）。
+- 評測的顧客與存取等級只來自 classpath 的資料集檔案（`eval/eval-cases.yml`），經 `CustomerContextFactory.forEvaluation()` 建立，不經過 `CustomerAccessPort`；任何 API 都沒有這兩個欄位。
+- 同時只有一個評測：由 `UK_ICRM_AI_EVAL_1`（`status = RUNNING` 的 partial unique index）保證。心跳超過 `stale-after`（10 分鐘）的 `RUNNING` 紀錄視為中斷。
+- 評審 system message（`EvalJudgePrompt`）與安全規則一樣只存在程式碼。
+
 ## 5. 目錄結構
 
 ### 5.1 後端
@@ -190,18 +218,23 @@ backend/
 ├─ lib-repo/         專案內的 Maven repository：LangChain4j 和平台沒有的間接依賴（見 7.1）
 └─ src/main/java/com/example/copilot/
    ├─ aiassistant/
-   │  ├─ chat/       ChatController、SuggestionController、ChatOrchestrator、DTO
+   │  ├─ chat/       ChatController、SuggestionController、ChatOrchestrator（chat／evaluate）、EvaluationReport、DTO
    │  ├─ answer/     AnswerSchema（每輪請求的回答 JSON Schema）、AnswerAssembler（驗證、去識別化、
    │  │              重新編號、扁平化）、NumberChecker（數字核對）、AnswerBlock、BlockType
-   │  ├─ privacy/    CustomerContextFactory、CustomerDeidentifier、PiiRedactor
+   │  ├─ privacy/    CustomerContextFactory（含 forEvaluation，只供評測）、CustomerDeidentifier、PiiRedactor
    │  ├─ tool/       AssistantTool、ToolRegistry、ToolGuard、ToolExecutor（配發引用編號）、ToolResult、
    │  │              ToolContext、CitationDetail（工具對自己結果的引用說明）
    │  │  ├─ customer/  4 個顧客工具（皆無顧客參數）
    │  │  └─ market/    3 個市場工具、TwseClient
-   │  ├─ prompt/     PromptAssembler、SafetyRules、AnswerFormatRules、ExampleQuestionParser
+   │  ├─ prompt/     PromptAssembler（current／assemble）、AssembledPrompt、PromptVersion、PublishedConfigCache、
+   │  │              SafetyRules、AnswerFormatRules、ExampleQuestionParser
    │  ├─ config/     AdminConfigController、ConfigService、ConfigValidator、Repository、
    │  │              ScheduledPublishJob（每 30 秒發布到期的預約版本）
-   │  ├─ audit/      AuditLogger
+   │  ├─ audit/      AuditLogger、AuditEntry、AuditRecord（含 token 與 promptVersions）
+   │  ├─ feedback/   FeedbackController、FeedbackService、FeedbackRating、VersionFeedback（回饋與版本統計）
+   │  ├─ evaluation/ EvalController、EvalRunService、EvalRunner、EvalRunRepository、EvalDatasetLoader、
+   │  │              EvalCase／EvalDataset、CaseChecker、EvalJudge／EvalJudgePrompt、EvalMetrics、
+   │  │              EvalConfiguration（資料集與單一執行緒 executor）、dto
    │  ├─ llm/        LlmConfiguration（建立 ChatModel）
    │  ├─ port/       CurrentUserPort、CustomerAccessPort、CustomerDataPort、Record 型別
    │  └─ common/     ErrorCode、AssistantException、例外處理（只作用於 aiassistant 套件）
@@ -219,16 +252,18 @@ frontend/src/
 ├─ features/ai-assistant/
 │  ├─ components/   AssistantLauncher（接收 customerId）、AssistantPanel、AssistantHeader、
 │  │                MessageList、WelcomeCard、QuickQuestions、UserMessage、AssistantMessage
-│  │                （內含 AnswerBlocks、CitationList、ToolCallSummary）、PendingMessage、
+│  │                （內含 AnswerBlocks、CitationList、ToolCallSummary、FeedbackButtons）、PendingMessage、
 │  │                ErrorMessage、ChatComposer
 │  ├─ admin/        PromptManagementPage、ConfigList、ConfigEditor、PromptAssemblyGuide（兩步：
 │  │                System Prompt、問題分類；不顯示平台安全規則）、MarkdownEditor（編輯 / 預覽分頁）、
 │  │                ValidationPanel、PublishBar、VersionHistory（比較、檢視、套用）、VersionDiff、
-│  │                VersionViewer、ConfirmDialog、NewInstructionDialog
+│  │                VersionViewer、ConfirmDialog、NewInstructionDialog、EvaluationView、EvaluationSummary、
+│  │                EvaluationCaseList、EvaluationHistory、EvaluationCasesDialog、evaluationFormat.ts
 │  ├─ markdown/     parser.ts、SafeMarkdown.ts、lineDiff.ts（逐行差異，自行實作）
 │  ├─ api/          aiAssistantApi.ts
 │  ├─ stores/       useAssistantStore.ts（對話以 customerId 為單位，換顧客即清空）
-│  ├─ composables/  useAssistantChat.ts、useSuggestions.ts、usePromptAdmin.ts、taipeiTime.ts
+│  ├─ composables/  useAssistantChat.ts、useSuggestions.ts、usePromptAdmin.ts、usePromptEvaluation.ts（評測狀態與輪詢）、
+│  │                taipeiTime.ts
 │  └─ types.ts
 └─ platform-mock/   apiClient、useToast、useAuthStore、router、layout
                     頁面：登入（9 個帳號）、首頁、顧客經營（/customer：輸入編號 + 列表）、
@@ -273,6 +308,11 @@ ai-assistant:
     schedule-max-lead: 90d           # 預約時間最多在 90 天內
   audit:
     store-tool-results: false         # true 時稽核文件才保存工具回傳資料（含顧客資料），預設關閉；開啟前需 M36 法遵同意
+  eval:
+    dataset: classpath:eval/eval-cases.yml   # 評測題目，啟動時驗證，不合格則啟動失敗
+    max-cases: 30                            # 1–30
+    run-timeout: 30m                         # 整次評測上限
+    stale-after: 10m                         # RUNNING 紀錄心跳超過此時間視為中斷
   market.twse:
     base-url: https://openapi.twse.com.tw/v1
     allowed-hosts: [openapi.twse.com.tw]
@@ -349,4 +389,5 @@ OPENAI_MODEL=<模型名稱>
 5. 依平台規範調整套件名稱、權限碼、錯誤回應格式。
 6. 用平台的 migration 機制建立 collection、validator、index，取代 POC 的啟動 initializer。
 7. 移除 `spring.config.import` 的 `.env` 載入，改由平台的 secret 管理機制注入 `OPENAI_API_KEY`。
-8. 依平台管理第三方 jar 的方式，併入 `backend/lib-repo/` 的 jar；平台已有的 artifact 不要重複放（見 7.1）。
+8. 評測需要平台提供專用的假測試顧客（資料集的 `customerId` 改用那些顧客），並且評測執行緒會用掉 GPT token；見 [platform-setup-requests.md](../platform-setup-requests.md)。多個 pod 時，同時只有一個評測由 `UK_ICRM_AI_EVAL_1` 保證；評測只在收到請求的那個 pod 上執行。
+9. 依平台管理第三方 jar 的方式，併入 `backend/lib-repo/` 的 jar；平台已有的 artifact 不要重複放（見 7.1）。
