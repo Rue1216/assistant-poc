@@ -96,11 +96,11 @@ class EvalRunServiceTest extends IntegrationTestBase {
     }
 
     private String textOf(PublishedConfigCache.PublishedConfigs configs) {
-        return assembler.assemble(configs, InstructionSelection.all()).text();
+        return assembler.assemble(configs, InstructionSelection.all(), null).text();
     }
 
     private List<PromptVersion> versionsOf(PublishedConfigCache.PublishedConfigs configs) {
-        return assembler.assemble(configs, InstructionSelection.all()).versions();
+        return assembler.assemble(configs, InstructionSelection.all(), null).versions();
     }
 
     private EvalRun running(Instant heartbeat) {
@@ -126,13 +126,13 @@ class EvalRunServiceTest extends IntegrationTestBase {
 
         assertThat(run.id()).isNotBlank();
         assertThat(run.status()).isEqualTo(EvalStatus.RUNNING);
-        assertThat(run.totalCases()).isEqualTo(10);
+        assertThat(run.totalCases()).isEqualTo(30);
         assertThat(run.completedCases()).isZero();
         assertThat(run.triggeredBy()).isEqualTo(ACTOR);
         assertThat(run.candidateVersion()).isEqualTo(draft.getVersion());
         assertThat(run.candidateDocVersion()).isEqualTo(draft.getDocVersion());
         assertThat(run.candidateUpdatedAt().toEpochMilli()).isEqualTo(draft.getUpdatedAt().toEpochMilli());
-        assertThat(run.baselineVersions()).hasSize(6);
+        assertThat(run.baselineVersions()).hasSize(8);
         assertThat(run.datasetHash()).isEqualTo(dataset.hash());
 
         EvalRunService.EvalSnapshot snapshot = capturedSnapshot();
@@ -167,9 +167,9 @@ class EvalRunServiceTest extends IntegrationTestBase {
         EvalRun run = service.start(key, saved.getDocVersion(), ACTOR);
 
         EvalRunService.EvalSnapshot snapshot = capturedSnapshot();
-        assertThat(versionsOf(snapshot.baseline())).hasSize(6).noneMatch(v -> v.configKey().equals(key));
-        assertThat(versionsOf(snapshot.candidate())).hasSize(7).anyMatch(v -> v.configKey().equals(key));
-        assertThat(run.baselineVersions()).hasSize(6);
+        assertThat(versionsOf(snapshot.baseline())).hasSize(8).noneMatch(v -> v.configKey().equals(key));
+        assertThat(versionsOf(snapshot.candidate())).hasSize(9).anyMatch(v -> v.configKey().equals(key));
+        assertThat(run.baselineVersions()).hasSize(8);
     }
 
     @Test
@@ -180,7 +180,7 @@ class EvalRunServiceTest extends IntegrationTestBase {
         EvalRunService.EvalSnapshot snapshot = capturedSnapshot();
         assertThat(textOf(snapshot.candidate())).contains("marker-main-draft");
         assertThat(textOf(snapshot.baseline())).doesNotContain("marker-main-draft");
-        assertThat(versionsOf(snapshot.candidate())).hasSize(6);
+        assertThat(versionsOf(snapshot.candidate())).hasSize(8);
         assertThat(versionsOf(snapshot.candidate())).anyMatch(v -> v.configKey().equals("system.main")
                 && v.version() == draft.getVersion());
     }
@@ -226,7 +226,7 @@ class EvalRunServiceTest extends IntegrationTestBase {
         Map<String, Object> details = (Map<String, Object>) e.details().get(0);
         assertThat(details).containsEntry("runId", first.id()).containsEntry("configKey", KEY)
                 .containsEntry("triggeredBy", ACTOR).containsEntry("completedCases", 0)
-                .containsEntry("totalCases", 10);
+                .containsEntry("totalCases", 30);
     }
 
     @Test

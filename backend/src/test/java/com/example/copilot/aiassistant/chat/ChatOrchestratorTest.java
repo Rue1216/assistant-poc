@@ -34,6 +34,7 @@ import com.example.copilot.aiassistant.privacy.CustomerContext;
 import com.example.copilot.aiassistant.privacy.PiiRedactor;
 import com.example.copilot.aiassistant.prompt.AssembledPrompt;
 import com.example.copilot.aiassistant.config.AssistantConfig;
+import com.example.copilot.aiassistant.prompt.CustomerNotes;
 import com.example.copilot.aiassistant.prompt.InstructionRouter;
 import com.example.copilot.aiassistant.prompt.InstructionSelection;
 import com.example.copilot.aiassistant.prompt.PromptAssembler;
@@ -50,6 +51,9 @@ import com.example.copilot.aiassistant.tool.market.GetMarketIndexTool;
 import com.example.copilot.aiassistant.tool.market.GetStockQuoteTool;
 import com.example.copilot.aiassistant.tool.market.TwseClient;
 import com.example.copilot.aiassistant.tool.testsupport.FakeTool;
+import com.example.copilot.mockplatform.customer.MockCustomerData;
+import com.example.copilot.mockplatform.customer.MockCustomerDataAdapter;
+import com.example.copilot.aiassistant.port.c360.RealTimeStatusRecord;
 import com.example.copilot.testsupport.MockCustomerPorts;
 import com.example.copilot.testsupport.LogCapture;
 import dev.langchain4j.agent.tool.ToolSpecification;
@@ -79,6 +83,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.IntStream;
 import org.apache.logging.log4j.Level;
@@ -95,6 +100,7 @@ import tools.jackson.databind.json.JsonMapper;
 class ChatOrchestratorTest {
 
     private static final String SYSTEM = "測試用系統訊息";
+    private static final String NO_NOTES = String.join(String.valueOf((char) 10), "", "", "# 本顧客註記", "- 無");
     private static final String DISCLAIMER = "資訊僅供內部經營參考，不構成投資建議";
     private static final String TWSE_BASE = "https://openapi.twse.com.tw/v1";
     private static final String TWSE_SOURCE = "臺灣證券交易所 OpenAPI";
@@ -152,16 +158,22 @@ class ChatOrchestratorTest {
             }
 
             @Override
-            public AssembledPrompt assemble(PublishedConfigs configs, InstructionSelection selection) {
+            public AssembledPrompt assemble(PublishedConfigs configs, InstructionSelection selection,
+                                            String customerNotes) {
                 // A snapshot that carries a system prompt (the evaluation tests) is assembled for real.
-                return configs.systemPrompt() != null ? super.assemble(configs, selection)
-                        : new AssembledPrompt(SYSTEM, List.of(new PromptVersion("system.main", 1)));
+                return configs.systemPrompt() != null ? super.assemble(configs, selection, customerNotes)
+                        : new AssembledPrompt(customerNotes == null ? SYSTEM : SYSTEM + "\n\n" + customerNotes,
+                                List.of(new PromptVersion("system.main", 1)));
             }
         };
         return orchestrator(registry, assembler);
     }
 
     private ChatOrchestrator orchestrator(ToolRegistry registry, PromptAssembler assembler) {
+        return orchestrator(registry, assembler, new CustomerNotes(MockCustomerPorts.adapter()));
+    }
+
+    private ChatOrchestrator orchestrator(ToolRegistry registry, PromptAssembler assembler, CustomerNotes notes) {
         ToolExecutor executor = new ToolExecutor(new ToolGuard(registry, VALIDATOR, mapper), redactor, mapper, props);
         AuditLogger auditLogger = new AuditLogger(null, clock, null, null, null) {
             @Override
@@ -169,7 +181,7 @@ class ChatOrchestratorTest {
                 audits.add(entry);
             }
         };
-        return new ChatOrchestrator(model, registry, executor, redactor, assembler,
+        return new ChatOrchestrator(model, registry, executor, redactor, assembler, notes,
                 new InstructionRouter(model, new LlmErrorMapper(), mapper), new AnswerAssembler(redactor, mapper), auditLogger, new LlmErrorMapper(), props, clock);
     }
 
@@ -719,6 +731,60 @@ class ChatOrchestratorTest {
                 "getMarketIndex", "getStockQuote", "getCompanyAnnouncements");
     }
 
+    private static CustomerContext noMarketingFull() {
+        return new CustomerContext(TestCustomers.NO_MARKETING, AccessLevel.FULL, Set.of(), Set.of());
+    }
+
+    @Test
+    void notesAreInjectedForFull() {
+        model.reply(answer(100, "好的。"));
+
+        orchestrator.chat(new ChatCommand("可以推薦商品嗎？", List.of(), null), USER, noMarketingFull());
+
+        assertThat(systemText(model.requests().get(0))).contains("# 本顧客註記", "不宜行銷");
+    }
+
+    @Test
+    void notesFailureStillAnswers() {
+        CustomerNotes failing = new CustomerNotes(new MockCustomerDataAdapter(new MockCustomerData(),
+                MockCustomerPorts.data360(new MockCustomerData())) {
+            @Override
+            public Optional<RealTimeStatusRecord> findRealTimeStatus(String certNo) {
+                throw new IllegalStateException("platform down");
+            }
+        });
+        ChatOrchestrator target = orchestrator(new ToolRegistry(List.of()),
+                new PromptAssembler(null, clock) {
+                    @Override
+                    public PublishedConfigs snapshot() {
+                        return new PublishedConfigs(null, List.of());
+                    }
+
+                    @Override
+                    public AssembledPrompt assemble(PublishedConfigs configs, InstructionSelection selection,
+                                                    String customerNotes) {
+                        return new AssembledPrompt(SYSTEM + "\n\n" + customerNotes, List.of());
+                    }
+                }, failing);
+        model.reply(answer(100, "好的。"));
+
+        ChatResult result = target.chat(new ChatCommand("可以推薦商品嗎？", List.of(), null), USER, noMarketingFull());
+
+        assertThat(result.answer()).isEqualTo("好的。");
+        assertThat(singleAudit().outcome()).isEqualTo("ANSWERED");
+        assertThat(systemText(model.requests().get(0))).contains("無法取得註記");
+    }
+
+    @Test
+    void limitedHasNoNotes() {
+        model.reply(answer(100, "好的。"));
+
+        orchestrator.chat(new ChatCommand("概況？", List.of(), null), USER,
+                new CustomerContext(TestCustomers.NO_MARKETING, AccessLevel.LIMITED, Set.of(), Set.of()));
+
+        assertThat(systemText(model.requests().get(0))).doesNotContain("本顧客註記");
+    }
+
     @Test
     void historyTrimmedToLimits() {
         // 25 short messages: only the newest 20 (10 turns) are sent
@@ -808,7 +874,7 @@ class ChatOrchestratorTest {
         orchestrator.chat(new ChatCommand("概況？", history, null), USER, RETIREE_FULL);
 
         for (ChatRequest request : model.requests()) {
-            assertThat(request.messages().get(0)).isEqualTo(SystemMessage.from(SYSTEM));
+            assertThat(request.messages().get(0)).isEqualTo(SystemMessage.from(SYSTEM + NO_NOTES));
             assertThat(request.messages()).filteredOn(m -> m instanceof SystemMessage).hasSize(1);
         }
     }

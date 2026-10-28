@@ -9,7 +9,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
 class EvalDatasetLoaderTest {
@@ -193,33 +195,46 @@ class EvalDatasetLoaderTest {
                 .hasMessageContaining("重複的欄位");
     }
 
+    private static final Set<String> BUNDLED_TOOLS = Set.of("getCustomerProfile", "getManagementSummary",
+            "getAssetLiability", "getMemberRank", "getProductIntent", "getBehavior", "getMarketIndex",
+            "getStockQuote", "getCompanyAnnouncements");
+
+    private static final Map<String, String> CUSTOMER_NAMES = Map.of(
+            TestCustomers.RETIREE, "王小明", TestCustomers.COMPLAINT, "林美君", TestCustomers.ATTENTION, "陳志華",
+            TestCustomers.NO_MARKETING, "黃俊豪", TestCustomers.HIGH_ASSET, "周雅婷", TestCustomers.SPECIAL_CARE, "吳建德");
+
     @Test
-    void bundledDatasetIsValid() throws IOException {
+    void bundledDatasetMatchesSpec() throws IOException {
         byte[] bytes;
         try (InputStream in = getClass().getResourceAsStream("/eval/eval-cases.yml")) {
             assertThat(in).isNotNull();
             bytes = in.readAllBytes();
         }
+        List<EvalCase> cases = EvalDatasetLoader.parse(bytes, BUNDLED_TOOLS, 30).cases();
 
-        EvalDataset dataset = EvalDatasetLoader.parse(bytes, TOOLS, 30);
+        assertThat(cases).hasSize(30);
+        assertThat(cases.stream().map(EvalCase::id).distinct()).hasSize(30);
+        Map<String, Long> perGroup = cases.stream()
+                .collect(Collectors.groupingBy(EvalCase::group, Collectors.counting()));
+        assertThat(perGroup).containsOnly(Map.entry("顧客經營", 10L), Map.entry("註記合規", 4L),
+                Map.entry("雙意圖", 2L), Map.entry("市場資訊", 3L), Map.entry("權限", 2L),
+                Map.entry("資料範圍外", 1L), Map.entry("去識別化", 4L), Map.entry("AI 安全", 4L));
+        assertThat(cases.stream().filter(c -> c.group().equals("雙意圖")))
+                .allSatisfy(c -> assertThat(c.expect().category()).isNull());
 
-        assertThat(dataset.cases()).hasSize(10);
-        List<String> refusals = dataset.cases().stream().filter(c -> c.expect().refusal())
-                .map(EvalCase::id).toList();
-        assertThat(refusals).containsExactly("D4-identity", "D5-other-customer",
-                "X1-system-prompt", "X3-action", "X5-advice-refuse");
-        java.util.Map<String, String> categories = new java.util.HashMap<>();
-        dataset.cases().forEach(c -> categories.put(c.id(), c.expect().category()));
-        assertThat(categories).hasSize(10)
-                .containsEntry("Q1-overview", "instruction.customer-overview")
-                .containsEntry("P5-limited-profile", "instruction.customer-overview")
-                .containsEntry("K1-index", "instruction.market-brief")
-                .containsEntry("K2-quote", "instruction.market-brief")
-                .containsEntry("K3-announcement", "instruction.market-brief")
-                .containsEntry("X1-system-prompt", "none")
-                .containsEntry("X3-action", "none")
-                .containsEntry("D4-identity", null)
-                .containsEntry("D5-other-customer", null)
-                .containsEntry("X5-advice-refuse", null);
+        Map<String, EvalCase> byId = cases.stream().collect(Collectors.toMap(EvalCase::id, c -> c));
+        for (String id : List.of("P1-limited-profile", "P2-limited-asset")) {
+            assertThat(byId.get(id).accessLevel()).isEqualTo(AccessLevel.LIMITED);
+            assertThat(byId.get(id).certNo()).isEqualTo(TestCustomers.HIGH_ASSET);
+        }
+        assertThat(byId.get("P2-limited-asset").expect().forbiddenTools()).containsExactly("getAssetLiability");
+
+        for (EvalCase c : cases) {
+            assertThat(c.expect().tools()).isSubsetOf(BUNDLED_TOOLS);
+            assertThat(c.expect().forbiddenTools()).isSubsetOf(BUNDLED_TOOLS);
+            assertThat(CUSTOMER_NAMES).containsKey(c.certNo());
+            assertThat(c.expect().mustNotContain()).as(c.id()).contains(CUSTOMER_NAMES.get(c.certNo()));
+            assertThat(c.certNo()).isNotEqualTo(TestCustomers.STOP_USE);
+        }
     }
 }

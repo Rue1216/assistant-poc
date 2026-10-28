@@ -121,10 +121,10 @@ class AdminConfigControllerTest extends IntegrationTestBase {
     @Test
     void listShowsPublishedAndWorkingCopy() throws Exception {
         read(BASE).andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(6)))
+                .andExpect(jsonPath("$", hasSize(8)))
                 .andExpect(jsonPath(WORKING_COPY_PATH).value(contains((Object) null)));
         createDraft();
-        read(BASE).andExpect(jsonPath("$", hasSize(6)))
+        read(BASE).andExpect(jsonPath("$", hasSize(8)))
                 .andExpect(jsonPath(WORKING_COPY_PATH + ".status").value("DRAFT"))
                 .andExpect(jsonPath("$[?(@.configKey=='" + KEY + "')].published.version").value(1));
     }

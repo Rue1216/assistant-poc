@@ -14,8 +14,9 @@ import org.springframework.core.io.DefaultResourceLoader;
 
 class EvalConfigurationTest {
 
-    private static final Set<String> TOOLS = Set.of("getCustomerProfile", "getStockQuote", "getCompanyAnnouncements",
-            "getMarketIndex");
+    private static final Set<String> TOOLS = Set.of("getCustomerProfile", "getManagementSummary", "getAssetLiability",
+            "getMemberRank", "getProductIntent", "getBehavior", "getMarketIndex", "getStockQuote",
+            "getCompanyAnnouncements");
 
     private static EvalDataset load(int maxCases) {
         AiAssistantProperties props = new AiAssistantProperties(null, null, null, null, null,
@@ -28,8 +29,7 @@ class EvalConfigurationTest {
 
     @Test
     void maxCasesWithinStoredLimitLoads() {
-        assertThat(load(30).cases()).hasSize(10);
-        assertThat(load(10).cases()).hasSize(10);
+        assertThat(load(30).cases()).hasSize(30);
     }
 
     @Test

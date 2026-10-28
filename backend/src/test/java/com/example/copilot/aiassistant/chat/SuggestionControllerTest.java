@@ -19,9 +19,9 @@ class SuggestionControllerTest extends IntegrationTestBase {
         for (String username : new String[] {"it.admin", "fc.officer"}) {
             mockMvc.perform(get(URL, TestCustomers.RETIREE).with(TestUsers.as(username)))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.categories.length()").value(5))
-                    .andExpect(jsonPath("$.categories[0].configKey").value("instruction.contact-prep"))
-                    .andExpect(jsonPath("$.categories[0].name").value("聯繫準備"))
+                    .andExpect(jsonPath("$.categories.length()").value(7))
+                    .andExpect(jsonPath("$.categories[0].configKey").value("instruction.asset-liability"))
+                    .andExpect(jsonPath("$.categories[0].name").value("資產負債"))
                     .andExpect(jsonPath("$.categories[0].questions[0]").isNotEmpty());
         }
     }

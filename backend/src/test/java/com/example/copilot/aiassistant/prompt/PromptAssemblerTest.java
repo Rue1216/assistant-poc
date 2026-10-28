@@ -42,7 +42,7 @@ class PromptAssemblerTest extends IntegrationTestBase {
     @Test
     void systemMessageOrder() {
         cache.invalidate();
-        String message = assembler.assemble(assembler.snapshot(), InstructionSelection.all()).text();
+        String message = assembler.assemble(assembler.snapshot(), InstructionSelection.all(), null).text();
 
         int role = message.indexOf("## 角色");
         int categories = message.indexOf("# 問題分類");
@@ -55,9 +55,10 @@ class PromptAssemblerTest extends IntegrationTestBase {
     @Test
     void includesAllPublishedInstructions() {
         cache.invalidate();
-        String message = assembler.assemble(assembler.snapshot(), InstructionSelection.all()).text();
+        String message = assembler.assemble(assembler.snapshot(), InstructionSelection.all(), null).text();
 
-        assertThat(message).contains("## 顧客概況", "## 經營機會", "## 聯繫準備", "## 聯繫話題", "## 市場快訊");
+        assertThat(message).contains("## 顧客概況", "## 資產負債", "## 會員等級", "## 商品機會", "## 往來與通路",
+                "## 聯繫準備", "## 市場快訊");
     }
 
     @Test
@@ -69,7 +70,7 @@ class PromptAssemblerTest extends IntegrationTestBase {
         repository.save(main);
         cache.invalidate();
 
-        String message = assembler.assemble(assembler.snapshot(), InstructionSelection.all()).text();
+        String message = assembler.assemble(assembler.snapshot(), InstructionSelection.all(), null).text();
 
         assertThat(message).doesNotContain("## 安全規則");
         assertThat(message).contains(SafetyRules.TEXT + "\n\n" + AnswerFormatRules.TEXT + "\n\n# 目前日期\n今天是 ");
@@ -84,7 +85,7 @@ class PromptAssemblerTest extends IntegrationTestBase {
     @Test
     void formatRulesFollowSafetyRulesAtTheEnd() {
         cache.invalidate();
-        String message = assembler.assemble(assembler.snapshot(), InstructionSelection.all()).text();
+        String message = assembler.assemble(assembler.snapshot(), InstructionSelection.all(), null).text();
 
         assertThat(message).contains(SafetyRules.TEXT + "\n\n" + AnswerFormatRules.TEXT + "\n\n# 目前日期\n今天是 ");
     }
@@ -94,9 +95,9 @@ class PromptAssemblerTest extends IntegrationTestBase {
         // 17:30 UTC on 10-26 is already 10-27 in Taipei (UTC+8).
         PromptAssembler fixed = new PromptAssembler(null,
                 Clock.fixed(Instant.parse("2026-10-26T17:30:00Z"), ZoneOffset.UTC));
-        String text = fixed.assemble(cache.loadFresh(), InstructionSelection.all()).text();
+        String text = fixed.assemble(cache.loadFresh(), InstructionSelection.all(), null).text();
 
-        assertThat(text).endsWith(AnswerFormatRules.TEXT + "\n\n# 目前日期\n今天是 2026-10-27（台北時間）");
+        assertThat(text).endsWith(AnswerFormatRules.TEXT + "\n\n# 目前日期\n今天是 2026/10/27（台北時間）");
         int main = text.indexOf("## 角色");
         int categories = text.indexOf("# 問題分類");
         int safety = text.indexOf("# 不可覆寫的安全規則");
@@ -109,6 +110,53 @@ class PromptAssemblerTest extends IntegrationTestBase {
         assertThat(date).isGreaterThan(format);
     }
 
+
+    @Test
+    void dateIsWrittenAsYyyyMmDd() {
+        PromptAssembler fixed = new PromptAssembler(null,
+                Clock.fixed(Instant.parse("2026-10-28T02:00:00Z"), ZoneOffset.UTC));
+        String text = fixed.assemble(new PublishedConfigs(null, List.of()), InstructionSelection.all(), null).text();
+
+        assertThat(text).contains("今天是 2026/10/28（台北時間）");
+    }
+
+    @Test
+    void customerNotesSitAfterTheLastCategoryAndBeforeTheSafetyRules() {
+        cache.invalidate();
+        String notes = "# 本顧客註記\n- 客訴";
+        String text = assembler.assemble(assembler.snapshot(), InstructionSelection.all(), notes).text();
+
+        int lastCategory = text.lastIndexOf("\n## ");
+        int notesAt = text.indexOf(notes);
+        int safety = text.indexOf("# 不可覆寫的安全規則");
+        assertThat(notesAt).isGreaterThan(lastCategory);
+        assertThat(safety).isGreaterThan(notesAt);
+        assertThat(text).contains(notes + "\n\n# 不可覆寫的安全規則");
+    }
+
+    @Test
+    void noNotesSectionWhenNull() {
+        cache.invalidate();
+        String text = assembler.assemble(assembler.snapshot(), InstructionSelection.all(), null).text();
+
+        assertThat(text).doesNotContain("# 本顧客註記");
+    }
+
+    @Test
+    void notesDoNotChangeTheVersions() {
+        cache.invalidate();
+        AssembledPrompt without = assembler.assemble(assembler.snapshot(), InstructionSelection.all(), null);
+        AssembledPrompt with = assembler.assemble(assembler.snapshot(), InstructionSelection.all(),
+                "# 本顧客註記\n- 無");
+
+        assertThat(with.versions()).isEqualTo(without.versions());
+    }
+
+    @Test
+    void safetyRulesCarryTheInvestmentAdviceWording() {
+        assertThat(SafetyRules.TEXT).contains(
+                "- 不自行提供投資建議；可轉述系統產生的推薦產品與意圖分析，但不得保證報酬或建議買賣時點");
+    }
     @Test
     void formatRulesText() {
         assertThat(AnswerFormatRules.TEXT).startsWith("# 回答格式規則");
@@ -119,10 +167,11 @@ class PromptAssemblerTest extends IntegrationTestBase {
     @Test
     void versionsListEveryPublishedConfigSortedByKey() {
         cache.invalidate();
-        AssembledPrompt prompt = assembler.assemble(assembler.snapshot(), InstructionSelection.all());
+        AssembledPrompt prompt = assembler.assemble(assembler.snapshot(), InstructionSelection.all(), null);
         assertThat(prompt.versions()).extracting(PromptVersion::configKey).containsExactly(
-                "instruction.contact-prep", "instruction.contact-topic", "instruction.customer-overview",
-                "instruction.market-brief", "instruction.opportunity", "system.main");
+                "instruction.asset-liability", "instruction.contact-prep", "instruction.customer-overview",
+                "instruction.engagement", "instruction.market-brief", "instruction.member-rank",
+                "instruction.opportunity", "system.main");
         assertThat(prompt.versions()).allSatisfy(v -> assertThat(v.version()).isPositive());
     }
 
@@ -132,14 +181,14 @@ class PromptAssemblerTest extends IntegrationTestBase {
         AssistantConfig replaced = copyOf(fresh.instructions().get(0));
         PublishedConfigs given = new PublishedConfigs(fresh.systemPrompt(),
                 Stream.concat(Stream.of(replaced), fresh.instructions().stream().skip(1)).toList());
-        AssembledPrompt prompt = assembler.assemble(given, InstructionSelection.all());
+        AssembledPrompt prompt = assembler.assemble(given, InstructionSelection.all(), null);
         assertThat(prompt.text()).contains("替換後內容").contains("# 不可覆寫的安全規則");
         assertThat(prompt.versions()).contains(new PromptVersion(replaced.getConfigKey(), 99));
     }
 
     @Test
     void assembleWithoutSystemPromptStillHasRules() {
-        AssembledPrompt prompt = assembler.assemble(new PublishedConfigs(null, List.of()), InstructionSelection.all());
+        AssembledPrompt prompt = assembler.assemble(new PublishedConfigs(null, List.of()), InstructionSelection.all(), null);
         assertThat(prompt.text()).contains("# 問題分類", "# 不可覆寫的安全規則", "# 回答格式規則");
         assertThat(prompt.versions()).isEmpty();
     }
@@ -148,10 +197,10 @@ class PromptAssemblerTest extends IntegrationTestBase {
     void onlyLoadsTheSelectedInstruction() {
         cache.invalidate();
         AssembledPrompt prompt = assembler.assemble(assembler.snapshot(),
-                InstructionSelection.only("instruction.contact-prep"));
+                InstructionSelection.only("instruction.contact-prep"), null);
 
         assertThat(prompt.text()).contains("## 聯繫準備")
-                .doesNotContain("## 顧客概況", "## 經營機會", "## 聯繫話題", "## 市場快訊")
+                .doesNotContain("## 顧客概況", "## 商品機會", "## 往來與通路", "## 市場快訊")
                 .doesNotContain("（本題沒有適用的問題分類）");
         assertThat(prompt.versions()).extracting(PromptVersion::configKey)
                 .containsExactly("instruction.contact-prep", "system.main");
@@ -160,7 +209,7 @@ class PromptAssemblerTest extends IntegrationTestBase {
     @Test
     void noneLoadsNoInstructionAndSaysSo() {
         cache.invalidate();
-        AssembledPrompt prompt = assembler.assemble(assembler.snapshot(), InstructionSelection.none());
+        AssembledPrompt prompt = assembler.assemble(assembler.snapshot(), InstructionSelection.none(), null);
 
         assertThat(prompt.text()).contains("# 問題分類\n\n（本題沒有適用的問題分類）\n\n# 不可覆寫的安全規則")
                 .doesNotContain("## 聯繫準備", "## 市場快訊");

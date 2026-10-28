@@ -20,6 +20,7 @@ import com.example.copilot.aiassistant.privacy.CustomerContext;
 import com.example.copilot.aiassistant.privacy.CustomerDeidentifier;
 import com.example.copilot.aiassistant.privacy.PiiRedactor;
 import com.example.copilot.aiassistant.prompt.AssembledPrompt;
+import com.example.copilot.aiassistant.prompt.CustomerNotes;
 import com.example.copilot.aiassistant.prompt.InstructionRouter;
 import com.example.copilot.aiassistant.prompt.InstructionSelection;
 import com.example.copilot.aiassistant.prompt.PromptAssembler;
@@ -84,6 +85,7 @@ public class ChatOrchestrator {
     private final ToolExecutor executor;
     private final PiiRedactor redactor;
     private final PromptAssembler promptAssembler;
+    private final CustomerNotes customerNotes;
     private final InstructionRouter router;
     private final AnswerAssembler answerAssembler;
     private final AuditLogger auditLogger;
@@ -92,7 +94,7 @@ public class ChatOrchestrator {
     private final Clock clock;
 
     public ChatOrchestrator(ChatModel chatModel, ToolRegistry registry, ToolExecutor executor, PiiRedactor redactor,
-                            PromptAssembler promptAssembler, InstructionRouter router,
+                            PromptAssembler promptAssembler, CustomerNotes customerNotes, InstructionRouter router,
                             AnswerAssembler answerAssembler, AuditLogger auditLogger, LlmErrorMapper errorMapper,
                             AiAssistantProperties props, Clock clock) {
         this.chatModel = chatModel;
@@ -100,6 +102,7 @@ public class ChatOrchestrator {
         this.executor = executor;
         this.redactor = redactor;
         this.promptAssembler = promptAssembler;
+        this.customerNotes = customerNotes;
         this.router = router;
         this.answerAssembler = answerAssembler;
         this.auditLogger = auditLogger;
@@ -202,7 +205,8 @@ public class ChatOrchestrator {
         String answer(ChatCommand command) {
             redactedQuestion = redact(command.message());
             List<ChatMessage> redactedHistory = history(command.history());
-            prompt = promptAssembler.assemble(configs, route(command.categoryKey(), redactedHistory));
+            prompt = promptAssembler.assemble(configs, route(command.categoryKey(), redactedHistory),
+                    customerNotes.section(customer));
             List<ChatMessage> messages = new ArrayList<>();
             messages.add(SystemMessage.from(prompt.text()));
             messages.addAll(redactedHistory);

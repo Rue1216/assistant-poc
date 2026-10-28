@@ -19,7 +19,7 @@ class ExampleQuestionParserTest {
     @Test
     void parsesExampleQuestions() throws IOException {
         assertThat(parser.parse(seed("instruction.contact-prep.md"))).containsExactly(
-                "整理近期互動，幫我準備下次聯繫重點", "上次跟這位顧客聊了什麼？");
+                "聯繫這位顧客前，有哪些提醒要處理？", "幫我準備這次聯繫的重點");
     }
 
     @Test

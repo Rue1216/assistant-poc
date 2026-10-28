@@ -5,6 +5,7 @@ import com.example.copilot.aiassistant.prompt.PublishedConfigCache.PublishedConf
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -14,7 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * Builds the system message: system.main, then instructions, then the code-only safety rules (01 section 4) and
+ * Builds the system message: system.main, then instructions, the code-only customer notes, then the code-only safety rules (01 section 4) and
  * answer format rules (answer-citations spec 5), and finally today's date in Taipei time.
  */
 @Component
@@ -23,6 +24,8 @@ public class PromptAssembler {
     private static final Logger log = LoggerFactory.getLogger(PromptAssembler.class);
 
     private static final ZoneId TAIPEI = ZoneId.of("Asia/Taipei");
+
+    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy/MM/dd");
 
     private static final String NO_INSTRUCTION = "（本題沒有適用的問題分類）";
 
@@ -42,9 +45,10 @@ public class PromptAssembler {
 
     /**
      * Assembles the prompt from the given configs; instructions are ordered by configKey here. Only the selected
-     * instructions are loaded and listed in the versions.
+     * instructions are loaded and listed in the versions. A non-null {@code customerNotes} (see
+     * {@link CustomerNotes}) goes between the instructions and the safety rules.
      */
-    public AssembledPrompt assemble(PublishedConfigs configs, InstructionSelection selection) {
+    public AssembledPrompt assemble(PublishedConfigs configs, InstructionSelection selection, String customerNotes) {
         List<PromptVersion> versions = new ArrayList<>();
         StringBuilder sb = new StringBuilder();
         AssistantConfig main = configs.systemPrompt();
@@ -71,8 +75,11 @@ public class PromptAssembler {
                     .append(instruction.getContent().strip()).append("\n\n");
             versions.add(new PromptVersion(instruction.getConfigKey(), instruction.getVersion()));
         }
+        if (customerNotes != null) {
+            sb.append(customerNotes).append("\n\n");
+        }
         sb.append(SafetyRules.TEXT).append("\n\n").append(AnswerFormatRules.TEXT)
-                .append("\n\n# 目前日期\n今天是 ").append(LocalDate.now(clock.withZone(TAIPEI)))
+                .append("\n\n# 目前日期\n今天是 ").append(LocalDate.now(clock.withZone(TAIPEI)).format(DATE_FORMAT))
                 .append("（台北時間）");
         versions.sort(Comparator.comparing(PromptVersion::configKey));
         return new AssembledPrompt(sb.toString(), versions);

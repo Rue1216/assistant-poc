@@ -94,7 +94,7 @@ public class EvalRunService {
         PublishedConfigs published = cache.loadFresh();
         EvalSnapshot snapshot = new EvalSnapshot(published, withCandidate(published, workingCopy));
         EvalRun draft = new EvalRun(null, configKey, workingCopy.getVersion(), workingCopy.getDocVersion(),
-                workingCopy.getUpdatedAt(), assembler.assemble(snapshot.baseline(), InstructionSelection.all()).versions(),
+                workingCopy.getUpdatedAt(), assembler.assemble(snapshot.baseline(), InstructionSelection.all(), null).versions(),
                 dataset.hash(), EvalStatus.RUNNING,
                 null, actor, now, now, null, dataset.cases().size(), 0, null, List.of(), 0L);
         String id;

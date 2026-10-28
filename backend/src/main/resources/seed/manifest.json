@@ -1,8 +1,10 @@
 [
   { "configKey": "system.main", "configType": "SYSTEM_PROMPT", "name": "主要系統提示", "file": "system.main.md" },
   { "configKey": "instruction.customer-overview", "configType": "SYSTEM_INSTRUCTION", "name": "顧客概況", "file": "instruction.customer-overview.md" },
-  { "configKey": "instruction.opportunity", "configType": "SYSTEM_INSTRUCTION", "name": "經營機會", "file": "instruction.opportunity.md" },
+  { "configKey": "instruction.asset-liability", "configType": "SYSTEM_INSTRUCTION", "name": "資產負債", "file": "instruction.asset-liability.md" },
+  { "configKey": "instruction.member-rank", "configType": "SYSTEM_INSTRUCTION", "name": "會員等級", "file": "instruction.member-rank.md" },
+  { "configKey": "instruction.opportunity", "configType": "SYSTEM_INSTRUCTION", "name": "商品機會", "file": "instruction.opportunity.md" },
+  { "configKey": "instruction.engagement", "configType": "SYSTEM_INSTRUCTION", "name": "往來與通路", "file": "instruction.engagement.md" },
   { "configKey": "instruction.contact-prep", "configType": "SYSTEM_INSTRUCTION", "name": "聯繫準備", "file": "instruction.contact-prep.md" },
-  { "configKey": "instruction.contact-topic", "configType": "SYSTEM_INSTRUCTION", "name": "聯繫話題", "file": "instruction.contact-topic.md" },
   { "configKey": "instruction.market-brief", "configType": "SYSTEM_INSTRUCTION", "name": "市場快訊", "file": "instruction.market-brief.md" }
 ]

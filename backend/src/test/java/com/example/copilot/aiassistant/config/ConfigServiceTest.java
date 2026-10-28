@@ -760,7 +760,7 @@ class ConfigServiceTest extends IntegrationTestBase {
 
         List<ConfigSummary> list = service.list();
 
-        assertThat(list).hasSize(6);
+        assertThat(list).hasSize(8);
         assertThat(list.get(0).configKey()).isEqualTo("system.main");
         ConfigSummary contactPrep = list.stream().filter(s -> s.configKey().equals(KEY)).findFirst().orElseThrow();
         assertThat(contactPrep.configType()).isEqualTo(ConfigType.SYSTEM_INSTRUCTION);
