@@ -42,30 +42,12 @@ function startNewChat(): void {
       @new-chat="startNewChat"
       @close="$emit('close')"
     />
-    <div class="ai-notice">
-      <svg
-        viewBox="0 0 24 24"
-        width="14"
-        height="14"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <rect x="4" y="11" width="16" height="10" rx="2" />
-        <path d="M8 11V7a4 4 0 0 1 8 0v4" />
-      </svg>
-      <span>AI 產生的內容可能有誤，請以系統資料為準。</span>
-    </div>
     <MessageList
       :messages="chat.messages.value"
       :round="chat.round.value"
       :categories="suggestions.categories.value"
       :unavailable="chat.unavailable.value"
       @ask="chat.ask"
-      @cancel="chat.cancel"
       @retry="chat.retry"
       @rate="chat.rate"
     />
@@ -75,13 +57,12 @@ function startNewChat(): void {
       :can-send="chat.canSend.value"
       :pending="chat.pending.value"
       :disabled="chat.unavailable.value"
-      :quick-questions="
-        chat.messages.value.length > 0
-          ? suggestions.categories.value.flatMap((c) => c.questions)
-          : []
+      :categories="
+        chat.messages.value.length > 0 ? suggestions.categories.value : []
       "
       @update:model-value="chat.setDraft"
       @send="chat.submit"
+      @cancel="chat.cancel"
       @ask="chat.ask"
     />
   </section>
@@ -105,20 +86,6 @@ function startNewChat(): void {
   box-shadow: var(--shadow-lg);
   border: 1px solid var(--color-border);
   overflow: hidden;
-}
-.ai-notice {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 16px;
-  background: var(--green-50);
-  border-bottom: 1px solid var(--green-100);
-  color: var(--green-700);
-  font-size: var(--text-xs);
-  line-height: var(--leading-tight);
-}
-.ai-notice svg {
-  flex: none;
 }
 @media (max-width: 600px) {
   .ai-panel {

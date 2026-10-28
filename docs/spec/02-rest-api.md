@@ -119,7 +119,7 @@
 | `history` | array | | 最多 20 則（10 輪），內容總長最多 8000 字；超過時後端從最舊的開始截掉。前端只帶目前這一輪（按「開新對話」之後）的訊息，見 1.1 |
 | `history[].role` | string | ✓ | `user` 或 `assistant` |
 | `history[].content` | string | ✓ | 1–4000 字 |
-| `categoryKey` | string | | 選填。快捷按鈕所屬問題分類的 `configKey`，格式 `^instruction\.[a-z0-9-]{1,50}$`，格式不符 → 400 `AI_INPUT_INVALID`。格式正確但不是本次快照中已發布的問題分類（例如按鈕在分類下架前載入、之後才被點）時**忽略**，改走路由，不回錯誤。自行輸入的提問與輸入框上方的追問建議按鈕不帶此欄位，一律走路由 |
+| `categoryKey` | string | | 選填。快捷按鈕所屬問題分類的 `configKey`，格式 `^instruction\.[a-z0-9-]{1,50}$`，格式不符 → 400 `AI_INPUT_INVALID`。格式正確但不是本次快照中已發布的問題分類（例如按鈕在分類下架前載入、之後才被點）時**忽略**，改走路由，不回錯誤。輸入框上方「快捷問題」清單的按鈕同樣帶所屬分類的 `configKey`；自行輸入的提問不帶此欄位，一律走路由 |
 
 ```json
 {
@@ -159,7 +159,7 @@
 | `citations[].cited` | boolean | 回答是否引用了這筆；`false` 表示只是查過 |
 | `queriedAt` | string | 本次提問的處理時間 |
 | `disclaimer` | string \| null | 用到市場工具時為「資訊僅供內部經營參考，不構成投資建議」 |
-| `toolCalls` | array | 本次的工具呼叫摘要，沒有呼叫工具時為空陣列 |
+| `toolCalls` | array | 本次的工具呼叫摘要，沒有呼叫工具時為空陣列。對話視窗不顯示，供除錯與驗收 |
 | `toolCalls[].name` | string | 工具名稱 |
 | `toolCalls[].purpose` | string | 中文用途 |
 | `toolCalls[].status` | string | `SUCCESS`、`ERROR`、`DENIED`、`TIMEOUT` |

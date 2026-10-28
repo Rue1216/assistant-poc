@@ -284,7 +284,7 @@ frontend/src/
 ├─ features/ai-assistant/
 │  ├─ components/   AssistantLauncher（接收 customerId）、AssistantPanel、AssistantHeader、
 │  │                MessageList、WelcomeCard、QuickQuestions、UserMessage、AssistantMessage
-│  │                （內含 AnswerBlocks、CitationList、ToolCallSummary、FeedbackButtons）、PendingMessage、
+│  │                （內含 AnswerBlocks、CitationList、FeedbackButtons）、PendingMessage、
 │  │                ErrorMessage、ChatComposer
 │  ├─ admin/        PromptManagementPage、ConfigList、ConfigEditor、PromptAssemblyGuide（兩步：
 │  │                System Prompt、問題分類；不顯示平台安全規則）、MarkdownEditor（編輯 / 預覽分頁）、

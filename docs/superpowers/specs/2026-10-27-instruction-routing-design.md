@@ -99,7 +99,7 @@ RouteDecision route(String redactedQuestion, List<ChatMessage> redactedHistory,
 
 - `POST /api/ai-assistant/customers/{customerId}/chat` 的 request 新增選填 `categoryKey`（`^instruction\.[a-z0-9-]{1,50}$`，格式不符 → 400 `AI_INPUT_INVALID`）。
 - 後端確認它是本次快照中已發布的 `SYSTEM_INSTRUCTION`：是 → 直接載入（`CHIP`，不呼叫路由）；不是（快捷按鈕可能在分類下架後才被點）→ 忽略，改走路由，不回錯誤。
-- 使用者之後自行輸入的追問一律走路由。輸入框上方的追問建議按鈕（`ChatComposer`，不分類的清單）同樣不帶 `categoryKey`，與自行輸入相同走路由。
+- 使用者之後自行輸入的追問一律走路由。輸入框上方的「快捷問題」清單（`ChatComposer`）原本不帶 `categoryKey`；2026-10-28 改為每個按鈕帶所屬分類的 `categoryKey`，與歡迎卡的快捷按鈕一致（同一題在兩處結果相同，也少一次路由呼叫）。
 
 ### 2.3 組裝
 

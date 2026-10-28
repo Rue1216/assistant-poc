@@ -184,7 +184,7 @@ describe('AssistantPanel', () => {
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
   })
 
-  it('cancel shows 已取消', async () => {
+  it('while waiting the send button becomes a stop button; stopping shows 已取消', async () => {
     chat.mockImplementation(
       (_id: string, _b: unknown, signal: AbortSignal) =>
         new Promise((_, rej) => signal.addEventListener('abort', () => rej(new DOMException('aborted', 'AbortError')))),
@@ -192,15 +192,58 @@ describe('AssistantPanel', () => {
     const { wrapper } = await mountPanel()
     await wrapper.find('textarea').setValue('hello')
     await wrapper.find('button.ai-send').trigger('click')
-    await wrapper.find('.ai-mini-btn').trigger('click')
+    expect(wrapper.find('button.ai-send').exists()).toBe(false)
+    expect(wrapper.find('.ai-messages button').exists()).toBe(false)
+
+    await wrapper.find('button[aria-label="停止回答"]').trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('已取消')
     expect(wrapper.text()).not.toContain('正在查詢資料並整理回答')
+    expect(wrapper.find('button[aria-label="停止回答"]').exists()).toBe(false)
+    expect(wrapper.find('button.ai-send').exists()).toBe(true)
+  })
+
+  it('clicking a follow-up suggestion sends it with its categoryKey and closes the list', async () => {
+    chat.mockResolvedValue(answer())
+    const { wrapper, store } = await mountPanel()
+    await store.send('hello')
+    await flushPromises()
+    const pop = wrapper.find('details.ai-quick-pop')
+    ;(pop.element as HTMLDetailsElement).open = true
+    await pop.findAll('button.chip')[2]!.trigger('click')
+    await flushPromises()
+    expect(chat.mock.calls[1]![1].message).toBe('這位顧客有哪些值得關注的經營機會？')
+    expect(chat.mock.calls[1]![1].categoryKey).toBe('instruction.opportunity')
+    expect((pop.element as HTMLDetailsElement).open).toBe(false)
+  })
+
+  it('shows the AI notice under the input instead of a banner', async () => {
+    const { wrapper } = await mountPanel()
+    expect(wrapper.find('.ai-notice').exists()).toBe(false)
+    const foot = wrapper.find('.ai-composer__foot')
+    expect(foot.text()).toContain('AI 產生的內容可能有誤，請以系統資料為準')
+    expect(foot.text()).not.toContain('Enter 送出')
+    expect(foot.find('.ai-composer__count').text()).toBe('0 / 1000')
+  })
+
+  it('scrolls to the start of a new answer rather than its end', async () => {
+    chat.mockResolvedValue(answer('長回答'))
+    const { wrapper, store } = await mountPanel()
+    // jsdom has no layout: the list starts at 100px, the answer at 500px
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return { top: this.matches('article.ai-msg') ? 500 : 100 } as DOMRect
+    })
+    await store.send('hello')
+    await flushPromises()
+    expect(wrapper.find('.ai-messages').element.scrollTop).toBe(384)
+    rect.mockRestore()
   })
 
   describe('new chat button', () => {
     const newChat = (w: Awaited<ReturnType<typeof mountPanel>>['wrapper']) => w.find('button[aria-label="開新對話"]')
     const dividers = (w: Awaited<ReturnType<typeof mountPanel>>['wrapper']) => w.findAll('.ai-divider').map((d) => d.text())
+    const hints = (w: Awaited<ReturnType<typeof mountPanel>>['wrapper']) => w.findAll('.ai-divider__hint').map((d) => d.text())
+    const NEW_ROUND_HINT = '以下為新對話，不會參考上方的對話內容'
 
     it('replaces the more-actions menu; history and delete are gone', async () => {
       const { wrapper } = await mountPanel()
@@ -225,7 +268,7 @@ describe('AssistantPanel', () => {
       expect(newChat(wrapper).attributes('disabled')).toBeDefined()
     })
 
-    it('keeps the earlier conversation, adds a 新對話 divider and clears the draft', async () => {
+    it('keeps the earlier conversation, adds a new-round divider and clears the draft', async () => {
       chat.mockResolvedValue(answer('第一輪回答'))
       const { wrapper, store } = await mountPanel()
       await store.send('hello')
@@ -235,14 +278,18 @@ describe('AssistantPanel', () => {
       expect(wrapper.text()).toContain('第一輪回答')
       expect(wrapper.find('.ai-welcome').exists()).toBe(false)
       expect(dividers(wrapper)).toHaveLength(2)
-      expect(dividers(wrapper)[1]).toBe('新對話')
+      // before the new round has a message, the hint is the divider text itself
+      expect(dividers(wrapper)[1]).toBe(NEW_ROUND_HINT)
+      expect(hints(wrapper)).toEqual([])
       expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('')
 
       await store.send('again')
       await flushPromises()
       expect(dividers(wrapper)).toHaveLength(2)
       expect(dividers(wrapper)[0]).toMatch(/^今天 \d{2}:\d{2}$/)
-      expect(dividers(wrapper)[1]).toMatch(/^新對話 · 今天 \d{2}:\d{2}$/)
+      expect(dividers(wrapper)[1]).toMatch(/^今天 \d{2}:\d{2}$/)
+      // the hint moves under the divider; only later rounds carry it, never the first
+      expect(hints(wrapper)).toEqual([NEW_ROUND_HINT])
     })
 
     it('hides retry on an error from an earlier round', async () => {

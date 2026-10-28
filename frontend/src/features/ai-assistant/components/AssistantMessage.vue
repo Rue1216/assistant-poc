@@ -1,33 +1,33 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import type { ChatMessage, FeedbackRating } from '../types'
-import { formatTaipeiTime } from '../taipeiTime'
-import { useToast } from '../../../platform-mock/useToast'
-import AnswerBlocks from './AnswerBlocks'
-import ToolCallSummary from './ToolCallSummary.vue'
-import CitationList from './CitationList.vue'
-import FeedbackButtons from './FeedbackButtons.vue'
+import { computed, ref } from "vue";
+import type { ChatMessage, FeedbackRating } from "../types";
+import { formatTaipeiTime } from "../taipeiTime";
+import { useToast } from "../../../platform-mock/useToast";
+import AnswerBlocks from "./AnswerBlocks";
+import CitationList from "./CitationList.vue";
+import FeedbackButtons from "./FeedbackButtons.vue";
 
-const props = defineProps<{ message: ChatMessage }>()
+const props = defineProps<{ message: ChatMessage }>();
 
-const emit = defineEmits<{ rate: [rating: FeedbackRating | null] }>()
+const emit = defineEmits<{ rate: [rating: FeedbackRating | null] }>();
 
-const toast = useToast()
-const time = computed(() => formatTaipeiTime(props.message.queriedAt ?? props.message.createdAt))
-const hasTools = computed(() => (props.message.toolCalls?.length ?? 0) > 0)
-const hasCitations = computed(() => (props.message.citations?.length ?? 0) > 0)
-const citationList = ref<InstanceType<typeof CitationList> | null>(null)
+const toast = useToast();
+const time = computed(() =>
+  formatTaipeiTime(props.message.queriedAt ?? props.message.createdAt),
+);
+const hasCitations = computed(() => (props.message.citations?.length ?? 0) > 0);
+const citationList = ref<InstanceType<typeof CitationList> | null>(null);
 
 function onCite(id: number): void {
-  citationList.value?.reveal(id)
+  citationList.value?.reveal(id);
 }
 
 async function copy(): Promise<void> {
   try {
-    await navigator.clipboard.writeText(props.message.content)
-    toast.show('已複製', 'info')
+    await navigator.clipboard.writeText(props.message.content);
+    toast.show("已複製", "info");
   } catch {
-    toast.show('無法複製，請手動選取文字')
+    toast.show("無法複製，請手動選取文字");
   }
 }
 </script>
@@ -37,25 +37,47 @@ async function copy(): Promise<void> {
     <div class="ai-msg__avatar" aria-hidden="true">✦</div>
     <div class="ai-msg__content">
       <div class="ai-msg__bubble md">
-        <AnswerBlocks :blocks="message.blocks ?? []" :citations="message.citations ?? []" @cite="onCite" />
+        <AnswerBlocks
+          :blocks="message.blocks ?? []"
+          :citations="message.citations ?? []"
+          @cite="onCite"
+        />
       </div>
 
       <p v-if="message.disclaimer" class="ai-disclaimer">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+        <svg
+          viewBox="0 0 24 24"
+          width="14"
+          height="14"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
           <circle cx="12" cy="12" r="9" />
           <path d="M12 8v5M12 16h.01" />
         </svg>
         {{ message.disclaimer }}
       </p>
 
-      <div v-if="hasTools || hasCitations" class="ai-meta">
-        <ToolCallSummary v-if="hasTools" :tool-calls="message.toolCalls!" />
-        <CitationList v-if="hasCitations" ref="citationList" :citations="message.citations!" :class="{ 'ai-meta__sep': hasTools }" />
+      <div v-if="hasCitations" class="ai-meta">
+        <CitationList ref="citationList" :citations="message.citations!" />
       </div>
 
       <div class="ai-msg__actions">
         <button class="ai-mini-btn" type="button" @click="copy">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <svg
+            viewBox="0 0 24 24"
+            width="14"
+            height="14"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
             <rect x="9" y="9" width="11" height="11" rx="2" />
             <path d="M5 15V6a2 2 0 0 1 2-2h9" />
           </svg>
@@ -152,9 +174,6 @@ async function copy(): Promise<void> {
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   font-size: var(--text-xs);
-}
-.ai-meta__sep {
-  border-top: 1px solid var(--color-border);
 }
 .ai-msg__actions {
   display: flex;

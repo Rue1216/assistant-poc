@@ -59,32 +59,20 @@ describe('AssistantMessage', () => {
     expect(w.find('.ai-msg__time').text()).toBe('14:03')
   })
 
-  it('shows tool call summary only when toolCalls non-empty', () => {
-    expect(mount(AssistantMessage, { props: { message: msg() } }).find('details').exists()).toBe(false)
-
+  it('does not show tool calls', () => {
     const w = mount(AssistantMessage, {
       props: {
         message: msg({
-          toolCalls: [
-            { name: 'getCustomerHoldings', purpose: '查詢顧客持有商品概況', status: 'SUCCESS', durationMs: 9 },
-            { name: 'getStockQuote', purpose: '查詢上市個股行情', status: 'TIMEOUT', durationMs: 1400 },
-          ],
+          toolCalls: [{ name: 'getCustomerHoldings', purpose: '查詢顧客持有商品概況', status: 'SUCCESS', durationMs: 9 }],
         }),
       },
     })
-    const details = w.find('details')
-    expect(details.find('summary').text()).toContain('使用 2 個工具 · 1.4 s')
-    const rows = details.findAll('li')
-    expect(rows).toHaveLength(2)
-    expect(rows[0]!.text()).toContain('查詢顧客持有商品概況')
-    expect(rows[0]!.text()).toContain('getCustomerHoldings')
-    expect(rows[0]!.text()).toContain('成功')
-    expect(rows[0]!.text()).toContain('9 ms')
-    expect(rows[1]!.text()).toContain('逾時')
-    expect(rows[1]!.text()).toContain('1.4 s')
+    expect(w.text()).not.toContain('getCustomerHoldings')
+    expect(w.text()).not.toContain('個工具')
+    expect(w.find('.ai-meta').exists()).toBe(false)
   })
 
-  it('shows disclaimer and citation list; ai-meta only with tools or citations', () => {
+  it('shows disclaimer and citation list; ai-meta only with citations', () => {
     expect(mount(AssistantMessage, { props: { message: msg() } }).find('.ai-meta').exists()).toBe(false)
     const w = mount(AssistantMessage, {
       props: {
@@ -97,19 +85,6 @@ describe('AssistantMessage', () => {
     expect(w.find('.ai-disclaimer').text()).toBe('資訊僅供內部經營參考，不構成投資建議')
     expect(w.find('.ai-meta').exists()).toBe(true)
     expect(w.findAll('.ai-citation')).toHaveLength(2)
-    expect(w.find('.ai-meta__sep').exists()).toBe(false)
-  })
-
-  it('adds separator when tools and citations both present', () => {
-    const w = mount(AssistantMessage, {
-      props: {
-        message: msg({
-          citations: [cit(1)],
-          toolCalls: [{ name: 'getStockQuote', purpose: '查詢', status: 'SUCCESS', durationMs: 9 }],
-        }),
-      },
-    })
-    expect(w.find('.ai-meta__sep').exists()).toBe(true)
   })
 
   it('clicking a citation button opens and highlights the item', async () => {

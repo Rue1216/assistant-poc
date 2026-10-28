@@ -1,7 +1,3 @@
-<script setup lang="ts">
-defineEmits<{ cancel: [] }>()
-</script>
-
 <template>
   <div class="ai-msg">
     <div class="ai-msg__avatar" aria-hidden="true">✦</div>
@@ -9,7 +5,6 @@ defineEmits<{ cancel: [] }>()
       <div class="ai-msg__bubble">
         <div class="ai-typing" aria-label="查詢中"><span></span><span></span><span></span></div>
         <p class="ai-pending__text">正在查詢資料並整理回答…</p>
-        <button class="ai-mini-btn" type="button" @click="$emit('cancel')">停止</button>
       </div>
     </div>
   </div>
@@ -49,22 +44,6 @@ defineEmits<{ cancel: [] }>()
   flex: 1;
   font-size: var(--text-sm);
   color: var(--color-text-muted);
-}
-.ai-mini-btn {
-  display: inline-flex;
-  align-items: center;
-  height: 24px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-text-muted);
-  font-size: var(--text-xs);
-  cursor: pointer;
-}
-.ai-mini-btn:hover {
-  background: var(--gray-100);
-  color: var(--color-text);
 }
 .ai-typing {
   display: flex;

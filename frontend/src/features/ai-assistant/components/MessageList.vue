@@ -1,66 +1,119 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
-import type { ChatMessage, FeedbackRating, SuggestionCategory } from '../types'
-import { formatTaipei, formatTaipeiTime } from '../taipeiTime'
-import WelcomeCard from './WelcomeCard.vue'
-import UserMessage from './UserMessage.vue'
-import AssistantMessage from './AssistantMessage.vue'
-import PendingMessage from './PendingMessage.vue'
-import ErrorMessage from './ErrorMessage.vue'
+import { computed, nextTick, ref, watch } from "vue";
+import type { ChatMessage, FeedbackRating, SuggestionCategory } from "../types";
+import { formatTaipei, formatTaipeiTime } from "../taipeiTime";
+import WelcomeCard from "./WelcomeCard.vue";
+import UserMessage from "./UserMessage.vue";
+import AssistantMessage from "./AssistantMessage.vue";
+import PendingMessage from "./PendingMessage.vue";
+import ErrorMessage from "./ErrorMessage.vue";
 
 const props = defineProps<{
-  messages: ChatMessage[]
+  messages: ChatMessage[];
   /** The current round; earlier rounds stay on screen but cannot be retried. */
-  round: number
-  categories: SuggestionCategory[]
-  unavailable: boolean
-}>()
-defineEmits<{ ask: [question: string, categoryKey: string]; cancel: []; retry: [id: string]; rate: [id: string, rating: FeedbackRating | null] }>()
+  round: number;
+  categories: SuggestionCategory[];
+  unavailable: boolean;
+}>();
+defineEmits<{
+  ask: [question: string, categoryKey: string];
+  retry: [id: string];
+  rate: [id: string, rating: FeedbackRating | null];
+}>();
 
-const box = ref<HTMLElement | null>(null)
+/** Earlier rounds stay on screen but are not sent as history; say so under each 新對話 divider. */
+const NEW_ROUND_HINT = "以下為新對話，不會參考上方的對話內容";
+
+/** Gap kept above an answer scrolled to the top, same as the list's padding. */
+const ANSWER_TOP_GAP = 16;
+
+const box = ref<HTMLElement | null>(null);
 function timeLabel(iso: string): string {
   // compare calendar days in Asia/Taipei; formatTaipei is "YYYY/MM/DD HH:mm"
-  const day = (t: string) => formatTaipei(t).slice(0, 10)
-  return day(iso) === day(new Date().toISOString()) ? `今天 ${formatTaipeiTime(iso)}` : formatTaipei(iso)
+  const day = (t: string) => formatTaipei(t).slice(0, 10);
+  return day(iso) === day(new Date().toISOString())
+    ? `今天 ${formatTaipeiTime(iso)}`
+    : formatTaipei(iso);
 }
 
-/** Divider text before each message that opens a round (null otherwise); later rounds are marked 新對話. */
+/** Divider before each message that opens a round (null otherwise); later rounds are marked 新對話. */
 const dividers = computed(() =>
   props.messages.map((m, i) => {
-    if (i > 0 && props.messages[i - 1]!.round === m.round) return null
-    return i === 0 ? timeLabel(m.createdAt) : `新對話 · ${timeLabel(m.createdAt)}`
+    if (i > 0 && props.messages[i - 1]!.round === m.round) return null;
+    return { label: timeLabel(m.createdAt), newRound: i !== 0 };
   }),
-)
+);
 
 /** A new round was started and has no messages yet. */
-const awaitingRound = computed(() => props.messages.length > 0 && props.messages.at(-1)!.round !== props.round)
+const awaitingRound = computed(
+  () =>
+    props.messages.length > 0 && props.messages.at(-1)!.round !== props.round,
+);
 
 watch(
   () => [props.messages.length, props.messages.at(-1)?.state, props.round],
   async () => {
-    await nextTick()
-    if (box.value) box.value.scrollTop = box.value.scrollHeight
+    await nextTick();
+    const el = box.value;
+    if (!el) return;
+    // a finished answer arrives whole; show its start instead of jumping to its end
+    const last = props.messages.at(-1);
+    const answer =
+      last?.role === "assistant" && last.state === "done"
+        ? el.querySelector(`[data-message-id="${last.id}"]`)
+        : null;
+    el.scrollTop = answer
+      ? el.scrollTop +
+        answer.getBoundingClientRect().top -
+        el.getBoundingClientRect().top -
+        ANSWER_TOP_GAP
+      : el.scrollHeight;
   },
-)
+);
 </script>
 
 <template>
   <div ref="box" class="ai-messages" role="log" aria-live="polite">
-    <p v-if="unavailable" class="ai-unavailable" role="alert">查無此顧客或您沒有查看權限</p>
-    <WelcomeCard v-else-if="messages.length === 0" :categories="categories" @ask="(q, k) => $emit('ask', q, k)" />
+    <p v-if="unavailable" class="ai-unavailable" role="alert">
+      查無此顧客或您沒有查看權限
+    </p>
+    <WelcomeCard
+      v-else-if="messages.length === 0"
+      :categories="categories"
+      @ask="(q, k) => $emit('ask', q, k)"
+    />
     <div v-else class="ai-thread">
       <template v-for="(m, i) in messages" :key="m.id">
-        <div v-if="dividers[i]" class="ai-divider">
-          <span>{{ dividers[i] }}</span>
+        <div v-if="dividers[i]" class="ai-round-break">
+          <div class="ai-divider">
+            <span>{{ dividers[i]!.label }}</span>
+          </div>
+          <p v-if="dividers[i]!.newRound" class="ai-divider__hint">
+            {{ NEW_ROUND_HINT }}
+          </p>
         </div>
         <UserMessage v-if="m.role === 'user'" :message="m" />
-        <PendingMessage v-else-if="m.state === 'pending'" @cancel="$emit('cancel')" />
-        <ErrorMessage v-else-if="m.state === 'error'" :message="m" :retryable="m.round === round" @retry="$emit('retry', m.id)" />
-        <div v-else-if="m.state === 'cancelled'" class="ai-cancelled">已取消</div>
-        <AssistantMessage v-else :message="m" @rate="$emit('rate', m.id, $event)" />
+        <PendingMessage v-else-if="m.state === 'pending'" />
+        <ErrorMessage
+          v-else-if="m.state === 'error'"
+          :message="m"
+          :retryable="m.round === round"
+          @retry="$emit('retry', m.id)"
+        />
+        <div v-else-if="m.state === 'cancelled'" class="ai-cancelled">
+          已取消
+        </div>
+        <AssistantMessage
+          v-else
+          :data-message-id="m.id"
+          :message="m"
+          @rate="$emit('rate', m.id, $event)"
+        />
       </template>
-      <div v-if="awaitingRound" class="ai-divider">
-        <span>新對話</span>
+      <div v-if="awaitingRound" class="ai-round-break">
+        <div class="ai-divider">
+          <span>{{ NEW_ROUND_HINT }}</span>
+        </div>
       </div>
     </div>
   </div>
@@ -89,10 +142,16 @@ watch(
 }
 .ai-divider::before,
 .ai-divider::after {
-  content: '';
+  content: "";
   flex: 1;
   height: 1px;
   background: var(--color-border);
+}
+.ai-divider__hint {
+  margin-top: 4px;
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
+  text-align: center;
 }
 .ai-cancelled {
   align-self: flex-start;

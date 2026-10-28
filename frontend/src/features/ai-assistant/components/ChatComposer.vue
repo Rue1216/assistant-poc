@@ -1,19 +1,36 @@
 <script setup lang="ts">
+import { computed, ref } from "vue";
+import type { SuggestionCategory } from "../types";
 import { MAX_MESSAGE_LENGTH } from "../composables/useAssistantChat";
 
-defineProps<{
+const props = defineProps<{
   modelValue: string;
   count: number;
   canSend: boolean;
   pending: boolean;
   disabled: boolean;
-  quickQuestions: string[];
+  categories: SuggestionCategory[];
 }>();
 const emit = defineEmits<{
   "update:modelValue": [value: string];
   send: [];
-  ask: [question: string];
+  cancel: [];
+  ask: [question: string, categoryKey: string];
 }>();
+
+/** One flat list; each question keeps its category so it skips routing like the welcome chips. */
+const quickQuestions = computed(() =>
+  props.categories.flatMap((c) =>
+    c.questions.map((question) => ({ question, categoryKey: c.configKey })),
+  ),
+);
+
+const quickPop = ref<HTMLDetailsElement | null>(null);
+
+function askQuick(question: string, categoryKey: string): void {
+  if (quickPop.value) quickPop.value.open = false;
+  emit("ask", question, categoryKey);
+}
 
 function onKeydown(e: KeyboardEvent): void {
   if (e.key !== "Enter" || e.shiftKey) return;
@@ -34,7 +51,7 @@ function onInput(e: Event): void {
 
 <template>
   <footer class="ai-composer-wrap">
-    <details v-if="quickQuestions.length" class="ai-quick-pop">
+    <details v-if="quickQuestions.length" ref="quickPop" class="ai-quick-pop">
       <summary>
         <svg
           viewBox="0 0 24 24"
@@ -56,13 +73,13 @@ function onInput(e: Event): void {
       <div class="ai-quick-pop__list">
         <button
           v-for="q in quickQuestions"
-          :key="q"
+          :key="`${q.categoryKey}:${q.question}`"
           class="chip"
           type="button"
           :disabled="pending || disabled"
-          @click="emit('ask', q)"
+          @click="askQuick(q.question, q.categoryKey)"
         >
-          {{ q }}
+          {{ q.question }}
         </button>
       </div>
     </details>
@@ -81,6 +98,19 @@ function onInput(e: Event): void {
         @keydown="onKeydown"
       ></textarea>
       <button
+        v-if="pending"
+        class="ai-stop"
+        type="button"
+        aria-label="停止回答"
+        title="停止回答"
+        @click="emit('cancel')"
+      >
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+          <rect x="5" y="5" width="14" height="14" rx="2" />
+        </svg>
+      </button>
+      <button
+        v-else
         class="ai-send"
         type="button"
         aria-label="送出"
@@ -102,7 +132,7 @@ function onInput(e: Event): void {
       </button>
     </div>
     <div class="ai-composer__foot">
-      <span>Enter 送出 · Shift + Enter 換行</span>
+      <span class="ai-composer__notice">AI 產生的內容可能有誤，請以系統資料為準。</span>
       <span class="ai-composer__count"
         >{{ count }} / {{ MAX_MESSAGE_LENGTH }}</span
       >
@@ -184,7 +214,8 @@ function onInput(e: Event): void {
 .ai-composer__input::placeholder {
   color: var(--color-text-subtle);
 }
-.ai-send {
+.ai-send,
+.ai-stop {
   display: grid;
   place-items: center;
   flex: none;
@@ -197,8 +228,13 @@ function onInput(e: Event): void {
   cursor: pointer;
   transition: background var(--duration-fast);
 }
-.ai-send:hover:not(:disabled) {
+.ai-send:hover:not(:disabled),
+.ai-stop:hover {
   background: var(--color-primary-hover);
+}
+.ai-stop:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 .ai-send:disabled {
   background: var(--gray-200);
@@ -207,12 +243,17 @@ function onInput(e: Event): void {
 .ai-composer__foot {
   display: flex;
   justify-content: space-between;
+  gap: 8px;
   margin-top: 6px;
   padding: 0 4px;
   font-size: 11px;
   color: var(--color-text-subtle);
 }
+.ai-composer__notice {
+  min-width: 0;
+}
 .ai-composer__count {
+  flex: none;
   font-variant-numeric: tabular-nums;
 }
 </style>

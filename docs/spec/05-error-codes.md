@@ -6,7 +6,7 @@
 
 - 錯誤分兩層：
   - **API 錯誤**：回傳 HTTP 錯誤，前端以 Toast 或對話視窗內的提示顯示。
-  - **工具錯誤**：不中斷對話，寫進工具結果交給模型說明，並顯示在 tool call 摘要的狀態欄。
+  - **工具錯誤**：不中斷對話，寫進工具結果交給模型說明，並記在稽核紀錄 `toolCalls` 的狀態欄（對話視窗不顯示工具呼叫）。
 - `message` 一律是固定的友善訊息。供應商原始錯誤、stack trace、內部網址、token 只會出現在後端 log（並遮罩），不會回傳給前端或送給模型。
 - 每個錯誤回應都帶 `requestId`，方便對照後端 log。
 
@@ -113,7 +113,7 @@
 | 管理 API 409 `AI_CONFIG_OVERWRITE_PENDING` | 不跳 Toast，改跳確認視窗（草稿：會被標為已捨棄；已排程：排程取消並標為已捨棄；兩者都說明仍可在版本歷程找回）；確認後帶 `confirmOverwrite: true` 與 `details[0].docVersion` 重送 |
 | 管理 API 400（預約時間） | 在預約時間欄位下方顯示「預約時間需在 1 分鐘後、90 天內」 |
 | 管理 API 422 驗證失敗 | 在編輯器下方列出每條 `details` |
-| 使用者按「取消」 | 不視為錯誤，訊息標示「已取消」，不跳 Toast |
+| 使用者按輸入框的「停止回答」 | 不視為錯誤，訊息標示「已取消」，不跳 Toast |
 | 網路中斷、無回應 | Toast「網路連線異常，請稍後再試」 |
 | 回饋 404 `AI_FEEDBACK_NOT_FOUND` | 全域 Toast 顯示友善訊息，回答的按鈕還原為伺服器最後確認的狀態 |
 | 版本歷程的回饋統計失敗 | 靜默（不跳 Toast、不顯示統計）：`AI_FORBIDDEN`、`AI_CONFIG_NOT_FOUND`、網路錯誤、`AI_INTERNAL_ERROR`；`AI_UNAUTHENTICATED` 不靜默，交給 401 的登入逾時處理 |
