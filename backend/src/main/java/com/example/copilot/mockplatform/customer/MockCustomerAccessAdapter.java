@@ -17,16 +17,28 @@ public class MockCustomerAccessAdapter implements CustomerAccessPort {
 
     private final MockUserDirectory directory;
     private final CustomerDataPort customers;
+    private final MockCustomerData customerData;
 
-    public MockCustomerAccessAdapter(MockUserDirectory directory, CustomerDataPort customers) {
+    public MockCustomerAccessAdapter(MockUserDirectory directory, CustomerDataPort customers,
+                                     MockCustomerData customerData) {
         this.directory = directory;
         this.customers = customers;
+        this.customerData = customerData;
     }
 
+    /** A customer who stopped data use is invisible to everyone, whatever the role (platform CIP flag "Y"). */
     @Override
-    public AccessLevel checkAccess(UserContext user, String customerId) {
+    public AccessLevel checkAccess(UserContext user, String certNo) {
+        if (customerData.stopUseCustomerData(certNo)) {
+            return AccessLevel.NONE;
+        }
+        return scopeLevel(user, certNo);
+    }
+
+    /** The role-and-scope decision only; ignores the stop-use flag (used by the customer list and /cip). */
+    public AccessLevel scopeLevel(UserContext user, String certNo) {
         Optional<MockUser> mockUser = directory.find(user.userId());
-        Optional<CustomerRecord> customer = customers.findCustomer(customerId);
+        Optional<CustomerRecord> customer = customers.findCustomer(certNo);
         if (mockUser.isEmpty() || customer.isEmpty()) {
             return AccessLevel.NONE;
         }

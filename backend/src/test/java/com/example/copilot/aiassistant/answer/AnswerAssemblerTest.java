@@ -3,6 +3,7 @@ package com.example.copilot.aiassistant.answer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.example.copilot.TestCustomers;
 import com.example.copilot.aiassistant.common.AssistantException;
 import com.example.copilot.aiassistant.common.ErrorCode;
 import com.example.copilot.aiassistant.port.AccessLevel;
@@ -24,7 +25,7 @@ class AnswerAssemblerTest {
     private final JsonMapper mapper = JsonMapper.builder().build();
     private final AnswerAssembler assembler = new AnswerAssembler(new PiiRedactor(), mapper);
     private final CustomerContext customer =
-            new CustomerContext("C001", AccessLevel.FULL, Set.of("王小明"), Set.of());
+            new CustomerContext(TestCustomers.RETIREE, AccessLevel.FULL, Set.of("王小明"), Set.of());
 
     private static ToolOutcome outcome(String id, String payload) {
         return new ToolOutcome("tool", "purpose", ToolResult.success(null, List.of()), payload, 1L, id);

@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { apiClient } from '../apiClient'
 
 interface CustomerSummary {
-  customerId: string
+  certNo: string
   name: string
   segment: string
   accessLevel: 'FULL' | 'LIMITED'
@@ -40,18 +40,18 @@ function open(id: string) {
     <h1>顧客名單</h1>
 
     <form class="search" @submit.prevent="open(inputId)">
-      <label class="sr-only" for="customer-id">輸入顧客編號</label>
-      <input id="customer-id" v-model="inputId" class="input" type="text" placeholder="輸入顧客編號，例如 C001" />
+      <label class="sr-only" for="cert-no">輸入顧客編號</label>
+      <input id="cert-no" v-model="inputId" class="input" type="text" placeholder="輸入顧客編號，例如 A123456789" />
       <button type="submit" class="btn btn--primary">查詢</button>
     </form>
 
     <p v-if="loading" class="muted">載入中…</p>
     <ul v-else class="card list">
-      <li v-for="c in customers" :key="c.customerId">
-        <button type="button" class="row" @click="open(c.customerId)">
+      <li v-for="c in customers" :key="c.certNo">
+        <button type="button" class="row" @click="open(c.certNo)">
           <span class="avatar" aria-hidden="true">{{ c.name.charAt(0) }}</span>
           <span class="name">{{ c.name }}</span>
-          <span class="id">{{ c.customerId }}</span>
+          <span class="id">{{ c.certNo }}</span>
           <span class="seg"><span class="badge badge--published badge--plain">{{ c.segment }}</span></span>
           <span v-if="c.accessLevel === 'LIMITED'" class="badge badge--scheduled badge--plain">基本輪廓</span>
           <svg class="chevron" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>

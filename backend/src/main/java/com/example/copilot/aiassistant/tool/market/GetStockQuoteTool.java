@@ -72,7 +72,7 @@ public class GetStockQuoteTool extends AbstractMarketTool<GetStockQuoteTool.Stoc
         LocalDate dataDate = TwseParsing.rocDate(get(quote, "Date"));
         BigDecimal volume = TwseParsing.number(get(quote, "TradeVolume"));
         StockQuoteData data = new StockQuoteData(args.stockCode(), companyName(get(quote, "Name")),
-                isoDate(dataDate), TwseParsing.number(get(quote, "OpeningPrice")),
+                displayDate(dataDate), TwseParsing.number(get(quote, "OpeningPrice")),
                 TwseParsing.number(get(quote, "HighestPrice")), TwseParsing.number(get(quote, "LowestPrice")),
                 TwseParsing.number(get(quote, "ClosingPrice")), TwseParsing.number(get(quote, "Change")),
                 volume == null ? null : volume.longValue(),

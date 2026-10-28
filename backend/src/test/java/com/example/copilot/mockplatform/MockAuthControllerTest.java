@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.example.copilot.IntegrationTestBase;
+import com.example.copilot.TestCustomers;
 import com.example.copilot.TestUsers;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -64,7 +65,7 @@ class MockAuthControllerTest extends IntegrationTestBase {
 
     @Test
     void unauthenticatedAssistantApiReturnsAiUnauthenticated() throws Exception {
-        mockMvc.perform(get("/api/ai-assistant/customers/C001/suggestions"))
+        mockMvc.perform(get("/api/ai-assistant/customers/" + TestCustomers.RETIREE + "/suggestions"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AI_UNAUTHENTICATED"))
                 .andExpect(jsonPath("$.requestId").isNotEmpty());

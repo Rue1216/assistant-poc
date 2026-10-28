@@ -91,9 +91,9 @@ public class GetCompanyAnnouncementsTool extends AbstractMarketTool<GetCompanyAn
 
     private static Announcement announcement(Map<String, String> row) {
         String subject = nullToEmpty(get(row, "主旨")).replaceAll("[\\r\\n]+", "");
-        return new Announcement(isoDate(TwseParsing.rocDate(get(row, "發言日期"))),
+        return new Announcement(displayDate(TwseParsing.rocDate(get(row, "發言日期"))),
                 TwseParsing.time(get(row, "發言時間")), shorten(subject, MAX_SUBJECT_CHARS),
-                isoDate(TwseParsing.rocDate(get(row, "事實發生日"))));
+                displayDate(TwseParsing.rocDate(get(row, "事實發生日"))));
     }
 
     private static String nullToEmpty(String s) {

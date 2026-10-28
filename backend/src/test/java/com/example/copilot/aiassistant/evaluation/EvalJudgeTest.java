@@ -2,6 +2,7 @@ package com.example.copilot.aiassistant.evaluation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.example.copilot.TestCustomers;
 import com.example.copilot.aiassistant.chat.ScriptedChatModel;
 import com.example.copilot.aiassistant.port.AccessLevel;
 import com.example.copilot.aiassistant.privacy.CustomerContext;
@@ -29,7 +30,7 @@ class EvalJudgeTest {
 
     private final JsonMapper mapper = JsonMapper.builder().build();
     private final CustomerContext customer =
-            new CustomerContext("C001", AccessLevel.FULL, Set.of("王小明"), Set.of());
+            new CustomerContext(TestCustomers.RETIREE, AccessLevel.FULL, Set.of("王小明"), Set.of());
 
     private EvalJudge judge(ScriptedChatModel model) {
         return new EvalJudge(model, new PiiRedactor(), mapper,

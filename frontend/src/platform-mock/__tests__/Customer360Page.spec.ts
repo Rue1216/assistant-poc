@@ -2,9 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { apiClient, ApiError } from '../apiClient'
 import Customer360Page from '../pages/Customer360Page.vue'
+import { ATTENTION, RETIREE, UNKNOWN } from '../../testing/testCustomers'
 
 const FULL = {
-  customerId: 'C001',
+  certNo: RETIREE,
   accessLevel: 'FULL',
   name: '王小明',
   segment: 'VIP',
@@ -16,9 +17,9 @@ const FULL = {
   assetAmount: 7_500_000,
 }
 
-async function mountPage(customerId = 'C001') {
+async function mountPage(certNo = RETIREE) {
   const wrapper = mount(Customer360Page, {
-    props: { customerId },
+    props: { certNo },
     global: { stubs: { RouterLink: { template: '<a><slot /></a>' }, AssistantLauncher: true } },
   })
   await flushPromises()
@@ -35,7 +36,7 @@ describe('Customer360Page', () => {
 
     const card = wrapper.find('.c360-namecard')
     expect(card.find('.c360-namecard__name').text()).toBe('王小明')
-    expect(card.find('.c360-namecard__id').text()).toBe('C001・往來 8 年')
+    expect(card.find('.c360-namecard__id').text()).toBe(`${RETIREE}・往來 8 年`)
     expect(card.text()).toContain('VIP')
     expect(card.text()).toContain('退休規劃')
     expect(card.text()).toContain('穩健型')
@@ -48,10 +49,10 @@ describe('Customer360Page', () => {
 
   it('shows only the name card for a LIMITED view', async () => {
     vi.spyOn(apiClient, 'get').mockResolvedValue({
-      data: { customerId: 'C003', accessLevel: 'LIMITED', name: '陳**', segment: '一般', relationshipYears: 3 },
+      data: { certNo: ATTENTION, accessLevel: 'LIMITED', name: '陳**', segment: '一般', relationshipYears: 3 },
     })
 
-    const wrapper = await mountPage('C003')
+    const wrapper = await mountPage(ATTENTION)
 
     expect(wrapper.find('.c360-namecard').exists()).toBe(true)
     expect(wrapper.find('.c360-b').exists()).toBe(false)
@@ -63,7 +64,7 @@ describe('Customer360Page', () => {
   it('shows the not-found message for an unknown or inaccessible customer', async () => {
     vi.spyOn(apiClient, 'get').mockRejectedValue(new ApiError(404, 'AI_CUSTOMER_NOT_FOUND', 'not found'))
 
-    const wrapper = await mountPage('C999')
+    const wrapper = await mountPage(UNKNOWN)
 
     expect(wrapper.find('.c360-notfound').text()).toBe('查無此顧客或您沒有查看權限')
     expect(wrapper.find('.c360-grid').exists()).toBe(false)

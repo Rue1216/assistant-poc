@@ -26,17 +26,18 @@ public final class EvalDatasetLoader {
 
     private static final Pattern ID = Pattern.compile("^[A-Za-z0-9-]{1,40}$");
     private static final int GROUP_MAX = 20;
-    private static final int CUSTOMER_ID_MAX = 32;
+    private static final int CERT_NO_MAX = 12;
     private static final int QUESTION_MAX = 1000;
     private static final int PHRASE_MAX = 50;
     private static final int PHRASES_MAX_ITEMS = 10;
     private static final int RUBRIC_MAX_ITEMS = 5;
     private static final int RUBRIC_ITEM_MAX = 100;
     /** Only these keys are allowed: a misspelt key (mustNotContian) would otherwise silently disable a check. */
-    private static final Set<String> CASE_KEYS = Set.of("id", "group", "accessLevel", "customerId", "question",
+    private static final Set<String> CASE_KEYS = Set.of("id", "group", "accessLevel", "certNo", "question",
             "expect", "rubric");
     private static final Set<String> EXPECT_KEYS = Set.of("tools", "forbiddenTools", "refusal", "mustContain",
             "mustNotContain", "category");
+    private static final Pattern CERT_NO = Pattern.compile("^[A-Z0-9&]{8,12}$");
     private static final Pattern CATEGORY = Pattern.compile("^(instruction\\.[a-z0-9-]{1,50}|none)$");
 
     private EvalDatasetLoader() {
@@ -98,7 +99,10 @@ public final class EvalDatasetLoader {
 
         String group = text(map.get("group"), GROUP_MAX, label, "group", errors);
         AccessLevel level = accessLevel(map.get("accessLevel"), label, errors);
-        String customerId = text(map.get("customerId"), CUSTOMER_ID_MAX, label, "customerId", errors);
+        String certNo = text(map.get("certNo"), CERT_NO_MAX, label, "certNo", errors);
+        if (certNo != null && !CERT_NO.matcher(certNo).matches()) {
+            errors.add(msg(label, "certNo", "必須符合 [A-Z0-9&]{8,12}"));
+        }
         String question = text(map.get("question"), QUESTION_MAX, label, "question", errors);
 
         EvalCase.Expect expect = null;
@@ -112,7 +116,7 @@ public final class EvalDatasetLoader {
         if (errors.size() > before) {
             return null;
         }
-        return new EvalCase((String) idValue, group, level, customerId, question, expect, rubric);
+        return new EvalCase((String) idValue, group, level, certNo, question, expect, rubric);
     }
 
     private static EvalCase.Expect parseExpect(Map<?, ?> e, String label, Set<String> toolNames,

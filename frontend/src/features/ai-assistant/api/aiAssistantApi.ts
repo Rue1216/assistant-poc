@@ -35,8 +35,8 @@ export const OVERWRITE_PENDING = 'AI_CONFIG_OVERWRITE_PENDING'
 export const INPUT_INVALID = 'AI_INPUT_INVALID'
 export const EVAL_RUNNING = 'AI_EVAL_RUNNING'
 
-function base(customerId: string): string {
-  return `/ai-assistant/customers/${encodeURIComponent(customerId)}`
+function base(certNo: string): string {
+  return `/ai-assistant/customers/${encodeURIComponent(certNo)}`
 }
 
 const ADMIN = '/ai-assistant/admin/configs'
@@ -47,8 +47,8 @@ function configPath(configKey: string): string {
 }
 
 export const aiAssistantApi = {
-  async chat(customerId: string, body: ChatRequestBody, signal: AbortSignal): Promise<ChatResponse> {
-    const res = await apiClient.post<ChatResponse>(`${base(customerId)}/chat`, body, {
+  async chat(certNo: string, body: ChatRequestBody, signal: AbortSignal): Promise<ChatResponse> {
+    const res = await apiClient.post<ChatResponse>(`${base(certNo)}/chat`, body, {
       signal,
       timeout: CHAT_TIMEOUT_MS,
       meta: SILENT,
@@ -56,8 +56,8 @@ export const aiAssistantApi = {
     return res.data
   },
 
-  async suggestions(customerId: string): Promise<SuggestionCategory[]> {
-    const res = await apiClient.get<{ categories: SuggestionCategory[] }>(`${base(customerId)}/suggestions`, {
+  async suggestions(certNo: string): Promise<SuggestionCategory[]> {
+    const res = await apiClient.get<{ categories: SuggestionCategory[] }>(`${base(certNo)}/suggestions`, {
       meta: SILENT,
     })
     return res.data.categories

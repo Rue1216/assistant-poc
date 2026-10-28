@@ -53,7 +53,7 @@ const list = (items: string[]) => (items.length ? items.join('、') : '—')
             <tr v-for="c in cases.cases" :key="c.id">
               <td>{{ c.id }}</td>
               <td>{{ c.group }}</td>
-              <td>{{ c.accessLevel }}／{{ c.customerId }}</td>
+              <td>{{ c.accessLevel }}／{{ c.certNo }}</td>
               <td>{{ c.question }}</td>
               <td>{{ list(c.expect.tools) }}</td>
               <td>{{ c.expect.refusal ? '是' : '否' }}</td>

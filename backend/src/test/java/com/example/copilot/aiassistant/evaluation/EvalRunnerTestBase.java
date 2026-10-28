@@ -46,8 +46,8 @@ abstract class EvalRunnerTestBase extends IntegrationTestBase {
         mongo.remove(new Query(), EvalRun.COLLECTION);
     }
 
-    static EvalCase evalCase(String id, String customerId, AccessLevel level, boolean refusal) {
-        return new EvalCase(id, "g", level, customerId, "question of " + id,
+    static EvalCase evalCase(String id, String certNo, AccessLevel level, boolean refusal) {
+        return new EvalCase(id, "g", level, certNo, "question of " + id,
                 new EvalCase.Expect(List.of(), List.of(), refusal, List.of(), List.of(), null), List.of("rubric of " + id));
     }
 

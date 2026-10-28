@@ -32,7 +32,6 @@ public class AuditLogger {
     static final int MAX_TOOL_CALLS = 5;
     private static final int MAX_ID = 64;
     private static final int MAX_ROLE = 32;
-    private static final int MAX_CUSTOMER = 32;
     private static final int MAX_TARGET = 100;
     private static final int MAX_DATA_TIME = 32;
     static final int MAX_PROMPT_VERSIONS = 100;
@@ -76,7 +75,7 @@ public class AuditLogger {
         List<ToolOutcome> tools = e.toolCalls() == null ? List.of() : e.toolCalls();
         List<AuditRecord.ToolCall> calls = tools.stream().limit(MAX_TOOL_CALLS).map(o -> toCall(o, numbers, e.customer())).toList();
         return new AuditRecord(null, clip(e.requestId(), MAX_ID), clip(e.user().userId(), MAX_ID),
-                clip(e.user().roleKey(), MAX_ROLE), clip(e.customer().customerId(), MAX_CUSTOMER),
+                clip(e.user().roleKey(), MAX_ROLE),
                 e.customer().accessLevel().name(), question, truncated ? clip(answer, MAX_ANSWER) : answer,
                 truncated, e.outcome(), clip(e.errorCode(), MAX_ID), calls, clamp(e.durationMs()), clock.instant(),
                 unverified(e.unverifiedNumbers()), clamp(e.modelCalls()), clamp(e.inputTokens()),

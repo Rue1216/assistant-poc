@@ -25,35 +25,34 @@ public class CustomerContextFactory {
     }
 
     /** Empty when the user has no access or the customer does not exist (the two are indistinguishable). */
-    public Optional<CustomerContext> create(UserContext user, String customerId) {
-        AccessLevel level = accessPort.checkAccess(user, customerId);
+    public Optional<CustomerContext> create(UserContext user, String certNo) {
+        AccessLevel level = accessPort.checkAccess(user, certNo);
         if (level == AccessLevel.NONE) {
             return Optional.empty();
         }
-        return dataPort.findCustomer(customerId).map(record -> build(record, level));
+        return dataPort.findCustomer(certNo).map(record -> build(record, level));
     }
 
     /**
      * Builds the context for a dataset case at the level the case declares. Only for {@code EvalRunner}: it does not
      * check the user's access to the customer. Empty when the customer does not exist.
      */
-    public Optional<CustomerContext> forEvaluation(String customerId, AccessLevel level) {
-        return dataPort.findCustomer(customerId).map(record -> build(record, level));
+    public Optional<CustomerContext> forEvaluation(String certNo, AccessLevel level) {
+        return dataPort.findCustomer(certNo).map(record -> build(record, level));
     }
 
     static CustomerContext build(CustomerRecord record, AccessLevel level) {
         Set<String> self = new LinkedHashSet<>();
-        add(self, record.customerId());
+        add(self, record.certNo());
         add(self, record.name());
         addNameForms(self, record.name());
         Set<String> sensitive = new LinkedHashSet<>();
-        add(sensitive, record.nationalId());
         add(sensitive, record.mobile());
         add(sensitive, record.email());
         if (record.accountNumbers() != null) {
             record.accountNumbers().forEach(a -> add(sensitive, a));
         }
-        return new CustomerContext(record.customerId(), level, self, sensitive);
+        return new CustomerContext(record.certNo(), level, self, sensitive);
     }
 
     /**

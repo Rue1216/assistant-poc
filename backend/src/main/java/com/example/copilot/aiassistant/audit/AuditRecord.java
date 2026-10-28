@@ -14,7 +14,7 @@ import org.springframework.data.annotation.Id;
  * Written through {@link #toDocument()} so null fields are kept explicitly and no {@code _class} is added.
  */
 @org.springframework.data.mongodb.core.mapping.Document(AuditRecord.COLLECTION)
-public record AuditRecord(@Id String id, String requestId, String userId, String roleKey, String customerId,
+public record AuditRecord(@Id String id, String requestId, String userId, String roleKey,
                           String accessLevel, String question, String answer, boolean answerTruncated,
                           String outcome, String errorCode, List<ToolCall> toolCalls, int durationMs,
                           Instant createdAt, List<String> unverifiedNumbers, int modelCalls,
@@ -34,7 +34,6 @@ public record AuditRecord(@Id String id, String requestId, String userId, String
                 .append("requestId", requestId)
                 .append("userId", userId)
                 .append("roleKey", roleKey)
-                .append("customerId", customerId)
                 .append("accessLevel", accessLevel)
                 .append("question", question)
                 .append("answer", answer)

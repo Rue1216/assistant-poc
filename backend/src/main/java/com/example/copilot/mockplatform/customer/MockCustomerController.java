@@ -4,16 +4,11 @@ import com.example.copilot.aiassistant.common.ApiError;
 import com.example.copilot.aiassistant.common.ErrorCode;
 import com.example.copilot.aiassistant.port.AccessLevel;
 import com.example.copilot.aiassistant.port.CurrentUserPort;
-import com.example.copilot.aiassistant.port.CustomerAccessPort;
-import com.example.copilot.aiassistant.port.CustomerCampaignRecord;
 import com.example.copilot.aiassistant.port.CustomerDataPort;
 import com.example.copilot.aiassistant.port.CustomerRecord;
-import com.example.copilot.aiassistant.port.HoldingRecord;
-import com.example.copilot.aiassistant.port.InteractionRecord;
 import com.example.copilot.aiassistant.port.UserContext;
-import com.fasterxml.jackson.annotation.JsonInclude;
-import java.time.LocalDate;
 import java.util.List;
+import java.util.function.Function;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -25,69 +20,104 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/mock/customers")
 public class MockCustomerController {
 
-    public record CustomerSummary(String customerId, String name, String segment, AccessLevel accessLevel) {
+    public record CustomerSummary(String certNo, String name, String segment, AccessLevel accessLevel) {
     }
 
-    /** Identifying and detail fields are null (and omitted) for LIMITED. */
-    @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record CustomerDetail(String customerId, AccessLevel accessLevel, String name, String segment,
-                                 int relationshipYears, String riskProfile, boolean marketingConsent,
-                                 String preferredChannel, List<String> tags,
-                                 String nationalId, String mobile, String email, List<String> accountNumbers,
-                                 LocalDate birthDate, String employer, String address, Long assetAmount,
-                                 List<HoldingRecord> holdings, List<InteractionRecord> interactions,
-                                 List<CustomerCampaignRecord> campaigns) {
+    /** certNo and name are masked for LIMITED. */
+    public record CustomerDetail(String certNo, AccessLevel accessLevel, String name, String segment) {
     }
 
-    private static final int INTERACTION_LIMIT = 10;
+    /** Mock of the platform CIP lookup (findCustomerInfo): only the stop-use flag, "Y" or "N". */
+    public record CipInfo(String stopUseCustomerDataFlag) {
+    }
 
     private final CurrentUserPort currentUser;
-    private final CustomerAccessPort access;
+    private final MockCustomerAccessAdapter access;
     private final CustomerDataPort data;
     private final MockCustomerData allCustomers;
 
-    public MockCustomerController(CurrentUserPort currentUser, CustomerAccessPort access, CustomerDataPort data,
-                                  MockCustomerData allCustomers) {
+    public MockCustomerController(CurrentUserPort currentUser, MockCustomerAccessAdapter access,
+                                  CustomerDataPort data, MockCustomerData allCustomers) {
         this.currentUser = currentUser;
         this.access = access;
         this.data = data;
         this.allCustomers = allCustomers;
     }
 
+    /** Scope only: a customer who stopped data use is still listed; the 360 page stops at the CIP check. */
     @GetMapping
     List<CustomerSummary> list() {
         UserContext user = currentUser.currentUser();
         return allCustomers.customers().stream()
-                .map(c -> toSummary(c, access.checkAccess(user, c.customerId())))
+                .map(c -> toSummary(c, access.scopeLevel(user, c.certNo())))
                 .filter(s -> s.accessLevel() != AccessLevel.NONE)
                 .toList();
     }
 
-    @GetMapping("/{customerId}")
-    ResponseEntity<?> detail(@PathVariable String customerId) {
-        UserContext user = currentUser.currentUser();
-        AccessLevel level = access.checkAccess(user, customerId);
-        CustomerRecord c = data.findCustomer(customerId).orElse(null);
+    @GetMapping("/{certNo}")
+    ResponseEntity<?> detail(@PathVariable String certNo) {
+        AccessLevel level = access.checkAccess(currentUser.currentUser(), certNo);
+        CustomerRecord c = data.findCustomer(certNo).orElse(null);
         if (level == AccessLevel.NONE || c == null) {
-            // This controller is outside the assistant's exception advice, so build the 404 body here.
-            return ResponseEntity.status(ErrorCode.AI_CUSTOMER_NOT_FOUND.status())
-                    .body(ApiError.of(ErrorCode.AI_CUSTOMER_NOT_FOUND, List.of()));
+            return notFound();
         }
         if (level == AccessLevel.LIMITED) {
-            return ResponseEntity.ok(new CustomerDetail(c.customerId(), level, mask(c.name()), c.segment(),
-                    c.relationshipYears(), c.riskProfile(), c.marketingConsent(), c.preferredChannel(), c.tags(),
-                    null, null, null, null, null, null, null, null, null, null, null));
+            return ResponseEntity.ok(new CustomerDetail(maskCertNo(c.certNo()), level, mask(c.name()), c.segment()));
         }
-        return ResponseEntity.ok(new CustomerDetail(c.customerId(), level, c.name(), c.segment(), c.relationshipYears(),
-                c.riskProfile(), c.marketingConsent(), c.preferredChannel(), c.tags(),
-                c.nationalId(), c.mobile(), c.email(), c.accountNumbers(), c.birthDate(), c.employer(),
-                c.address(), c.assetAmount(), data.findHoldings(customerId),
-                data.findRecentInteractions(customerId, INTERACTION_LIMIT), data.findCampaignResults(customerId)));
+        return ResponseEntity.ok(new CustomerDetail(c.certNo(), level, c.name(), c.segment()));
+    }
+
+    @GetMapping("/{certNo}/360")
+    ResponseEntity<?> customer360(@PathVariable String certNo) {
+        return fullOnly(certNo, id -> data.findCustomer360(id).orElse(null));
+    }
+
+    @GetMapping("/{certNo}/real-time")
+    ResponseEntity<?> realTime(@PathVariable String certNo) {
+        return fullOnly(certNo, id -> data.findRealTimeStatus(id).orElse(null));
+    }
+
+    /** Scope check only: the flag itself is what this endpoint reports. */
+    @GetMapping("/{certNo}/cip")
+    ResponseEntity<?> cip(@PathVariable String certNo) {
+        AccessLevel level = access.scopeLevel(currentUser.currentUser(), certNo);
+        if (level == AccessLevel.NONE || data.findCustomer(certNo).isEmpty()) {
+            return notFound();
+        }
+        return ResponseEntity.ok(new CipInfo(allCustomers.stopUseCustomerData(certNo) ? "Y" : "N"));
+    }
+
+    private ResponseEntity<?> fullOnly(String certNo, Function<String, Object> loader) {
+        AccessLevel level = access.checkAccess(currentUser.currentUser(), certNo);
+        if (level == AccessLevel.NONE) {
+            return notFound();
+        }
+        if (level == AccessLevel.LIMITED) {
+            return ResponseEntity.status(ErrorCode.AI_FORBIDDEN.status())
+                    .body(ApiError.of(ErrorCode.AI_FORBIDDEN, List.of()));
+        }
+        Object body = loader.apply(certNo);
+        return body == null ? notFound() : ResponseEntity.ok(body);
+    }
+
+    // This controller is outside the assistant's exception advice, so build the 404 body here.
+    private static ResponseEntity<?> notFound() {
+        return ResponseEntity.status(ErrorCode.AI_CUSTOMER_NOT_FOUND.status())
+                .body(ApiError.of(ErrorCode.AI_CUSTOMER_NOT_FOUND, List.of()));
     }
 
     private static CustomerSummary toSummary(CustomerRecord c, AccessLevel level) {
         String name = level == AccessLevel.LIMITED ? mask(c.name()) : c.name();
-        return new CustomerSummary(c.customerId(), name, c.segment(), level);
+        String certNo = level == AccessLevel.LIMITED ? maskCertNo(c.certNo()) : c.certNo();
+        return new CustomerSummary(certNo, name, c.segment(), level);
+    }
+
+    /** Keeps the first character and the last four; every character between becomes an asterisk. */
+    static String maskCertNo(String certNo) {
+        if (certNo == null || certNo.length() <= 5) {
+            return certNo;
+        }
+        return certNo.charAt(0) + "*".repeat(certNo.length() - 5) + certNo.substring(certNo.length() - 4);
     }
 
     /** Keeps the first and last character; the middle becomes a circle (two-character names: first + circle). */

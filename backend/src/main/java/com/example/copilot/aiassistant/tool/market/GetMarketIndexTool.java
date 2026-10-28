@@ -72,7 +72,7 @@ public class GetMarketIndexTool extends AbstractMarketTool<NoArgs> {
                 }
             }
         }
-        return ToolResult.success(new MarketIndexData(isoDate(dataDate), items), sources(dataDate),
+        return ToolResult.success(new MarketIndexData(displayDate(dataDate), items), sources(dataDate),
                 citation("大盤指數", null, excerpt(items), items.size()));
     }
 

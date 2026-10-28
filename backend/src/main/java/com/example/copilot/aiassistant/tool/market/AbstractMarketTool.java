@@ -11,6 +11,7 @@ import dev.langchain4j.model.chat.request.json.JsonObjectSchema;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 
@@ -20,6 +21,7 @@ abstract class AbstractMarketTool<A extends Record> implements AssistantTool<A>,
     private static final String SOURCE_NAME = "臺灣證券交易所 OpenAPI";
     private static final String SOURCE_URL = "https://openapi.twse.com.tw/";
     private static final int MAX_NAME_CHARS = 50;
+    private static final DateTimeFormatter DISPLAY_DATE = DateTimeFormatter.ofPattern("yyyy/MM/dd");
 
     protected final TwseClient twse;
 
@@ -87,6 +89,11 @@ abstract class AbstractMarketTool<A extends Record> implements AssistantTool<A>,
 
     static String isoDate(LocalDate date) {
         return date == null ? null : date.toString();
+    }
+
+    /** Display date handed to the model: yyyy/MM/dd. */
+    static String displayDate(LocalDate date) {
+        return date == null ? null : DISPLAY_DATE.format(date);
     }
 
     static String get(Map<String, String> row, String key) {

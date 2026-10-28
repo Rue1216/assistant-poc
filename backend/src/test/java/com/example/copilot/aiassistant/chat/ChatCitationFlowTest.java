@@ -17,6 +17,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.example.copilot.IntegrationTestBase;
+import com.example.copilot.TestCustomers;
 import com.example.copilot.TestUsers;
 import com.jayway.jsonpath.JsonPath;
 import dev.langchain4j.model.chat.request.ChatRequest;
@@ -40,24 +41,24 @@ class ChatCitationFlowTest extends IntegrationTestBase {
     void answerCitesToolResultInResponseAndAudit() throws Exception {
         when(chatModel.chat(any(ChatRequest.class))).thenReturn(
                 text("{\"category\":\"none\"}", 10), // the routing round comes first
-                toolCalls(100, call("c1", "getCustomerHoldings", "{}")),
-                text(blocks(block("paragraph", "本顧客持有多項商品", "S1")), 200));
+                toolCalls(100, call("c1", "getCustomerProfile", "{}")),
+                text(blocks(block("paragraph", "本顧客屬退休客群", "S1")), 200));
 
-        String body = mockMvc.perform(post(URL, "C001").with(TestUsers.as("fc.officer")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"message\":\"持有商品？\"}"))
+        String body = mockMvc.perform(post(URL, TestCustomers.RETIREE).with(TestUsers.as("fc.officer")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"message\":\"顧客概況？\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.keys()").value(containsInAnyOrder("requestId", "blocks", "answer",
                         "citations", "queriedAt", "disclaimer", "toolCalls")))
                 .andExpect(jsonPath("$.blocks[0].type").value("paragraph"))
-                .andExpect(jsonPath("$.blocks[0].text").value("本顧客持有多項商品"))
+                .andExpect(jsonPath("$.blocks[0].text").value("本顧客屬退休客群"))
                 .andExpect(jsonPath("$.blocks[0].citations[0]").value(1))
-                .andExpect(jsonPath("$.answer").value("本顧客持有多項商品"))
+                .andExpect(jsonPath("$.answer").value("本顧客屬退休客群"))
                 .andExpect(jsonPath("$.citations.length()").value(1))
                 .andExpect(jsonPath("$.citations[0].id").value(1))
-                .andExpect(jsonPath("$.citations[0].toolName").value("getCustomerHoldings"))
-                .andExpect(jsonPath("$.citations[0].title").value("顧客持有商品"))
+                .andExpect(jsonPath("$.citations[0].toolName").value("getCustomerProfile"))
+                .andExpect(jsonPath("$.citations[0].title").value("個人360・顧客名片"))
                 .andExpect(jsonPath("$.citations[0].target").value(nullValue()))
-                .andExpect(jsonPath("$.citations[0].description").value(endsWith(" 筆")))
+                .andExpect(jsonPath("$.citations[0].description").value(endsWith(" 個欄位")))
                 .andExpect(jsonPath("$.citations[0].queriedAt").value(endsWith("+08:00")))
                 .andExpect(jsonPath("$.citations[0].cited").value(true))
                 .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);

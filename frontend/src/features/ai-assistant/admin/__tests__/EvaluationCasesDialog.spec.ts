@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import EvaluationCasesDialog from '../EvaluationCasesDialog.vue'
 import type { EvalCase, EvalCases } from '../../types'
+import { RETIREE } from '../../../../testing/testCustomers'
 
 function kase(id: string, category?: string | null): EvalCase {
   return {
-    id, group: '顧客經營', accessLevel: 'L1', customerId: 'C001', question: '問題', rubric: [],
+    id, group: '顧客經營', accessLevel: 'L1', certNo: RETIREE, question: '問題', rubric: [],
     expect: { tools: [], forbiddenTools: [], refusal: false, mustContain: [], mustNotContain: [], ...(category !== undefined ? { category } : {}) },
   }
 }

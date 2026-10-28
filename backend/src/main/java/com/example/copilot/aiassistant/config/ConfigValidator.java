@@ -1,6 +1,7 @@
 package com.example.copilot.aiassistant.config;
 
 import com.example.copilot.aiassistant.prompt.ExampleQuestionParser;
+import com.example.copilot.aiassistant.privacy.PiiRedactor;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,7 +39,7 @@ public class ConfigValidator {
             new Forbidden("網址或 IP", "https?://", "\\b\\d{1,3}(\\.\\d{1,3}){3}\\b"),
             new Forbidden("身分證號", "\\b[A-Z][12]\\d{8}\\b"),
             new Forbidden("手機號碼", "\\b09\\d{2}-?\\d{3}-?\\d{3}\\b"),
-            new Forbidden("顧客編號", "\\bC\\d{3}\\b"),
+            new Forbidden("顧客編號", PiiRedactor.CERT_NO_REGEX),
             new Forbidden("越權指令", "忽略(以上|先前|所有).{0,10}(規則|指示|限制)",
                     "ignore (all|previous|above) (rules|instructions)"));
 

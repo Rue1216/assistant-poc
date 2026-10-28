@@ -3,6 +3,7 @@ package com.example.copilot.aiassistant.privacy;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.copilot.IntegrationTestBase;
+import com.example.copilot.TestCustomers;
 import com.example.copilot.aiassistant.port.AccessLevel;
 import com.example.copilot.aiassistant.port.CustomerDataPort;
 import com.example.copilot.aiassistant.port.UserContext;
@@ -23,32 +24,31 @@ class CustomerContextFactoryTest extends IntegrationTestBase {
 
     @Test
     void noneAccessYieldsEmpty() {
-        assertThat(factory.create(AO, "C002")).isEmpty();
+        assertThat(factory.create(AO, TestCustomers.COMPLAINT)).isEmpty();
     }
 
     @Test
     void unknownCustomerYieldsEmpty() {
-        assertThat(factory.create(ADMIN, "C999")).isEmpty();
+        assertThat(factory.create(ADMIN, TestCustomers.UNKNOWN)).isEmpty();
     }
 
     @Test
     void forEvaluationSkipsAccessCheck() {
-        CustomerContextFactory denyAll = new CustomerContextFactory((user, customerId) -> AccessLevel.NONE, dataPort);
+        CustomerContextFactory denyAll = new CustomerContextFactory((user, certNo) -> AccessLevel.NONE, dataPort);
 
-        CustomerContext ctx = denyAll.forEvaluation("C001", AccessLevel.FULL).orElseThrow();
+        CustomerContext ctx = denyAll.forEvaluation(TestCustomers.RETIREE, AccessLevel.FULL).orElseThrow();
 
         assertThat(ctx.accessLevel()).isEqualTo(AccessLevel.FULL);
-        assertThat(ctx.selfReferences()).contains("王小明");
-        assertThat(ctx.sensitiveValues()).contains("A123456789");
-        assertThat(denyAll.forEvaluation("C999", AccessLevel.FULL)).isEmpty();
+        assertThat(ctx.selfReferences()).contains("王小明", TestCustomers.RETIREE);
+        assertThat(denyAll.forEvaluation(TestCustomers.UNKNOWN, AccessLevel.FULL)).isEmpty();
     }
 
     @Test
     void limitedAccessCarriesLevel() {
-        CustomerContext ctx = factory.create(ADMIN, "C001").orElseThrow();
+        CustomerContext ctx = factory.create(ADMIN, TestCustomers.RETIREE).orElseThrow();
         assertThat(ctx.accessLevel()).isEqualTo(AccessLevel.LIMITED);
-        assertThat(ctx.selfReferences()).contains("王小明", "C001");
-        assertThat(ctx.sensitiveValues()).contains("A123456789", "0912-000-111",
+        assertThat(ctx.selfReferences()).contains("王小明", TestCustomers.RETIREE);
+        assertThat(ctx.sensitiveValues()).contains("0912-000-111",
                 "xiaoming.wang@example.com", "0123456789012");
     }
 }

@@ -80,8 +80,6 @@ public class MongoSchemaInitializer implements ApplicationRunner {
                 .expire(AUDIT_TTL_SECONDS));
         ops.createIndex(new Index().named("IX_ICRM_AI_AUDIT_2").on("userId", Sort.Direction.ASC)
                 .on("createdAt", Sort.Direction.DESC));
-        ops.createIndex(new Index().named("IX_ICRM_AI_AUDIT_3").on("customerId", Sort.Direction.ASC)
-                .on("createdAt", Sort.Direction.DESC));
         ops.createIndex(new Index().named("IX_ICRM_AI_AUDIT_4").on("requestId", Sort.Direction.ASC));
         ops.createIndex(new Index().named("IX_ICRM_AI_AUDIT_5").on("promptVersions.configKey", Sort.Direction.ASC)
                 .on("promptVersions.version", Sort.Direction.ASC)

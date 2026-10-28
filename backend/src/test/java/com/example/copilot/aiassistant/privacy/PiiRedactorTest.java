@@ -2,6 +2,7 @@ package com.example.copilot.aiassistant.privacy;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.example.copilot.TestCustomers;
 import com.example.copilot.aiassistant.port.AccessLevel;
 import com.example.copilot.aiassistant.port.CustomerRecord;
 import java.util.List;
@@ -13,55 +14,60 @@ import org.junit.jupiter.params.provider.ValueSource;
 class PiiRedactorTest {
 
     private final PiiRedactor redactor = new PiiRedactor();
-    private final CustomerContext c001 = new CustomerContext("C001", AccessLevel.FULL,
-            Set.of("C001", "王小明"),
-            Set.of("A123456789", "0912-000-111", "xiaoming.wang@example.com", "0123456789012"));
+    private final CustomerContext retiree = new CustomerContext(TestCustomers.RETIREE, AccessLevel.FULL,
+            Set.of(TestCustomers.RETIREE, "王小明"),
+            Set.of("0912-000-111", "xiaoming.wang@example.com", "0123456789012"));
 
     @Test
     void replacesSelfName() {
-        assertThat(redactor.redact("王小明最近有什麼互動？", c001)).isEqualTo("【本顧客】最近有什麼互動？");
+        assertThat(redactor.redact("王小明最近有什麼互動？", retiree)).isEqualTo("【本顧客】最近有什麼互動？");
     }
 
     @Test
-    void replacesSelfCustomerId() {
-        assertThat(redactor.redact("C001 的概況", c001)).isEqualTo("【本顧客】 的概況");
+    void replacesSelfCertNo() {
+        assertThat(redactor.redact(TestCustomers.RETIREE + " 的概況", retiree)).isEqualTo("【本顧客】 的概況");
     }
 
     @Test
     void masksKnownSensitiveValues() {
-        assertThat(redactor.redact("王小明的手機 0912-000-111 最近有聯絡過嗎？", c001))
+        assertThat(redactor.redact("王小明的手機 0912-000-111 最近有聯絡過嗎？", retiree))
                 .isEqualTo("【本顧客】的手機 【已遮蔽】 最近有聯絡過嗎？");
-        assertThat(redactor.redact("信箱 xiaoming.wang@example.com 帳號 0123456789012", c001))
+        assertThat(redactor.redact("信箱 xiaoming.wang@example.com 帳號 0123456789012", retiree))
                 .isEqualTo("信箱 【已遮蔽】 帳號 【已遮蔽】");
     }
 
     @Test
     void masksKnownValuesWrittenWithoutSeparators() {
-        assertThat(redactor.redact("電話 0912000111", c001)).isEqualTo("電話 【已遮蔽】");
+        assertThat(redactor.redact("電話 0912000111", retiree)).isEqualTo("電話 【已遮蔽】");
     }
 
     @Test
     void masksPatternMatches() {
-        assertThat(redactor.redact("幫我查 B223456789", c001)).isEqualTo("幫我查 【已遮蔽】");
-        assertThat(redactor.redact("0933-222-444", c001)).isEqualTo("【已遮蔽】");
-        assertThat(redactor.redact("a@b.co", c001)).isEqualTo("【已遮蔽】");
-        assertThat(redactor.redact("帳號 9876543210", c001)).isEqualTo("帳號 【已遮蔽】");
+        assertThat(redactor.redact("幫我查 XB223456789", retiree)).isEqualTo("幫我查 X【已遮蔽】");
+        assertThat(redactor.redact("0933-222-444", retiree)).isEqualTo("【已遮蔽】");
+        assertThat(redactor.redact("a@b.co", retiree)).isEqualTo("【已遮蔽】");
+        assertThat(redactor.redact("帳號 9876543210", retiree)).isEqualTo("帳號 【已遮蔽】");
     }
 
     @Test
-    void replacesOtherCustomerIds() {
-        assertThat(redactor.redact("比較 C002 的持股", c001)).isEqualTo("比較 【其他顧客】 的持股");
+    void otherCertNos() {
+        assertThat(redactor.redact("本顧客 " + TestCustomers.RETIREE, retiree)).isEqualTo("本顧客 【本顧客】");
+        assertThat(redactor.redact("比較 " + TestCustomers.COMPLAINT + " 的持股", retiree))
+                .isEqualTo("比較 【其他顧客】 的持股");
+        assertThat(redactor.redact("居留證 HKC123456", retiree)).isEqualTo("居留證 【其他顧客】");
+        assertThat(redactor.redact("統編 &F12345678", retiree)).isEqualTo("統編 【其他顧客】");
+        assertThat(redactor.redact("舊編號 C123", retiree)).isEqualTo("舊編號 C123");
     }
 
     @Test
     void leavesStockCodesAlone() {
-        assertThat(redactor.redact("2330 收盤價", c001)).isEqualTo("2330 收盤價");
+        assertThat(redactor.redact("2330 收盤價", retiree)).isEqualTo("2330 收盤價");
     }
 
     @Test
     void redactsFullWidthAndLowercaseVariants() {
-        assertThat(redactor.redact("０９１２－０００－１１１", c001)).contains("【已遮蔽】").doesNotContain("0912");
-        assertThat(redactor.redact("a123456789", c001)).contains("【已遮蔽】").doesNotContain("123456789");
+        assertThat(redactor.redact("０９１２－０００－１１１", retiree)).contains("【已遮蔽】").doesNotContain("0912");
+        assertThat(redactor.redact(TestCustomers.COMPLAINT.toLowerCase(), retiree)).contains("【其他顧客】").doesNotContain("223456780");
     }
 
     @Test
@@ -72,31 +78,31 @@ class PiiRedactorTest {
             "0912​000111", "0912­000111"
         };
         for (String v : variants) {
-            assertThat(redactor.redact("電話 " + v + " 謝謝", c001)).as(v).contains("【已遮蔽】").doesNotContain("912").doesNotContain("000");
+            assertThat(redactor.redact("電話 " + v + " 謝謝", retiree)).as(v).contains("【已遮蔽】").doesNotContain("912").doesNotContain("000");
         }
     }
 
     @Test
     void foldsCompatibilityCharactersInName() {
-        assertThat(redactor.redact("王⼩明最近有什麼互動？", c001)).isEqualTo("【本顧客】最近有什麼互動？");
+        assertThat(redactor.redact("王⼩明最近有什麼互動？", retiree)).isEqualTo("【本顧客】最近有什麼互動？");
     }
 
     @Test
     void skipsDegenerateKnownValues() {
-        CustomerContext odd = new CustomerContext("C001", AccessLevel.FULL, Set.of("王小明"), Set.of("-", " "));
+        CustomerContext odd = new CustomerContext(TestCustomers.RETIREE, AccessLevel.FULL, Set.of("王小明"), Set.of("-", " "));
         assertThat(redactor.redact("2330 收盤價 12-34", odd)).isEqualTo("2330 收盤價 12-34");
     }
 
     @Test
-    void toleratesWhitespaceInsideKnownNameAndNationalId() {
-        assertThat(redactor.redact("王 小 明", c001)).isEqualTo("【本顧客】");
-        assertThat(redactor.redact("A 123456789", c001)).isEqualTo("【已遮蔽】");
+    void toleratesWhitespaceInsideKnownNameAndCertNo() {
+        assertThat(redactor.redact("王 小 明", retiree)).isEqualTo("【本顧客】");
+        assertThat(redactor.redact("A 123456789", retiree)).isEqualTo("【本顧客】");
     }
 
     @Test
     void masksIdGluedToLettersAndLongDigitRuns() {
-        assertThat(redactor.redact("idB223456789", c001)).isEqualTo("id【已遮蔽】");
-        assertThat(redactor.redact("帳號 12345678901234567890", c001)).isEqualTo("帳號 【已遮蔽】");
+        assertThat(redactor.redact("idB223456789", retiree)).isEqualTo("id【已遮蔽】");
+        assertThat(redactor.redact("帳號 12345678901234567890", retiree)).isEqualTo("帳號 【已遮蔽】");
     }
 
     @Test
@@ -107,18 +113,18 @@ class PiiRedactorTest {
 
     @Test
     void nullStaysNull() {
-        assertThat(redactor.redact(null, c001)).isNull();
+        assertThat(redactor.redact(null, retiree)).isNull();
     }
 
     @Test
     void contextToStringHidesIdentifyingValues() {
-        assertThat(c001.toString()).isEqualTo("CustomerContext[accessLevel=FULL]");
+        assertThat(retiree.toString()).isEqualTo("CustomerContext[accessLevel=FULL]");
     }
 
     private static CustomerContext contextFor(String name) {
-        return CustomerContextFactory.build(new CustomerRecord("C001", name, "A123456789", "0912-000-111",
-                "xiaoming.wang@example.com", List.of("0123456789012"), null, null, null, null, 0, 0, null, false,
-                null, List.of(), null, null, null, null, null, null), AccessLevel.FULL);
+        return CustomerContextFactory.build(new CustomerRecord(TestCustomers.RETIREE, name, "0912-000-111",
+                "xiaoming.wang@example.com", List.of("0123456789012"), null, null, null, null, null,
+                null, null, null, null, null), AccessLevel.FULL);
     }
 
     @ParameterizedTest

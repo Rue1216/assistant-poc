@@ -14,8 +14,7 @@ import org.springframework.core.io.DefaultResourceLoader;
 
 class EvalConfigurationTest {
 
-    private static final Set<String> TOOLS = Set.of("getCustomerProfile", "getCustomerHoldings",
-            "getRecentInteractions", "getCampaignResults", "getStockQuote", "getCompanyAnnouncements",
+    private static final Set<String> TOOLS = Set.of("getCustomerProfile", "getStockQuote", "getCompanyAnnouncements",
             "getMarketIndex");
 
     private static EvalDataset load(int maxCases) {
@@ -29,8 +28,8 @@ class EvalConfigurationTest {
 
     @Test
     void maxCasesWithinStoredLimitLoads() {
-        assertThat(load(30).cases()).hasSize(17);
-        assertThat(load(17).cases()).hasSize(17);
+        assertThat(load(30).cases()).hasSize(10);
+        assertThat(load(10).cases()).hasSize(10);
     }
 
     @Test

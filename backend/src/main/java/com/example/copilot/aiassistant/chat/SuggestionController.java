@@ -30,10 +30,10 @@ public class SuggestionController {
         this.suggestions = suggestions;
     }
 
-    @GetMapping("/api/ai-assistant/customers/{customerId}/suggestions")
+    @GetMapping("/api/ai-assistant/customers/{certNo}/suggestions")
     @PreAuthorize("hasAuthority('AI_ASSISTANT_USE')")
-    public SuggestionsResponse suggestions(@PathVariable @Pattern(regexp = "^C\\d{3}$") String customerId) {
-        contexts.create(currentUser.currentUser(), customerId)
+    public SuggestionsResponse suggestions(@PathVariable @Pattern(regexp = "^[A-Z0-9&]{8,12}$") String certNo) {
+        contexts.create(currentUser.currentUser(), certNo)
                 .orElseThrow(() -> new AssistantException(ErrorCode.AI_CUSTOMER_NOT_FOUND));
         return new SuggestionsResponse(suggestions.suggestions());
     }

@@ -10,7 +10,7 @@ import ProfileCards from './customer360/ProfileCards.vue'
 import '../styles/customer-360.css'
 
 interface CustomerDetail {
-  customerId: string
+  certNo: string
   accessLevel: 'FULL' | 'LIMITED'
   name: string
   segment: string
@@ -22,7 +22,7 @@ interface CustomerDetail {
   assetAmount?: number
 }
 
-const props = defineProps<{ customerId: string }>()
+const props = defineProps<{ certNo: string }>()
 
 const customer = ref<CustomerDetail | null>(null)
 const notFound = ref(false)
@@ -44,7 +44,7 @@ const consent = computed(() => {
 })
 
 watch(
-  () => props.customerId,
+  () => props.certNo,
   async (id) => {
     loading.value = true
     notFound.value = false
@@ -54,12 +54,12 @@ watch(
         meta: { silentCodes: ['AI_CUSTOMER_NOT_FOUND'] },
       })
       // ignore a response that arrives after navigating to another customer
-      if (id === props.customerId) customer.value = res.data
+      if (id === props.certNo) customer.value = res.data
     } catch (e) {
-      if (id !== props.customerId) return
+      if (id !== props.certNo) return
       if (e instanceof ApiError && e.code === 'AI_CUSTOMER_NOT_FOUND') notFound.value = true
     } finally {
-      if (id === props.customerId) loading.value = false
+      if (id === props.certNo) loading.value = false
     }
   },
   { immediate: true },
@@ -93,7 +93,7 @@ watch(
                 <h1 class="c360-namecard__name">{{ customer.name }}</h1>
                 <span class="badge badge--published badge--plain">{{ customer.segment }}</span>
               </div>
-              <span class="c360-namecard__id">{{ customer.customerId }}・往來 {{ customer.relationshipYears }} 年</span>
+              <span class="c360-namecard__id">{{ customer.certNo }}・往來 {{ customer.relationshipYears }} 年</span>
             </div>
           </div>
           <div v-if="customer.tags?.length" class="c360-tags" aria-label="分群標籤">
@@ -119,7 +119,7 @@ watch(
         </template>
       </div>
 
-      <AssistantLauncher :customer-id="customerId" />
+      <AssistantLauncher :cert-no="certNo" />
     </template>
   </div>
 </template>

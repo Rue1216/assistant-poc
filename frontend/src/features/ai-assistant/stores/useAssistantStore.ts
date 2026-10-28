@@ -10,7 +10,7 @@ export const MAX_HISTORY_CONTENT = 4000
 const NOT_FOUND_CODE = 'AI_CUSTOMER_NOT_FOUND'
 
 export const useAssistantStore = defineStore('aiAssistant', () => {
-  const customerId = ref<string | null>(null)
+  const certNo = ref<string | null>(null)
   const messages = ref<ChatMessage[]>([])
   const pending = ref(false)
   const unavailable = ref(false)
@@ -42,13 +42,13 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
   }
 
   function bindCustomer(id: string): void {
-    if (customerId.value === id) return
+    if (certNo.value === id) return
     abortCurrent()
     messages.value = []
     feedbackState.clear()
     unavailable.value = false
     round.value = 0
-    customerId.value = id
+    certNo.value = id
   }
 
   /** Leaves the customer page: forget everything. */
@@ -58,7 +58,7 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
     feedbackState.clear()
     unavailable.value = false
     round.value = 0
-    customerId.value = null
+    certNo.value = null
   }
 
   function markUnavailable(): void {
@@ -67,7 +67,7 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
 
   async function send(text: string, categoryKey?: string): Promise<void> {
     const message = text.trim()
-    const cid = customerId.value
+    const cid = certNo.value
     if (!message || !cid || pending.value || unavailable.value) return
 
     const history = buildHistory()
@@ -129,7 +129,7 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
   /** Re-send the question behind a failed answer (current round only). */
   async function retry(errorMessageId: string): Promise<void> {
     // same guards as send(): never remove the failed pair unless the re-send can go out
-    if (pending.value || unavailable.value || !customerId.value) return
+    if (pending.value || unavailable.value || !certNo.value) return
     const i = messages.value.findIndex((m) => m.id === errorMessageId && m.state === 'error')
     const question = i > 0 ? messages.value[i - 1] : undefined
     if (!question || question.role !== 'user' || question.round !== round.value) return
@@ -182,5 +182,5 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
     entry.inFlight = false
   }
 
-  return { customerId, messages, pending, unavailable, round, bindCustomer, reset, markUnavailable, send, cancel, retry, startNewRound, rate }
+  return { certNo, messages, pending, unavailable, round, bindCustomer, reset, markUnavailable, send, cancel, retry, startNewRound, rate }
 })

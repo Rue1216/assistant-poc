@@ -7,7 +7,7 @@ import AssistantHeader from "./AssistantHeader.vue";
 import MessageList from "./MessageList.vue";
 import ChatComposer from "./ChatComposer.vue";
 
-const props = defineProps<{ customerId: string }>();
+const props = defineProps<{ certNo: string }>();
 defineEmits<{ close: [] }>();
 
 const store = useAssistantStore();
@@ -16,7 +16,7 @@ const suggestions = useSuggestions();
 
 // bind first, then load: suggestions are dropped if the customer changes meanwhile
 watch(
-  () => props.customerId,
+  () => props.certNo,
   (id) => {
     store.bindCustomer(id);
     chat.draft.value = "";

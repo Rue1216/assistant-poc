@@ -42,7 +42,7 @@ class FeedbackControllerTest extends IntegrationTestBase {
 
     private Document audit(String requestId, String userId, String outcome, Date createdAt) {
         return new Document("requestId", requestId).append("userId", userId).append("roleKey", "r")
-                .append("customerId", "C001").append("accessLevel", "FULL").append("question", MARKER)
+                .append("accessLevel", "FULL").append("question", MARKER)
                 .append("outcome", outcome).append("toolCalls", List.of()).append("durationMs", 5)
                 .append("createdAt", createdAt);
     }

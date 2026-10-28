@@ -8,6 +8,7 @@ vi.mock('../../../../platform-mock/useToast', () => ({ useToast: () => ({ show: 
 
 import { ApiError } from '../../../../platform-mock/apiClient'
 import { useAssistantStore } from '../useAssistantStore'
+import { COMPLAINT, RETIREE } from '../../../../testing/testCustomers'
 
 const CITATION: Citation = {
   id: 1, toolName: 't', title: '上市個股行情', target: '2330', excerpt: null, description: null,
@@ -46,7 +47,7 @@ describe('useAssistantStore', () => {
   it('stores blocks and citations on the bot message and keeps answer as content', async () => {
     chat.mockResolvedValue(response('答案'))
     const store = useAssistantStore()
-    store.bindCustomer('C001')
+    store.bindCustomer(RETIREE)
     await store.send('q')
     const bot = store.messages[1]!
     expect(bot.content).toBe('答案')
@@ -62,21 +63,21 @@ describe('useAssistantStore', () => {
   it('appends user and assistant messages', async () => {
     chat.mockResolvedValue(response('## 概況'))
     const store = useAssistantStore()
-    store.bindCustomer('C001')
+    store.bindCustomer(RETIREE)
     await store.send('  幫我整理這位顧客的概況  ')
 
     expect(store.messages.map((m) => [m.role, m.state, m.content])).toEqual([
       ['user', 'done', '幫我整理這位顧客的概況'],
       ['assistant', 'done', '## 概況'],
     ])
-    expect(chat).toHaveBeenCalledWith('C001', { message: '幫我整理這位顧客的概況', history: [] }, expect.any(AbortSignal))
+    expect(chat).toHaveBeenCalledWith(RETIREE, { message: '幫我整理這位顧客的概況', history: [] }, expect.any(AbortSignal))
     expect(store.pending).toBe(false)
   })
 
   it('sends categoryKey when given, and omits the property otherwise', async () => {
     chat.mockResolvedValue(response('x'))
     const store = useAssistantStore()
-    store.bindCustomer('C001')
+    store.bindCustomer(RETIREE)
     await store.send('q', 'instruction.contact-prep')
     expect(chat.mock.calls[0]![1]).toEqual({ message: 'q', history: [], categoryKey: 'instruction.contact-prep' })
     await store.send('q2')
@@ -86,7 +87,7 @@ describe('useAssistantStore', () => {
   it('retry keeps the categoryKey of a chip question', async () => {
     chat.mockRejectedValueOnce(new ApiError(429, 'AI_RATE_LIMITED', 'x'))
     const store = useAssistantStore()
-    store.bindCustomer('C001')
+    store.bindCustomer(RETIREE)
     await store.send('hello', 'instruction.market')
     chat.mockResolvedValueOnce(response('ok'))
     await store.retry(store.messages[1]!.id)
@@ -97,7 +98,7 @@ describe('useAssistantStore', () => {
     const d = deferred<ChatResponse>()
     chat.mockReturnValue(d.promise)
     const store = useAssistantStore()
-    store.bindCustomer('C001')
+    store.bindCustomer(RETIREE)
     const first = store.send('a')
     await store.send('b')
     expect(chat).toHaveBeenCalledTimes(1)
@@ -113,7 +114,7 @@ describe('useAssistantStore', () => {
       return d.promise
     })
     const store = useAssistantStore()
-    store.bindCustomer('C001')
+    store.bindCustomer(RETIREE)
     const sending = store.send('hello')
     store.cancel()
     await sending
@@ -126,10 +127,10 @@ describe('useAssistantStore', () => {
   it('clears conversation when customer changes', async () => {
     chat.mockResolvedValue(response('x'))
     const store = useAssistantStore()
-    store.bindCustomer('C001')
+    store.bindCustomer(RETIREE)
     await store.send('hello')
     expect(store.messages).toHaveLength(2)
-    store.bindCustomer('C002')
+    store.bindCustomer(COMPLAINT)
     expect(store.messages).toEqual([])
   })
 
@@ -147,53 +148,53 @@ describe('useAssistantStore', () => {
   it('discards response that arrives after customer switch', async () => {
     const calls = queueChats()
     const store = useAssistantStore()
-    store.bindCustomer('C001')
+    store.bindCustomer(RETIREE)
     const first = store.send('q1')
-    store.bindCustomer('C002')
+    store.bindCustomer(COMPLAINT)
     const second = store.send('q2')
     expect(calls).toHaveLength(2)
     expect(calls[0]!.signal.aborted).toBe(true)
 
-    // C001's answer arrives while C002's request is in flight
-    calls[0]!.d.resolve(response('C001 的回答'))
+    // RETIREE's answer arrives while COMPLAINT's request is in flight
+    calls[0]!.d.resolve(response('王小明的回答'))
     await first
 
-    expect(store.customerId).toBe('C002')
+    expect(store.certNo).toBe(COMPLAINT)
     expect(store.messages.map((m) => [m.role, m.state, m.content])).toEqual([
       ['user', 'pending', 'q2'],
       ['assistant', 'pending', ''],
     ])
     expect(store.pending).toBe(true)
 
-    // cancel() must abort C002's request, not C001's
+    // cancel() must abort COMPLAINT's request, not RETIREE's
     store.cancel()
     expect(calls[1]!.signal.aborted).toBe(true)
 
-    // a fresh C002 request still lands as a done answer
+    // a fresh COMPLAINT request still lands as a done answer
     calls[1]!.d.reject(new DOMException('aborted', 'AbortError'))
     await second
     const third = store.send('q3')
-    calls[2]!.d.resolve(response('C002 的回答'))
+    calls[2]!.d.resolve(response('林美君的回答'))
     await third
-    expect(store.messages.at(-1)).toMatchObject({ state: 'done', content: 'C002 的回答' })
-    expect(store.messages.some((m) => m.content.includes('C001'))).toBe(false)
+    expect(store.messages.at(-1)).toMatchObject({ state: 'done', content: '林美君的回答' })
+    expect(store.messages.some((m) => m.content.includes(RETIREE))).toBe(false)
   })
 
   it('lets the new customer request complete after a stale one resolved', async () => {
     const calls = queueChats()
     const store = useAssistantStore()
-    store.bindCustomer('C001')
+    store.bindCustomer(RETIREE)
     const first = store.send('q1')
-    store.bindCustomer('C002')
+    store.bindCustomer(COMPLAINT)
     const second = store.send('q2')
-    calls[0]!.d.resolve(response('C001 的回答'))
+    calls[0]!.d.resolve(response('王小明的回答'))
     await first
-    calls[1]!.d.resolve(response('C002 的回答'))
+    calls[1]!.d.resolve(response('林美君的回答'))
     await second
     expect(store.pending).toBe(false)
     expect(store.messages.map((m) => [m.state, m.content])).toEqual([
       ['done', 'q2'],
-      ['done', 'C002 的回答'],
+      ['done', '林美君的回答'],
     ])
   })
 
@@ -201,9 +202,9 @@ describe('useAssistantStore', () => {
     const d = deferred<ChatResponse>()
     chat.mockReturnValue(d.promise)
     const store = useAssistantStore()
-    store.bindCustomer('C001')
+    store.bindCustomer(RETIREE)
     const sending = store.send('hello')
-    store.bindCustomer('C002')
+    store.bindCustomer(COMPLAINT)
     d.reject(new ApiError(404, 'AI_CUSTOMER_NOT_FOUND', 'x'))
     await sending
 
@@ -214,7 +215,7 @@ describe('useAssistantStore', () => {
   it('marks unavailable on AI_CUSTOMER_NOT_FOUND', async () => {
     chat.mockRejectedValue(new ApiError(404, 'AI_CUSTOMER_NOT_FOUND', '查無此顧客或您沒有查看權限'))
     const store = useAssistantStore()
-    store.bindCustomer('C001')
+    store.bindCustomer(RETIREE)
     await store.send('hello')
     expect(store.unavailable).toBe(true)
     expect(store.messages).toEqual([])
@@ -225,7 +226,7 @@ describe('useAssistantStore', () => {
   it('keeps an error message with details and retries the question', async () => {
     chat.mockRejectedValueOnce(new ApiError(429, 'AI_RATE_LIMITED', '目前提問次數較多', 'a1b2c3d4'))
     const store = useAssistantStore()
-    store.bindCustomer('C001')
+    store.bindCustomer(RETIREE)
     await store.send('hello')
     expect(store.messages.map((m) => m.state)).toEqual(['error', 'error'])
     expect(store.messages[1]!.error).toEqual({ code: 'AI_RATE_LIMITED', message: '目前提問次數較多', requestId: 'a1b2c3d4' })
@@ -242,7 +243,7 @@ describe('useAssistantStore', () => {
 
   it('sends only done messages as history, max 20', async () => {
     const store = useAssistantStore()
-    store.bindCustomer('C001')
+    store.bindCustomer(RETIREE)
     chat.mockResolvedValue(response('answer'))
     for (let i = 0; i < 12; i++) await store.send(`q${i}`)
     // one failed turn must not enter the history
@@ -260,7 +261,7 @@ describe('useAssistantStore', () => {
 
   it('truncates each history item to 4000 characters', async () => {
     const store = useAssistantStore()
-    store.bindCustomer('C001')
+    store.bindCustomer(RETIREE)
     chat.mockResolvedValue(response('x'.repeat(5000)))
     await store.send('q')
     chat.mockResolvedValue(response('y'))
@@ -273,7 +274,7 @@ describe('useAssistantStore', () => {
     it('keeps earlier messages and sends only the current round as history', async () => {
       chat.mockResolvedValue(response('a'))
       const store = useAssistantStore()
-      store.bindCustomer('C001')
+      store.bindCustomer(RETIREE)
       await store.send('q1')
       store.startNewRound()
       expect(store.round).toBe(1)
@@ -293,7 +294,7 @@ describe('useAssistantStore', () => {
     it('is a no-op while the current round is empty', async () => {
       chat.mockResolvedValue(response('a'))
       const store = useAssistantStore()
-      store.bindCustomer('C001')
+      store.bindCustomer(RETIREE)
       store.startNewRound()
       expect(store.round).toBe(0)
 
@@ -306,7 +307,7 @@ describe('useAssistantStore', () => {
     it('cancels a running request and drops its late response', async () => {
       const calls = queueChats()
       const store = useAssistantStore()
-      store.bindCustomer('C001')
+      store.bindCustomer(RETIREE)
       const first = store.send('q1')
       store.startNewRound()
       expect(calls[0]!.signal.aborted).toBe(true)
@@ -330,7 +331,7 @@ describe('useAssistantStore', () => {
     it('does not retry an error from an earlier round', async () => {
       chat.mockRejectedValueOnce(new ApiError(503, 'AI_LLM_UNAVAILABLE', 'x'))
       const store = useAssistantStore()
-      store.bindCustomer('C001')
+      store.bindCustomer(RETIREE)
       await store.send('hello')
       store.startNewRound()
       await store.retry(store.messages[1]!.id)
@@ -341,10 +342,10 @@ describe('useAssistantStore', () => {
     it('starts again from round 0 when the customer changes', async () => {
       chat.mockResolvedValue(response('a'))
       const store = useAssistantStore()
-      store.bindCustomer('C001')
+      store.bindCustomer(RETIREE)
       await store.send('q1')
       store.startNewRound()
-      store.bindCustomer('C002')
+      store.bindCustomer(COMPLAINT)
       expect(store.round).toBe(0)
       expect(store.messages).toEqual([])
     })
@@ -353,11 +354,11 @@ describe('useAssistantStore', () => {
   it('resets unavailable when the customer changes', async () => {
     chat.mockRejectedValueOnce(new ApiError(404, 'AI_CUSTOMER_NOT_FOUND', 'x'))
     const store = useAssistantStore()
-    store.bindCustomer('C001')
+    store.bindCustomer(RETIREE)
     await store.send('hello')
     expect(store.unavailable).toBe(true)
 
-    store.bindCustomer('C002')
+    store.bindCustomer(COMPLAINT)
     expect(store.unavailable).toBe(false)
     chat.mockResolvedValue(response('ok'))
     await store.send('hello')
@@ -367,7 +368,7 @@ describe('useAssistantStore', () => {
   it('retry keeps the failed pair when the re-send is not allowed', async () => {
     chat.mockRejectedValueOnce(new ApiError(503, 'AI_LLM_UNAVAILABLE', 'x'))
     const store = useAssistantStore()
-    store.bindCustomer('C001')
+    store.bindCustomer(RETIREE)
     await store.send('hello')
     store.markUnavailable()
     await store.retry(store.messages[1]!.id)
@@ -378,7 +379,7 @@ describe('useAssistantStore', () => {
     async function answered() {
       chat.mockResolvedValue(response('答案'))
       const store = useAssistantStore()
-      store.bindCustomer('C001')
+      store.bindCustomer(RETIREE)
       await store.send('q')
       return store
     }

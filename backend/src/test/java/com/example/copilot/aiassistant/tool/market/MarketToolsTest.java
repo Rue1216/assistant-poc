@@ -5,6 +5,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import com.example.copilot.TestCustomers;
 import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.port.AccessLevel;
 import com.example.copilot.aiassistant.port.UserContext;
@@ -40,7 +41,7 @@ class MarketToolsTest {
 
     private static final String BASE = "https://openapi.twse.com.tw/v1";
     private static final ToolContext CONTEXT = new ToolContext(new UserContext("u1", "User", "ROLE", Set.of()),
-            new CustomerContext("C001", AccessLevel.LIMITED, Set.of(), Set.of()));
+            new CustomerContext(TestCustomers.RETIREE, AccessLevel.LIMITED, Set.of(), Set.of()));
 
     private final Clock clock = Clock.fixed(Instant.parse("2026-10-20T04:00:00Z"), ZoneOffset.UTC);
 
@@ -79,7 +80,7 @@ class MarketToolsTest {
 
         assertThat(result.status()).isEqualTo(ToolStatus.SUCCESS);
         MarketIndexData data = (MarketIndexData) result.data();
-        assertThat(data.dataDate()).isEqualTo("2026-10-16");
+        assertThat(data.dataDate()).isEqualTo("2026/10/16");
         assertThat(data.indices()).extracting(IndexItem::name).containsExactly("發行量加權股價指數", "臺灣50指數",
                 "寶島股價指數", "電子工業類指數", "金融保險類指數");
         IndexItem taiex = data.indices().get(0);
@@ -113,7 +114,7 @@ class MarketToolsTest {
         assertThat(result.status()).isEqualTo(ToolStatus.SUCCESS);
         StockQuoteData data = (StockQuoteData) result.data();
         assertThat(data.name()).isEqualTo("台積電");
-        assertThat(data.dataDate()).isEqualTo("2026-10-16");
+        assertThat(data.dataDate()).isEqualTo("2026/10/16");
         assertThat(data.close()).isEqualByComparingTo("2420.00");
         assertThat(data.change()).isEqualByComparingTo("-20.00");
         assertThat(data.tradeVolume()).isEqualTo(43046982L);
@@ -160,9 +161,9 @@ class MarketToolsTest {
         var item = data.announcements().get(0);
         assertThat(item.subject()).doesNotContain("\r", "\n").startsWith("公告本公司名稱由");
         assertThat(item.subject().length()).isEqualTo(200);
-        assertThat(item.date()).isEqualTo("2026-10-18");
+        assertThat(item.date()).isEqualTo("2026/10/18");
         assertThat(item.time()).isEqualTo("07:00:03");
-        assertThat(item.factDate()).isEqualTo("2026-08-24");
+        assertThat(item.factDate()).isEqualTo("2026/08/24");
     }
 
     @Test

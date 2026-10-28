@@ -23,7 +23,7 @@ export function createAppRouter(history: RouterHistory = createWebHistory()) {
           { path: '', component: () => import('./pages/HomePage.vue') },
           { path: 'customer', component: () => import('./pages/CustomerListPage.vue') },
           {
-            path: 'customer/:customerId',
+            path: 'customer/:certNo',
             component: () => import('./pages/Customer360Page.vue'),
             props: true,
             meta: { hideSidebar: true },

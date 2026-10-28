@@ -126,7 +126,7 @@ class EvalRunServiceTest extends IntegrationTestBase {
 
         assertThat(run.id()).isNotBlank();
         assertThat(run.status()).isEqualTo(EvalStatus.RUNNING);
-        assertThat(run.totalCases()).isEqualTo(17);
+        assertThat(run.totalCases()).isEqualTo(10);
         assertThat(run.completedCases()).isZero();
         assertThat(run.triggeredBy()).isEqualTo(ACTOR);
         assertThat(run.candidateVersion()).isEqualTo(draft.getVersion());
@@ -226,7 +226,7 @@ class EvalRunServiceTest extends IntegrationTestBase {
         Map<String, Object> details = (Map<String, Object>) e.details().get(0);
         assertThat(details).containsEntry("runId", first.id()).containsEntry("configKey", KEY)
                 .containsEntry("triggeredBy", ACTOR).containsEntry("completedCases", 0)
-                .containsEntry("totalCases", 17);
+                .containsEntry("totalCases", 10);
     }
 
     @Test

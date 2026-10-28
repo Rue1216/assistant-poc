@@ -7,6 +7,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
 
+import com.example.copilot.TestCustomers;
 import com.example.copilot.aiassistant.chat.ScriptedChatModel;
 import com.example.copilot.aiassistant.common.RequestIdFilter;
 import com.example.copilot.aiassistant.port.AccessLevel;
@@ -36,11 +37,11 @@ class EvalRunnerTest extends EvalRunnerTestBase {
         @Primary
         EvalDataset threeCaseDataset() {
             return new EvalDataset(List.of(
-                    new EvalCase("c1", "g", AccessLevel.FULL, "C001", "王小明 question of c1",
+                    new EvalCase("c1", "g", AccessLevel.FULL, TestCustomers.RETIREE, "王小明 question of c1",
                             new EvalCase.Expect(List.of(), List.of(), false, List.of(), List.of(), null),
                             List.of("rubric of c1")),
-                    evalCase("c2", "C001", AccessLevel.LIMITED, false),
-                    evalCase("c3", "C001", AccessLevel.FULL, true)), "d".repeat(64));
+                    evalCase("c2", TestCustomers.RETIREE, AccessLevel.LIMITED, false),
+                    evalCase("c3", TestCustomers.RETIREE, AccessLevel.FULL, true)), "d".repeat(64));
         }
     }
 

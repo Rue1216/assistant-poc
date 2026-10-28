@@ -1,12 +1,9 @@
 package com.example.copilot.mockplatform.customer;
 
-import com.example.copilot.aiassistant.port.CustomerCampaignRecord;
 import com.example.copilot.aiassistant.port.CustomerDataPort;
 import com.example.copilot.aiassistant.port.CustomerRecord;
-import com.example.copilot.aiassistant.port.HoldingRecord;
-import com.example.copilot.aiassistant.port.InteractionRecord;
-import java.util.Comparator;
-import java.util.List;
+import com.example.copilot.aiassistant.port.c360.Customer360Record;
+import com.example.copilot.aiassistant.port.c360.RealTimeStatusRecord;
 import java.util.Optional;
 import org.springframework.stereotype.Component;
 
@@ -14,31 +11,25 @@ import org.springframework.stereotype.Component;
 public class MockCustomerDataAdapter implements CustomerDataPort {
 
     private final MockCustomerData data;
+    private final MockCustomer360Data data360;
 
-    public MockCustomerDataAdapter(MockCustomerData data) {
+    public MockCustomerDataAdapter(MockCustomerData data, MockCustomer360Data data360) {
         this.data = data;
+        this.data360 = data360;
     }
 
     @Override
-    public Optional<CustomerRecord> findCustomer(String customerId) {
-        return data.customers().stream().filter(c -> c.customerId().equals(customerId)).findFirst();
+    public Optional<CustomerRecord> findCustomer(String certNo) {
+        return data.customers().stream().filter(c -> c.certNo().equals(certNo)).findFirst();
     }
 
     @Override
-    public List<HoldingRecord> findHoldings(String customerId) {
-        return data.holdings(customerId);
+    public Optional<Customer360Record> findCustomer360(String certNo) {
+        return data360.customer360(certNo);
     }
 
     @Override
-    public List<InteractionRecord> findRecentInteractions(String customerId, int limit) {
-        return data.interactions(customerId).stream()
-                .sorted(Comparator.comparing(InteractionRecord::date).reversed())
-                .limit(Math.max(limit, 0))
-                .toList();
-    }
-
-    @Override
-    public List<CustomerCampaignRecord> findCampaignResults(String customerId) {
-        return data.campaigns(customerId);
+    public Optional<RealTimeStatusRecord> findRealTimeStatus(String certNo) {
+        return data360.realTime(certNo);
     }
 }

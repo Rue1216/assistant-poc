@@ -3,6 +3,7 @@ package com.example.copilot.aiassistant.evaluation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.example.copilot.TestCustomers;
 import com.example.copilot.aiassistant.port.AccessLevel;
 import java.io.IOException;
 import java.io.InputStream;
@@ -13,8 +14,7 @@ import org.junit.jupiter.api.Test;
 
 class EvalDatasetLoaderTest {
 
-    private static final Set<String> TOOLS = Set.of("getCustomerProfile", "getCustomerHoldings",
-            "getRecentInteractions", "getCampaignResults", "getStockQuote", "getCompanyAnnouncements",
+    private static final Set<String> TOOLS = Set.of("getCustomerProfile", "getStockQuote", "getCompanyAnnouncements",
             "getMarketIndex");
 
     private static EvalDataset parse(String yaml, int maxCases) {
@@ -26,13 +26,13 @@ class EvalDatasetLoaderTest {
                 - id: %s
                   group: 顧客經營
                   accessLevel: FULL
-                  customerId: C001
-                  question: 整理近期互動
+                  certNo: A123456789
+                  question: 整理顧客概況
                   expect:
-                    tools: [getRecentInteractions]
+                    tools: [getCustomerProfile]
                     refusal: false
                   rubric:
-                    - 列出近期互動
+                    - 列出顧客概況
                 """.formatted(id);
     }
 
@@ -46,14 +46,14 @@ class EvalDatasetLoaderTest {
         assertThat(c.id()).isEqualTo("Q3-contact");
         assertThat(c.group()).isEqualTo("顧客經營");
         assertThat(c.accessLevel()).isEqualTo(AccessLevel.FULL);
-        assertThat(c.customerId()).isEqualTo("C001");
-        assertThat(c.question()).isEqualTo("整理近期互動");
-        assertThat(c.expect().tools()).containsExactly("getRecentInteractions");
+        assertThat(c.certNo()).isEqualTo(TestCustomers.RETIREE);
+        assertThat(c.question()).isEqualTo("整理顧客概況");
+        assertThat(c.expect().tools()).containsExactly("getCustomerProfile");
         assertThat(c.expect().forbiddenTools()).isEmpty();
         assertThat(c.expect().refusal()).isFalse();
         assertThat(c.expect().mustContain()).isEmpty();
         assertThat(c.expect().mustNotContain()).isEmpty();
-        assertThat(c.rubric()).containsExactly("列出近期互動");
+        assertThat(c.rubric()).containsExactly("列出顧客概況");
     }
 
     @Test
@@ -62,7 +62,7 @@ class EvalDatasetLoaderTest {
                 - id: Q2
                   group: 顧客經營
                   accessLevel: FULL
-                  customerId: C001
+                  certNo: A123456789
                   question: ok
                   expect:
                     tools: [deleteCustomer, getStockQuote]
@@ -72,7 +72,7 @@ class EvalDatasetLoaderTest {
                 - id: Q3
                   group: 顧客經營
                   accessLevel: FULL
-                  customerId: C001
+                  certNo: A123456789
                   question: "%s"
                   expect:
                     refusal: false
@@ -87,6 +87,14 @@ class EvalDatasetLoaderTest {
                 .contains("Q2.expect.forbiddenTools")
                 .contains("Q2.rubric")
                 .contains("Q3.question");
+    }
+
+    @Test
+    void rejectsMalformedCertNo() {
+        String yaml = valid("Q1").replace("certNo: A123456789", "certNo: a123456789");
+
+        assertThatThrownBy(() -> parse(yaml, 30)).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Q1.certNo");
     }
 
     @Test
@@ -112,7 +120,7 @@ class EvalDatasetLoaderTest {
                 - id: "Q 1"
                   group: "%s"
                   accessLevel: NONE
-                  customerId: C001
+                  certNo: A123456789
                   question: ok
                   expect:
                     refusal: false
@@ -135,7 +143,7 @@ class EvalDatasetLoaderTest {
         String yaml = valid("Q1") + """
                 - group: 顧客經營
                   accessLevel: FULL
-                  customerId: C001
+                  certNo: A123456789
                   question: ok
                   expect:
                     refusal: false
@@ -178,7 +186,7 @@ class EvalDatasetLoaderTest {
 
     @Test
     void rejectsDuplicateKey() {
-        String yaml = valid("Q1").replace("  question: 整理近期互動", "  question: 整理近期互動\n  question: 另一題");
+        String yaml = valid("Q1").replace("  question: 整理顧客概況", "  question: 整理顧客概況\n  question: 另一題");
 
         assertThatThrownBy(() -> parse(yaml, 30)).isInstanceOf(IllegalStateException.class)
                 .hasMessageStartingWith("eval-cases.yml: ")
@@ -195,28 +203,21 @@ class EvalDatasetLoaderTest {
 
         EvalDataset dataset = EvalDatasetLoader.parse(bytes, TOOLS, 30);
 
-        assertThat(dataset.cases()).hasSize(17);
+        assertThat(dataset.cases()).hasSize(10);
         List<String> refusals = dataset.cases().stream().filter(c -> c.expect().refusal())
                 .map(EvalCase::id).toList();
-        assertThat(refusals).containsExactly("P5-limited-contact", "D4-identity", "D5-other-customer",
+        assertThat(refusals).containsExactly("D4-identity", "D5-other-customer",
                 "X1-system-prompt", "X3-action", "X5-advice-refuse");
         java.util.Map<String, String> categories = new java.util.HashMap<>();
         dataset.cases().forEach(c -> categories.put(c.id(), c.expect().category()));
-        assertThat(categories).hasSize(17)
+        assertThat(categories).hasSize(10)
                 .containsEntry("Q1-overview", "instruction.customer-overview")
                 .containsEntry("P5-limited-profile", "instruction.customer-overview")
-                .containsEntry("Q2-opportunity", "instruction.opportunity")
-                .containsEntry("Q3-contact-prep", "instruction.contact-prep")
-                .containsEntry("P5-limited-contact", "instruction.contact-prep")
-                .containsEntry("D1-name", "instruction.contact-prep")
-                .containsEntry("X2-indirect", "instruction.contact-prep")
-                .containsEntry("Q4-contact-topic", "instruction.contact-topic")
                 .containsEntry("K1-index", "instruction.market-brief")
                 .containsEntry("K2-quote", "instruction.market-brief")
                 .containsEntry("K3-announcement", "instruction.market-brief")
                 .containsEntry("X1-system-prompt", "none")
                 .containsEntry("X3-action", "none")
-                .containsEntry("Q5-opening", null)
                 .containsEntry("D4-identity", null)
                 .containsEntry("D5-other-customer", null)
                 .containsEntry("X5-advice-refuse", null);

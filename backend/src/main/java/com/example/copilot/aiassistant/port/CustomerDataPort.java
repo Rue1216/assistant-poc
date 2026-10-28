@@ -1,16 +1,17 @@
 package com.example.copilot.aiassistant.port;
 
-import java.util.List;
+import com.example.copilot.aiassistant.port.c360.Customer360Record;
+import com.example.copilot.aiassistant.port.c360.RealTimeStatusRecord;
 import java.util.Optional;
 
 public interface CustomerDataPort {
 
-    Optional<CustomerRecord> findCustomer(String customerId);
+    /** Identity and scope fields (platform customer master). */
+    Optional<CustomerRecord> findCustomer(String certNo);
 
-    List<HoldingRecord> findHoldings(String customerId);
+    /** Platform getCustomer: the A-M card data. */
+    Optional<Customer360Record> findCustomer360(String certNo);
 
-    /** Newest first. */
-    List<InteractionRecord> findRecentInteractions(String customerId, int limit);
-
-    List<CustomerCampaignRecord> findCampaignResults(String customerId);
+    /** Platform getRealTimeCustomer: flags, profile photo and key alerts. */
+    Optional<RealTimeStatusRecord> findRealTimeStatus(String certNo);
 }

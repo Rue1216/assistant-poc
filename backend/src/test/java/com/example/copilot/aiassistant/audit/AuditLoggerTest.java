@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.example.copilot.IntegrationTestBase;
+import com.example.copilot.TestCustomers;
 import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.port.AccessLevel;
 import com.example.copilot.aiassistant.port.UserContext;
@@ -38,7 +39,7 @@ import org.springframework.data.mongodb.core.query.Query;
 class AuditLoggerTest extends IntegrationTestBase {
 
     private static final String COLL = "COLL_ICRM_AI_ASSISTANT_AUDIT";
-    private static final Set<String> DOC_KEYS = Set.of("_id", "requestId", "userId", "roleKey", "customerId",
+    private static final Set<String> DOC_KEYS = Set.of("_id", "requestId", "userId", "roleKey",
             "accessLevel", "question", "answer", "answerTruncated", "outcome", "errorCode", "toolCalls",
             "durationMs", "createdAt", "unverifiedNumbers", "modelCalls", "inputTokens", "outputTokens",
             "totalTokens", "promptVersions", "routeSource", "instructionKey", "feedback", "feedbackAt");
@@ -48,7 +49,7 @@ class AuditLoggerTest extends IntegrationTestBase {
 
     private static final UserContext USER = new UserContext("fc.officer", "Officer", "FC_OFFICER", Set.of());
     private static final CustomerContext CUSTOMER =
-            new CustomerContext("C001", AccessLevel.FULL, Set.of("王小明"), Set.of("A123456789"));
+            new CustomerContext(TestCustomers.RETIREE, AccessLevel.FULL, Set.of("王小明", TestCustomers.RETIREE), Set.of());
 
     private static ToolOutcome tool(String name, ToolStatus status, String code, long ms) {
         ToolResult result = status == ToolStatus.SUCCESS
@@ -93,14 +94,13 @@ class AuditLoggerTest extends IntegrationTestBase {
     @Test
     void writesOneDocumentPerQuestion() {
         auditLogger.record(entry("req-write-1", "【本顧客】最近有什麼互動？", "### 近期互動",
-                List.of(tool("getRecentInteractions", ToolStatus.SUCCESS, null, 12),
-                        tool("getCampaignResults", ToolStatus.ERROR, "AI_TOOL_ERROR", 9))));
+                List.of(tool("getCustomerNotes", ToolStatus.SUCCESS, null, 12),
+                        tool("getCustomerCampaigns", ToolStatus.ERROR, "AI_TOOL_ERROR", 9))));
 
         assertThat(mongo.count(new Query(Criteria.where("requestId").is("req-write-1")), COLL)).isEqualTo(1);
         Document doc = find("req-write-1");
         assertThat(doc.getString("userId")).isEqualTo("fc.officer");
         assertThat(doc.getString("roleKey")).isEqualTo("FC_OFFICER");
-        assertThat(doc.getString("customerId")).isEqualTo("C001");
         assertThat(doc.getString("accessLevel")).isEqualTo("FULL");
         assertThat(doc.getString("question")).isEqualTo("【本顧客】最近有什麼互動？");
         assertThat(doc.getString("answer")).isEqualTo("### 近期互動");
@@ -114,10 +114,19 @@ class AuditLoggerTest extends IntegrationTestBase {
     }
 
     @Test
+    void auditHasNoCertNo() {
+        auditLogger.record(entry("req-nocert-1", "q", "a", List.of()));
+
+        Document doc = find("req-nocert-1");
+        assertThat(doc.keySet()).doesNotContain("certNo");
+        assertThat(doc.toJson()).doesNotContain(TestCustomers.RETIREE);
+    }
+
+    @Test
     void toolCallsExcludeArgumentsAndResults() {
         auditLogger.record(entry("req-tools-1", "q", "a",
-                List.of(tool("getRecentInteractions", ToolStatus.SUCCESS, null, 12),
-                        tool("getCampaignResults", ToolStatus.DENIED, "AI_TOOL_DENIED", 3))));
+                List.of(tool("getCustomerNotes", ToolStatus.SUCCESS, null, 12),
+                        tool("getCustomerCampaigns", ToolStatus.DENIED, "AI_TOOL_DENIED", 3))));
 
         Document doc = find("req-tools-1");
         for (Document call : doc.getList("toolCalls", Document.class)) {
@@ -126,7 +135,7 @@ class AuditLoggerTest extends IntegrationTestBase {
             assertThat(call.get("durationMs")).isInstanceOf(Integer.class);
         }
         assertThat(doc.toJson()).doesNotContain("RESULT-DATA", "PAYLOAD-FOR-MODEL", "PURPOSE-TEXT", "王小明",
-                "A123456789");
+                TestCustomers.RETIREE);
         Document second = doc.getList("toolCalls", Document.class).get(1);
         assertThat(second.getString("status")).isEqualTo("DENIED");
         assertThat(second.getString("errorCode")).isEqualTo("AI_TOOL_DENIED");
@@ -161,7 +170,7 @@ class AuditLoggerTest extends IntegrationTestBase {
     @Test
     void failedCallsHaveNullCitationFields() {
         auditLogger.record(entry("req-cite-2", "q", "a",
-                List.of(tool("getCampaignResults", ToolStatus.ERROR, "AI_TOOL_ERROR", 9))));
+                List.of(tool("getCustomerCampaigns", ToolStatus.ERROR, "AI_TOOL_ERROR", 9))));
         Document call = find("req-cite-2").getList("toolCalls", Document.class).get(0);
         for (String key : List.of("citationId", "target", "dataTime", "resultCount", "resultHash")) {
             assertThat(call.containsKey(key)).isTrue();
@@ -195,7 +204,7 @@ class AuditLoggerTest extends IntegrationTestBase {
 
     @Test
     void toolCallsAreCappedAtFive() {
-        ToolOutcome t = tool("getRecentInteractions", ToolStatus.SUCCESS, null, 1);
+        ToolOutcome t = tool("getCustomerNotes", ToolStatus.SUCCESS, null, 1);
         auditLogger.record(entry("req-cap-1", "q", "a", List.of(t, t, t, t, t, t, t)));
         assertThat(find("req-cap-1").getList("toolCalls", Document.class)).hasSize(5);
     }
@@ -273,15 +282,14 @@ class AuditLoggerTest extends IntegrationTestBase {
     }
 
     @Test
-    void overlongUserRoleAndCustomerAreClipped() {
+    void overlongUserAndRoleAreClipped() {
         UserContext user = new UserContext("u".repeat(100), "Officer", "R".repeat(50), Set.of());
-        CustomerContext customer = new CustomerContext("C".repeat(50), AccessLevel.LIMITED, Set.of(), Set.of());
+        CustomerContext customer = new CustomerContext(TestCustomers.RETIREE, AccessLevel.LIMITED, Set.of(), Set.of());
         auditLogger.record(new AuditEntry("req-clip-1", user, customer, "q", "a", false, "ANSWERED", null,
                 List.of(), java.util.Map.of(), List.of(), 1, 1, 0, 0, 0, List.of(), null, null));
         Document doc = find("req-clip-1");
         assertThat(doc.getString("userId")).hasSize(64);
         assertThat(doc.getString("roleKey")).hasSize(32);
-        assertThat(doc.getString("customerId")).hasSize(32);
     }
 
     @Test

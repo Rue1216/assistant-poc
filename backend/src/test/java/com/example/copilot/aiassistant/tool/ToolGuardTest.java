@@ -59,7 +59,7 @@ class ToolGuardTest {
 
     @Test
     void extraFieldIsRejected() {
-        assertDenied(guard.check(call("echoStock", "{\"stockCode\":\"2330\",\"customerId\":\"C005\"}"), offered),
+        assertDenied(guard.check(call("echoStock", "{\"stockCode\":\"2330\",\"certNo\":\"E224567893\"}"), offered),
                 "TOOL_ARGUMENT_INVALID", "參數格式不正確");
     }
 

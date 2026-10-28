@@ -297,7 +297,7 @@ export interface EvalCase {
   id: string
   group: string
   accessLevel: string
-  customerId: string
+  certNo: string
   question: string
   expect: {
     tools: string[]

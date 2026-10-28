@@ -109,7 +109,7 @@ class MongoSchemaTest extends IntegrationTestBase {
                 .append("target", "台積電 2330").append("dataTime", "2026-10-16").append("resultCount", 1)
                 .append("resultHash", resultHash).append("result", new Document("close", 2420));
         return new Document("requestId", requestId).append("userId", "u").append("roleKey", "r")
-                .append("customerId", "C001").append("accessLevel", "FULL").append("question", "q")
+                .append("accessLevel", "FULL").append("question", "q")
                 .append("answer", "a [1]").append("answerTruncated", false).append("outcome", "ANSWERED")
                 .append("errorCode", null).append("toolCalls", java.util.List.of(call))
                 .append("unverifiedNumbers", java.util.List.of("3000")).append("durationMs", 5)
@@ -165,6 +165,7 @@ class MongoSchemaTest extends IntegrationTestBase {
     @Test
     void auditIndexes() {
         java.util.List<IndexInfo> audit = mongo.indexOps(AUDIT).getIndexInfo();
+        assertThat(audit).extracting(IndexInfo::getName).doesNotContain("IX_ICRM_AI_AUDIT_3");
         IndexInfo byRequest = audit.stream().filter(i -> i.getName().equals("IX_ICRM_AI_AUDIT_4"))
                 .findFirst().orElseThrow();
         assertThat(byRequest.getIndexFields().stream().map(f -> f.getKey()).toList()).containsExactly("requestId");
@@ -306,7 +307,7 @@ class MongoSchemaTest extends IntegrationTestBase {
                 .map(IndexInfo::getName).collect(Collectors.toSet());
         assertThat(config).contains("UK_ICRM_AI_CFG_1", "UK_ICRM_AI_CFG_2", "UK_ICRM_AI_CFG_3",
                 "IX_ICRM_AI_CFG_4", "IX_ICRM_AI_CFG_5");
-        assertThat(audit).contains("IX_ICRM_AI_AUDIT_1", "IX_ICRM_AI_AUDIT_2", "IX_ICRM_AI_AUDIT_3");
+        assertThat(audit).contains("IX_ICRM_AI_AUDIT_1", "IX_ICRM_AI_AUDIT_2");
         IndexInfo ttl = mongo.indexOps(AUDIT).getIndexInfo().stream()
                 .filter(i -> i.getName().equals("IX_ICRM_AI_AUDIT_1")).findFirst().orElseThrow();
         assertThat(ttl.getExpireAfter().orElseThrow().toSeconds()).isEqualTo(15_552_000L);

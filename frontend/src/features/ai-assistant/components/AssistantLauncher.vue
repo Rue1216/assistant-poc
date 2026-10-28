@@ -4,7 +4,7 @@ import { useAuthStore } from '../../../platform-mock/useAuthStore'
 import { useAssistantStore } from '../stores/useAssistantStore'
 import AssistantPanel from './AssistantPanel.vue'
 
-defineProps<{ customerId: string }>()
+defineProps<{ certNo: string }>()
 
 const auth = useAuthStore()
 const store = useAssistantStore()
@@ -30,7 +30,7 @@ onBeforeUnmount(() => store.reset())
         />
       </svg>
     </button>
-    <AssistantPanel v-if="everOpened" v-show="open" :customer-id="customerId" @close="open = false" />
+    <AssistantPanel v-if="everOpened" v-show="open" :cert-no="certNo" @close="open = false" />
   </template>
 </template>
 

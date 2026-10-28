@@ -102,7 +102,7 @@ public class EvalRunner {
             if (!clock.instant().isBefore(deadline)) {
                 return fail(run, progress, EvalErrors.TIMEOUT) ? "FAILED" : "INTERRUPTED";
             }
-            Optional<CustomerContext> customer = customerFactory.forEvaluation(c.customerId(), c.accessLevel());
+            Optional<CustomerContext> customer = customerFactory.forEvaluation(c.certNo(), c.accessLevel());
             Side baseline = side(run, c, "baseline", snapshot.baseline(), customer, progress);
             Side candidate = side(run, c, "candidate", snapshot.candidate(), customer, progress);
             EvalCaseRecord record = new EvalCaseRecord(c.id(), c.group(),

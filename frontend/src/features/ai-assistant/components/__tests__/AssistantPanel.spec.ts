@@ -11,6 +11,7 @@ import { ApiError } from '../../../../platform-mock/apiClient'
 import { useAuthStore } from '../../../../platform-mock/useAuthStore'
 import { useAssistantStore } from '../../stores/useAssistantStore'
 import AssistantPanel from '../AssistantPanel.vue'
+import { ATTENTION, COMPLAINT, RETIREE } from '../../../../testing/testCustomers'
 
 const CATEGORIES: SuggestionCategory[] = [
   { configKey: 'instruction.customer-overview', name: '顧客概況', questions: ['幫我整理這位顧客的概況', '這位顧客有哪些標籤？'] },
@@ -24,7 +25,7 @@ function answer(text = '回答'): ChatResponse {
   return { requestId: 'r', answer: text, blocks: [{ type: 'paragraph', text, citations: [] }], citations: [], queriedAt: '2026-10-19T14:03:24+08:00', disclaimer: null, toolCalls: [] }
 }
 
-async function mountPanel(customerId = 'C001', roleKey = 'SALES_RM') {
+async function mountPanel(certNo = RETIREE, roleKey = 'SALES_RM') {
   const pinia = createPinia()
   setActivePinia(pinia)
   useAuthStore().user = {
@@ -34,7 +35,7 @@ async function mountPanel(customerId = 'C001', roleKey = 'SALES_RM') {
     roleName: roleKey,
     permissions: ['AI_ASSISTANT_USE'],
   }
-  const wrapper = mount(AssistantPanel, { props: { customerId }, global: { plugins: [pinia] } })
+  const wrapper = mount(AssistantPanel, { props: { certNo }, global: { plugins: [pinia] } })
   await flushPromises()
   return { wrapper, store: useAssistantStore() }
 }
@@ -47,7 +48,7 @@ describe('AssistantPanel', () => {
   })
 
   it('header shows only the title, without the viewing status', async () => {
-    const { wrapper } = await mountPanel('C003')
+    const { wrapper } = await mountPanel(ATTENTION)
     expect(wrapper.find('.ai-header').text()).toBe('顧問小幫手')
     expect(wrapper.text()).not.toContain('正在檢視')
   })
@@ -139,7 +140,7 @@ describe('AssistantPanel', () => {
 
   it('shows all categories for LIMITED users without the limited note', async () => {
     // the backend returns the same five categories to every accessible user (spec 02 2.2)
-    const { wrapper } = await mountPanel('C001', 'BACKOFFICE_ADMIN')
+    const { wrapper } = await mountPanel(RETIREE, 'BACKOFFICE_ADMIN')
     expect(wrapper.findAll('.ai-quick-group')).toHaveLength(5)
     expect(wrapper.text()).not.toContain('僅能查看基本輪廓')
   })
@@ -153,13 +154,13 @@ describe('AssistantPanel', () => {
 
   it('reloads suggestions and clears the conversation when the customer changes', async () => {
     chat.mockResolvedValue(answer())
-    const { wrapper, store } = await mountPanel('C001')
+    const { wrapper, store } = await mountPanel(RETIREE)
     await store.send('hello')
     expect(store.messages).toHaveLength(2)
-    await wrapper.setProps({ customerId: 'C002' })
+    await wrapper.setProps({ certNo: COMPLAINT })
     await flushPromises()
     expect(store.messages).toEqual([])
-    expect(suggestions).toHaveBeenLastCalledWith('C002')
+    expect(suggestions).toHaveBeenLastCalledWith(COMPLAINT)
   })
 
   it('shows pending message while waiting and error message on failure', async () => {

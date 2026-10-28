@@ -3,6 +3,7 @@ package com.example.copilot.aiassistant.evaluation;
 import static com.example.copilot.aiassistant.chat.ScriptedChatModel.text;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.example.copilot.TestCustomers;
 import com.example.copilot.aiassistant.port.AccessLevel;
 import java.time.Duration;
 import java.util.List;
@@ -22,7 +23,7 @@ class EvalRunnerRouteFieldsTest extends EvalRunnerTestBase {
         @Primary
         EvalDataset routedDataset() {
             return new EvalDataset(List.of(
-                    new EvalCase("r1", "g", AccessLevel.FULL, "C001", "question of r1",
+                    new EvalCase("r1", "g", AccessLevel.FULL, TestCustomers.RETIREE, "question of r1",
                             new EvalCase.Expect(List.of(), List.of(), false, List.of(), List.of(), KEY),
                             List.of("rubric of r1"))), "d".repeat(64));
         }

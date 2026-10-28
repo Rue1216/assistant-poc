@@ -2,6 +2,7 @@ package com.example.copilot.aiassistant.evaluation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.example.copilot.TestCustomers;
 import com.example.copilot.aiassistant.port.AccessLevel;
 import java.time.Duration;
 import java.util.List;
@@ -18,9 +19,9 @@ class EvalRunnerUnknownCustomerTest extends EvalRunnerTestBase {
         @Primary
         EvalDataset unknownCustomerDataset() {
             return new EvalDataset(List.of(
-                    evalCase("c1", "C001", AccessLevel.FULL, false),
-                    evalCase("c2", "C999", AccessLevel.FULL, false),
-                    evalCase("c3", "C001", AccessLevel.FULL, false)), "d".repeat(64));
+                    evalCase("c1", TestCustomers.RETIREE, AccessLevel.FULL, false),
+                    evalCase("c2", TestCustomers.UNKNOWN, AccessLevel.FULL, false),
+                    evalCase("c3", TestCustomers.RETIREE, AccessLevel.FULL, false)), "d".repeat(64));
         }
     }
 

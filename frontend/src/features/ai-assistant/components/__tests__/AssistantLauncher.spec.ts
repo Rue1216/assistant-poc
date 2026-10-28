@@ -8,13 +8,14 @@ vi.mock('../../../../platform-mock/useToast', () => ({ useToast: () => ({ show: 
 
 import { useAuthStore } from '../../../../platform-mock/useAuthStore'
 import AssistantLauncher from '../AssistantLauncher.vue'
+import { RETIREE } from '../../../../testing/testCustomers'
 
 function setup(permissions: string[]) {
   const pinia = createPinia()
   setActivePinia(pinia)
   useAuthStore().user = { username: 'u', displayName: 'U', roleKey: 'r', roleName: 'R', permissions }
   suggestions.mockResolvedValue([])
-  return mount(AssistantLauncher, { props: { customerId: 'C001' }, global: { plugins: [pinia] } })
+  return mount(AssistantLauncher, { props: { certNo: RETIREE }, global: { plugins: [pinia] } })
 }
 
 describe('AssistantLauncher', () => {
@@ -35,7 +36,7 @@ describe('AssistantLauncher', () => {
     await w.find('.ai-fab').trigger('click')
     await flushPromises()
     expect(suggestions).toHaveBeenCalledTimes(1)
-    expect(suggestions).toHaveBeenCalledWith('C001')
+    expect(suggestions).toHaveBeenCalledWith(RETIREE)
     expect(w.find('.ai-panel').attributes('style') ?? '').not.toContain('display: none')
 
     await w.find('button[aria-label="縮小對話視窗"]').trigger('click')

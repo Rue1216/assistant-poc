@@ -3,8 +3,8 @@ package com.example.copilot.aiassistant.evaluation;
 import com.example.copilot.aiassistant.port.AccessLevel;
 import java.util.List;
 
-/** One evaluation question. {@code customerId} and {@code accessLevel} only ever come from the dataset file. */
-public record EvalCase(String id, String group, AccessLevel accessLevel, String customerId, String question,
+/** One evaluation question. {@code certNo} and {@code accessLevel} only ever come from the dataset file. */
+public record EvalCase(String id, String group, AccessLevel accessLevel, String certNo, String question,
                        Expect expect, List<String> rubric) {
 
     public EvalCase {

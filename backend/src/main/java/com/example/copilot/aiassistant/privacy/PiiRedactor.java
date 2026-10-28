@@ -26,7 +26,10 @@ public class PiiRedactor {
     private static final Pattern MOBILE = Pattern.compile("(?<!\\d)09\\d{2}-?\\d{3}-?\\d{3}(?!\\d)", FLAGS);
     private static final Pattern EMAIL = Pattern.compile("[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}", FLAGS);
     private static final Pattern ACCOUNT = Pattern.compile("(?<!\\d)\\d{10,}(?!\\d)", FLAGS);
-    private static final Pattern OTHER_CUSTOMER = Pattern.compile("(?<![A-Za-z0-9])C\\d{3}(?![A-Za-z0-9])", FLAGS);
+    /** Cert number formats (national id, resident certificate, foreign national); shared with the config validator. */
+    public static final String CERT_NO_REGEX =
+            "(?<![A-Za-z0-9&])(?:[A-Z][12]\\d{8}|[A-Z]{3}\\d{6}|&[A-Z]\\d{8})(?![A-Za-z0-9])";
+    private static final Pattern OTHER_CUSTOMER = Pattern.compile(CERT_NO_REGEX, FLAGS);
 
     public String redact(String text, CustomerContext customer) {
         Objects.requireNonNull(customer, "customer");
@@ -42,12 +45,13 @@ public class PiiRedactor {
         for (String value : longestFirst(customer.sensitiveValues())) {
             result = replaceKnown(result, value, MASKED);
         }
-        // 3-7: format based
+        // 3: other customers' cert numbers; before the national id rule, which would mask the same values
+        result = replaceAll(OTHER_CUSTOMER, result, OTHER);
+        // 4-7: format based
         result = replaceAll(NATIONAL_ID, result, MASKED);
         result = replaceAll(MOBILE, result, MASKED);
         result = replaceAll(EMAIL, result, MASKED);
-        result = replaceAll(ACCOUNT, result, MASKED);
-        return replaceAll(OTHER_CUSTOMER, result, OTHER);
+        return replaceAll(ACCOUNT, result, MASKED);
     }
 
     /**
