@@ -23,5 +23,7 @@ export function formatPercent(value: number | string): string {
 }
 
 export function formatPoints(diff: number): string {
-  return `${diff > 0 ? '+' : ''}${fixed(diff, 2)} 個百分點`
+  // The sign follows the rounded value, so 0.001 reads 0.00 without a plus.
+  const text = fixed(diff, 2)
+  return `${Number(text) > 0 ? '+' : ''}${text} 個百分點`
 }

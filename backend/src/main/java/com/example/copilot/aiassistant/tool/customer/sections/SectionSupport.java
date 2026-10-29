@@ -34,7 +34,7 @@ public final class SectionSupport {
         }
     }
 
-    /** Free text from the platform: redacted first, then cut, so a mask token is never split. */
+    /** Free text from the platform: redacted first, then cut, so a partially cut raw value is never left behind (a mask token may be cut, which is harmless). */
     public static String free(PiiRedactor redactor, String text, CustomerContext who) {
         if (text == null) {
             return null;

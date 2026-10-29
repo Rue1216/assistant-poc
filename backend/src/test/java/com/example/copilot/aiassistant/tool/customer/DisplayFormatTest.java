@@ -30,6 +30,8 @@ class DisplayFormatTest {
         assertThat(DisplayFormat.percentPoints(new BigDecimal("16.6"))).isEqualTo("+16.60 個百分點");
         assertThat(DisplayFormat.percentPoints(new BigDecimal("-7.4"))).isEqualTo("-7.40 個百分點");
         assertThat(DisplayFormat.percentPoints(BigDecimal.ZERO)).isEqualTo("0.00 個百分點");
+        assertThat(DisplayFormat.percentPoints(new BigDecimal("0.001"))).isEqualTo("0.00 個百分點");
+        assertThat(DisplayFormat.percentPoints(new BigDecimal("-0.001"))).isEqualTo("0.00 個百分點");
     }
 
     @Test

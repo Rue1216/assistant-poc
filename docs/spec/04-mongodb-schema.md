@@ -1,6 +1,6 @@
 # 04 MongoDB Schema
 
-> 版本：v1.0（POC）・2026-10-26
+> 版本：v1.1（POC）・2026-10-29（audit 移除顧客編號欄位與索引 `IX_ICRM_AI_AUDIT_3`；seed 改為 7 個問題分類；範例帳號改為員工帳號；見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md)）
 
 ## 1. Collection 總覽
 
@@ -56,16 +56,16 @@
   "version": 2,
   "basedOnVersion": null,
   "changeNote": "補充資料時間的說明",
-  "createdBy": "it.admin",
+  "createdBy": "EEE22222",
   "createdAt": { "$date": "2026-10-19T02:00:00Z" },
-  "updatedBy": "backoffice.admin",
+  "updatedBy": "EEE11111",
   "updatedAt": { "$date": "2026-10-24T01:00:00Z" },
   "scheduledAt": { "$date": "2026-10-24T01:00:00Z" },
   "docVersion": 4
 }
 ```
 
-> 這個範例是 `backoffice.admin` 預約在台北時間 10/24 09:00 發布、由系統到期自動發布的版本：`updatedBy` 記預約的人，`updatedAt` 是實際生效時間。
+> 這個範例是 `EEE11111` 預約在台北時間 10/24 09:00 發布、由系統到期自動發布的版本：`updatedBy` 記預約的人，`updatedAt` 是實際生效時間。
 
 ### 2.2 Index
 
@@ -221,12 +221,15 @@ stateDiagram-v2
 |---|---|---|
 | `system.main` | SYSTEM_PROMPT | 主要系統提示 |
 | `instruction.customer-overview` | SYSTEM_INSTRUCTION | 顧客概況 |
-| `instruction.opportunity` | SYSTEM_INSTRUCTION | 經營機會 |
+| `instruction.asset-liability` | SYSTEM_INSTRUCTION | 資產負債 |
+| `instruction.member-rank` | SYSTEM_INSTRUCTION | 會員等級 |
+| `instruction.opportunity` | SYSTEM_INSTRUCTION | 商品機會 |
+| `instruction.engagement` | SYSTEM_INSTRUCTION | 往來與通路 |
 | `instruction.contact-prep` | SYSTEM_INSTRUCTION | 聯繫準備 |
-| `instruction.contact-topic` | SYSTEM_INSTRUCTION | 聯繫話題 |
 | `instruction.market-brief` | SYSTEM_INSTRUCTION | 市場快訊 |
 
-- 完整內容見 [07-prompt-examples.md](07-prompt-examples.md)。
+- 完整內容見 [07-prompt-examples.md](07-prompt-examples.md)（內容與 `seed/*.md` 一致）。`seed/manifest.json` 的順序是匯入順序；快捷按鈕與管理頁清單一律依 `configKey` 排序。
+- `SeedLoader` 在設定 collection 已有資料時**跳過**，所以舊資料庫不會載入新 seed；改版後要先清空 MongoDB（見 [setup.md](../setup.md)）。
 - 初始資料的 `createdBy`、`updatedBy` 為 `system`。
 
 ### 2.8 資料生命週期
@@ -247,8 +250,7 @@ stateDiagram-v2
 | `_id` | ObjectId | |
 | `requestId` | string | 對應一次提問 |
 | `userId` | string | |
-| `roleKey` | string | 例如 `FC_OFFICER`；供依角色統計 |
-| `customerId` | string | 本次對話的顧客編號（只存在稽核紀錄，從不送進 LLM） |
+| `roleKey` | string | 業務角色碼，例如 `RM`；供依角色統計 |
 | `accessLevel` | string | `FULL` 或 `LIMITED` |
 | `question` | string | 使用者本次提問，**存的是經過 `PiiRedactor` 處理後、實際送給 LLM 的版本**（最多 1000 字）；並再遮罩疑似憑證 |
 | `answer` | string \| null | 模型最終回答（Markdown），**每個有引用的區塊後加 ` [n]` 標註**（多個引用並列，如 ` [1][2]`；`n` 為引用編號，對應 `toolCalls[].citationId`），可對照每段的依據；超過 8000 字截斷並設 `answerTruncated`；失敗時為 null |
@@ -286,7 +288,7 @@ stateDiagram-v2
 - `question` 存去識別化後的版本，再套用 2.5 節「API key / token」「密碼」樣式，命中的片段以 `[REDACTED]` 取代。
 - `answer` 回傳前已經過 `PiiRedactor` 再檢查一次；稽核存的是同一份內容加上引用標註。`target` 同樣經過 `PiiRedactor`（再把「本顧客」代稱換成文字）才寫入。
 - `unverifiedNumbers` 是後端核對的結果，只寫入稽核、不影響回答；模型自行換算的數字（例如「約占 3 成」）也會被記入。
-- 稽核紀錄可以透過 `customerId` 追溯「誰在什麼時候問了哪位顧客的什麼問題」，但 LLM 端完全不知道顧客是誰。
+- 稽核**不存顧客編號（`certNo`）**：顧客編號是身分證字號，`question` 與 `answer` 本來就是去識別化後的文字（本顧客的 `certNo` 已換成【本顧客】）。因此稽核紀錄只能追溯「誰在什麼時候問了什麼」，無法反查是哪位顧客；`PiiRedactor` 也會把其他顧客的 `certNo` 換成【其他顧客】。
 - 提問與回答**只寫入這個 collection**，不寫入應用程式 log（見 05 第 5 節）。
 - 使用者在前端按「取消」時，後端照常完成並寫入，`outcome` 依實際結果記錄。
 - 回饋只更新 `{ requestId, userId: 目前使用者, outcome: "ANSWERED" }` 符合的紀錄（`requestId` 只有 8 碼十六進位，所以一定同時比對 `userId`）；同一人有兩筆相同 `requestId` 時更新 `createdAt` 最新的一筆。上述新欄位選填，舊紀錄不補寫仍合法，也仍可被寫入回饋。
@@ -298,21 +300,20 @@ stateDiagram-v2
 ```json
 {
   "requestId": "a1b2c3d4",
-  "userId": "fc.officer",
-  "roleKey": "FC_OFFICER",
-  "customerId": "C001",
+  "userId": "ICRM00028",
+  "roleKey": "RM",
   "accessLevel": "FULL",
-  "question": "【本顧客】最近有什麼互動？幫我準備下次聯繫重點",
-  "answer": "### 近期互動\n\n- 10/02 電話：本顧客詢問月配息商品…… [1]",
+  "question": "【本顧客】最近有什麼提醒？幫我準備下次聯繫重點",
+  "answer": "### 待處理提醒\n\n- 定存 3,000,000 元將於 2026/11/15 到期…… [1]",
   "answerTruncated": false,
   "outcome": "ANSWERED",
   "errorCode": null,
   "toolCalls": [
-    { "toolName": "getRecentInteractions", "status": "SUCCESS", "errorCode": null, "durationMs": 12,
+    { "toolName": "getRealTimeCustomer", "status": "SUCCESS", "errorCode": null, "durationMs": 12,
       "citationId": 1, "target": null, "dataTime": null, "resultCount": 3,
       "resultHash": "9f2c…（SHA-256，共 64 字元）" },
-    { "toolName": "getCampaignResults", "status": "SUCCESS", "errorCode": null, "durationMs": 9,
-      "citationId": 2, "target": null, "dataTime": null, "resultCount": 2,
+    { "toolName": "getCustomer", "status": "SUCCESS", "errorCode": null, "durationMs": 9,
+      "citationId": 2, "target": null, "dataTime": null, "resultCount": 1,
       "resultHash": "4be1…（SHA-256，共 64 字元）" }
   ],
   "unverifiedNumbers": [],
@@ -339,7 +340,6 @@ stateDiagram-v2
 |---|---|---|---|
 | `IX_ICRM_AI_AUDIT_1` | `{ createdAt: 1 }` | TTL：`expireAfterSeconds: 15552000`（180 天） | 自動刪除過期紀錄 |
 | `IX_ICRM_AI_AUDIT_2` | `{ userId: 1, createdAt: -1 }` | | 依使用者查詢 |
-| `IX_ICRM_AI_AUDIT_3` | `{ customerId: 1, createdAt: -1 }` | | 依顧客查詢 |
 | `IX_ICRM_AI_AUDIT_4` | `{ requestId: 1 }` | | 回饋更新（以 `requestId` 找紀錄） |
 | `IX_ICRM_AI_AUDIT_5` | `{ "promptVersions.configKey": 1, "promptVersions.version": 1 }` | partial：`{ feedback: { $type: "string" } }` | 回饋統計；只收有回饋的紀錄，索引很小 |
 
@@ -350,12 +350,11 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_AUDIT", {
   validator: {
     $jsonSchema: {
       bsonType: "object",
-      required: ["requestId", "userId", "roleKey", "customerId", "accessLevel", "question", "outcome", "toolCalls", "durationMs", "createdAt"],
+      required: ["requestId", "userId", "roleKey", "accessLevel", "question", "outcome", "toolCalls", "durationMs", "createdAt"],
       properties: {
         requestId:       { bsonType: "string", maxLength: 64 },
         userId:          { bsonType: "string", maxLength: 64 },
         roleKey:         { bsonType: "string", maxLength: 32 },
-        customerId:      { bsonType: "string", maxLength: 32 },
         accessLevel:     { enum: ["FULL", "LIMITED"] },
         question:        { bsonType: "string", maxLength: 1000 },
         answer:          { bsonType: ["string", "null"], maxLength: 8000 },
@@ -470,7 +469,7 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_AUDIT", {
 
 ### 5.4 評測紀錄的資料量
 
-- 每次評測 1 份 document：最多 30 題 × 2 份回答，每份回答最多 8,000 字，單份最大約 1 MB，遠低於 16 MB 上限；一般情況（17 題、回答 500～1,500 字）約數百 KB。
+- 每次評測 1 份 document：最多 30 題 × 2 份回答，每份回答最多 8,000 字，單份最大約 1 MB，遠低於 16 MB 上限；一般情況（30 題、回答 500～1,500 字）約數百 KB。
 - 評測由管理者手動觸發、同時只有一個，即使每天多次，180 天內也只有數百筆，約數百 MB 以內，不需要 shard。
 - `question`、`answer` 是去識別化後的內容，與稽核紀錄同級敏感，只有 `AI_CONFIG_READ` 可讀；評測使用的是資料集指定的假測試顧客（見 [platform-setup-requests.md](../platform-setup-requests.md)）。
 
@@ -539,21 +538,21 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_AUDIT", {
   "datasetHash": "3f9a…（SHA-256，共 64 字元）",
   "status": "COMPLETED",
   "errorCode": null,
-  "triggeredBy": "it.admin",
+  "triggeredBy": "EEE22222",
   "startedAt": { "$date": "2026-10-24T07:02:11Z" },
   "heartbeatAt": { "$date": "2026-10-24T07:07:39Z" },
   "finishedAt": { "$date": "2026-10-24T07:07:40Z" },
-  "totalCases": 17,
-  "completedCases": 17,
-  "summary": { "baseline": { "correct": 14, "total": 17, "…": "…" }, "candidate": { "…": "…" }, "judgeTokens": 48200 },
+  "totalCases": 30,
+  "completedCases": 30,
+  "summary": { "baseline": { "correct": 14, "total": 30, "…": "…" }, "candidate": { "…": "…" }, "judgeTokens": 48200 },
   "cases": [
     {
-      "caseId": "Q3-contact-prep", "group": "顧客經營", "expectRefusal": false,
+      "caseId": "Q8-contact-prep", "group": "顧客經營", "expectRefusal": false,
       "expectCategory": "instruction.contact-prep",
-      "question": "整理近期互動，幫我準備下次聯繫重點",
+      "question": "聯繫這位顧客前，有哪些提醒要處理？",
       "baseline": {
-        "outcome": "ANSWERED", "errorCode": null, "answer": "### 近期互動……",
-        "toolCalls": [ { "toolName": "getRecentInteractions", "status": "SUCCESS" } ],
+        "outcome": "ANSWERED", "errorCode": null, "answer": "### 待處理提醒……",
+        "toolCalls": [ { "toolName": "getCustomer", "status": "SUCCESS" } ],
         "modelCalls": 2, "inputTokens": 7080, "outputTokens": 340, "totalTokens": 7420, "durationMs": 6200,
         "unverifiedNumbers": [], "toolsOk": true, "numbersOk": true,
         "routeOk": true, "routeSource": "ROUTER", "instructionKey": "instruction.contact-prep",

@@ -30,6 +30,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
@@ -41,6 +43,8 @@ public class GetCustomerTool extends AbstractCustomerTool<GetCustomerTool.Custom
 
     public record CustomerArgs(@NotEmpty @Size(max = 6) List<String> sections) {
     }
+
+    private static final Logger log = LoggerFactory.getLogger(GetCustomerTool.class);
 
     private final ManagementSection management;
 
@@ -114,7 +118,7 @@ public class GetCustomerTool extends AbstractCustomerTool<GetCustomerTool.Custom
         List<CustomerSection> returned = new ArrayList<>();
         List<String> unavailable = new ArrayList<>();
         for (CustomerSection section : requested) {
-            Map<String, Object> rendered = render(section, record, context);
+            Map<String, Object> rendered = renderOrNull(section, record, context);
             if (rendered == null) {
                 SectionSupport.missing(section.key());
                 unavailable.add(section.key());
@@ -150,6 +154,17 @@ public class GetCustomerTool extends AbstractCustomerTool<GetCustomerTool.Custom
             data.put("unavailableSections", unavailable);
         }
         return success(data, List.of(CustomerSection.PROFILE), record.dataDate());
+    }
+
+    /** Null when the section is absent or fails to render: one malformed block must not fail the whole call. */
+    private Map<String, Object> renderOrNull(CustomerSection section, Customer360Record record, ToolContext context) {
+        try {
+            return render(section, record, context);
+        } catch (RuntimeException e) {
+            // Section key and class name only: the exception message may carry customer data.
+            log.warn("customer 360 section failed: {} {}", section.key(), e.getClass().getSimpleName());
+            return null;
+        }
     }
 
     private Map<String, Object> render(CustomerSection section, Customer360Record record, ToolContext context) {

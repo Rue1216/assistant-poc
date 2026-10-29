@@ -4,6 +4,8 @@ import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.chat.ChatOrchestrator;
 import com.example.copilot.aiassistant.chat.EvaluationReport;
 import com.example.copilot.aiassistant.common.RequestIdFilter;
+import com.example.copilot.aiassistant.port.AccessLevel;
+import com.example.copilot.aiassistant.port.CustomerAccessPort;
 import com.example.copilot.aiassistant.privacy.CustomerContext;
 import com.example.copilot.aiassistant.port.UserContext;
 import com.example.copilot.aiassistant.privacy.CustomerContextFactory;
@@ -35,17 +37,19 @@ public class EvalRunner {
 
     private final ChatOrchestrator orchestrator;
     private final CustomerContextFactory customerFactory;
+    private final CustomerAccessPort accessPort;
     private final EvalJudge judge;
     private final EvalRunRepository repository;
     private final EvalDataset dataset;
     private final Clock clock;
     private final Duration runTimeout;
 
-    public EvalRunner(ChatOrchestrator orchestrator, CustomerContextFactory customerFactory, EvalJudge judge,
+    public EvalRunner(ChatOrchestrator orchestrator, CustomerContextFactory customerFactory, CustomerAccessPort accessPort, EvalJudge judge,
                       EvalRunRepository repository, EvalDataset dataset, Clock clock,
                       AiAssistantProperties properties) {
         this.orchestrator = orchestrator;
         this.customerFactory = customerFactory;
+        this.accessPort = accessPort;
         this.judge = judge;
         this.repository = repository;
         this.dataset = dataset;
@@ -102,7 +106,7 @@ public class EvalRunner {
             if (!clock.instant().isBefore(deadline)) {
                 return fail(run, progress, EvalErrors.TIMEOUT) ? "FAILED" : "INTERRUPTED";
             }
-            Optional<CustomerContext> customer = customerFactory.forEvaluation(c.certNo(), c.accessLevel());
+            Optional<CustomerContext> customer = customerFor(run, c);
             Side baseline = side(run, c, "baseline", snapshot.baseline(), customer, progress);
             Side candidate = side(run, c, "candidate", snapshot.candidate(), customer, progress);
             EvalCaseRecord record = new EvalCaseRecord(c.id(), c.group(),
@@ -121,6 +125,18 @@ public class EvalRunner {
         }
         progress.docVersion++;
         return "COMPLETED";
+    }
+
+    /**
+     * The case's customer, or empty when it does not exist or the user who started the run has no access to it:
+     * forEvaluation does not check access, so this is the defense in depth against a dataset naming such a customer.
+     */
+    private Optional<CustomerContext> customerFor(EvalRun run, EvalCase c) {
+        UserContext trigger = new UserContext(run.triggeredBy(), run.triggeredBy(), "EVAL", Set.of());
+        if (accessPort.checkAccess(trigger, c.certNo()) == AccessLevel.NONE) {
+            return Optional.empty();
+        }
+        return customerFactory.forEvaluation(c.certNo(), c.accessLevel());
     }
 
     /** One side's stored result and the report it was built from. */

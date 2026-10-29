@@ -27,7 +27,9 @@ public final class DisplayFormat {
     }
 
     public static String percentPoints(BigDecimal diff) {
-        return (diff.signum() > 0 ? "+" : "") + fixed(diff, 2) + " 個百分點";
+        // The sign follows the rounded value, so 0.001 reads 0.00 without a plus.
+        BigDecimal rounded = diff.setScale(2, RoundingMode.HALF_UP);
+        return (rounded.signum() > 0 ? "+" : "") + fixed(rounded, 2) + " 個百分點";
     }
 
     public static String rate(BigDecimal value) {

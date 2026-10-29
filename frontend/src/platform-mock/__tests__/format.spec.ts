@@ -24,5 +24,7 @@ describe('format', () => {
     expect(formatPoints(16.6)).toBe('+16.60 個百分點')
     expect(formatPoints(-7.4)).toBe('-7.40 個百分點')
     expect(formatPoints(0)).toBe('0.00 個百分點')
+    expect(formatPoints(0.001)).toBe('0.00 個百分點')
+    expect(formatPoints(-0.001)).toBe('0.00 個百分點')
   })
 })

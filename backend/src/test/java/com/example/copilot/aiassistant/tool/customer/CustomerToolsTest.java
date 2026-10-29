@@ -16,6 +16,8 @@ import com.example.copilot.aiassistant.port.c360.LiabilityBlock;
 import com.example.copilot.aiassistant.port.c360.ManagementCard;
 import com.example.copilot.aiassistant.port.c360.MemberRankData;
 import com.example.copilot.aiassistant.port.c360.ProfileCard;
+import com.example.copilot.aiassistant.port.c360.RadarPoint;
+import com.example.copilot.aiassistant.port.c360.RadarView;
 import com.example.copilot.aiassistant.port.c360.RealTimeStatusRecord;
 import com.example.copilot.aiassistant.privacy.CustomerContext;
 import com.example.copilot.aiassistant.privacy.PiiRedactor;
@@ -36,6 +38,7 @@ import dev.langchain4j.model.chat.request.json.JsonArraySchema;
 import dev.langchain4j.model.chat.request.json.JsonEnumSchema;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -320,6 +323,26 @@ class CustomerToolsTest {
         assertThat(result.status()).isEqualTo(ToolStatus.DENIED);
         assertThat(result.errorCode()).isEqualTo("TOOL_ARGUMENT_INVALID");
         assertThat(result.message()).isEqualTo("參數格式不正確");
+    }
+
+    @Test
+    void aSectionThatFailsToRenderIsListedAsUnavailableAndTheOthersStillReturn() {
+        CustomerDataPort p = portWith(r -> {
+            RadarView w = r.wealthPotential();
+            RadarView broken = new RadarView(w.labels(), Arrays.asList((RadarPoint) null), w.segmentData(), w.tagList());
+            return new Customer360Record(r.dataDate(), r.customerProfile(), r.customerManagement(), r.aum(), r.lum(),
+                    r.memberRank(), broken, r.productMix(), r.assetProduct(), r.liabilitiesAndFx(),
+                    r.accountRelationshipDepth(), r.consumptionBehavior(), r.channelBehavior(), r.digitalBehavior());
+        });
+        ToolContext ctx = context(p, TestCustomers.RETIREE, AccessLevel.FULL);
+
+        ToolResult result = get(ctx, "productIntent", "profile");
+
+        Map<String, Object> data = data(result);
+        assertThat(data).containsKey("profile").doesNotContainKey("productIntent")
+                .containsEntry("unavailableSections", List.of("productIntent"));
+        assertThat(result.citation().resultCount()).isEqualTo(1);
+        assertUnavailable(get(ctx, "productIntent"));
     }
 
     @Test

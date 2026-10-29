@@ -177,16 +177,23 @@ npm run dev
 
 啟動後：
 
-- 後端 log 出現 `seed completed: 6 configs published`（第一次啟動）或 `seed skipped`（之後的啟動）。
+- 後端 log 出現 `seed completed: 8 configs published`（第一次啟動：`system.main` 加 7 個問題分類）或 `seed skipped: configs already exist`（之後的啟動；舊資料庫不會載入新 seed，見 7.1）。
 - 瀏覽器開 `http://localhost:8090/actuator/health`，應顯示 `{"status":"UP"}`。
 - 瀏覽器開 `http://localhost:5173`，以下列任一帳號登入，密碼都是 `poc1234`：
 
-| 帳號 | 角色 | 能做什麼 |
-|---|---|---|
-| `fc.officer` / `fc.supervisor` | 理專經辦 / 理專主管 | 360 頁面使用小幫手 |
-| `ao.officer` / `ao.supervisor` | AO 經辦 / AO 主管 | 同上，範圍不同 |
-| `branch.mgr`、`region.north`、`hq.viewer` | 分行主管、區域、總行 | 同上，範圍不同 |
-| `backoffice.admin`、`it.admin` | 後台管理、IT 管理 | 小幫手（只看基本輪廓）＋ Prompt 管理 |
+| 帳號 | 職稱 | 顧客範圍（`scope`） | 能做什麼 |
+|---|---|---|---|
+| `ICRM00047` | 總行查詢人員 | 全部顧客 | 360 頁面使用小幫手 |
+| `ICRM00007` | 區域查詢人員 | 北區（B101、B102） | 同上，範圍不同 |
+| `ICRM00018` | 分行單位主管 | 所屬分行 B101 | 同上，範圍不同 |
+| `ICRM00024` | 理專主管 | B101（理財） | 同上，範圍不同 |
+| `ICRM00028` | 理專經辦 | B101（理財）或分派給本人 | 同上，範圍不同 |
+| `ICRM00036` | AO主管 | B101 或行銷單位 MU-N1 | 同上，範圍不同 |
+| `ICRM00040` | AO經辦 | B101（主經營行／利潤）、分派給本人或行銷單位 MU-N1 | 同上，範圍不同 |
+| `EEE11111` | 後台管理人員 | 全部顧客 | 小幫手（`FULL`，可看全部顧客）＋ Prompt 管理 |
+| `EEE22222` | IT 管理人員 | 全部顧客 | 同上 |
+
+登入選單顯示「帳號 職稱」（例如 `ICRM00047 總行查詢人員`）。mock 顧客共 7 位，以身分證字號（`certNo`）作為顧客編號，例如王小明 `A123456789`；蔡宗翰（`A129876543`）是停止蒐集利用個資的顧客，360 頁面會擋下，見 [03-tool-catalog.md](spec/03-tool-catalog.md) 5.2。
 
 > **Port**：後端預設 8090（本機的 8080 常被其他程式占用）。要改用其他 port 時，後端設 `$env:SERVER_PORT = "9000"`，前端啟動前設 `$env:VITE_API_TARGET = "http://localhost:9000"`。
 
@@ -194,15 +201,23 @@ npm run dev
 
 想回到初始狀態（例如 demo 前）：
 
-> **更新 seed Prompt 後必須重設。** `SeedLoader` 只在資料庫是空的時候寫入 seed；已有資料時不會覆蓋。所以 pull 到新的 seed 檔之後（尤其是 demo 前），要先照下面步驟重設，新的 Prompt 才會生效。
+> **更新 seed Prompt 後必須重設，個人 360 內容重寫之後的 demo 前一定要重設。** `SeedLoader` 只在設定 collection 已有資料時跳過、空的時候才寫入 seed；所以舊資料庫不會載入新的 7 個問題分類，而且既有的 `updatedBy`、稽核紀錄與回饋仍記著舊帳號，不會遷移。pull 到新的 seed 檔或換新帳號之後（尤其是 demo 前），要先照下面步驟清空，新的 Prompt 才會生效。
 
 ```powershell
-docker compose down -v             # 連同資料一起刪除
+docker compose down -v             # 連同資料一起刪除（建議）
 docker compose up -d               # 重新建立；後端下次啟動會重新寫入 seed
+```
+
+不想刪掉整個 volume 時，改為刪除下列 collection 後重新啟動後端（對話回饋存在稽核紀錄的 `feedback` 欄位內，沒有獨立的 collection）：
+
+```powershell
+docker compose exec mongo mongosh copilot --quiet --eval "db.COLL_ICRM_AI_ASSISTANT_CONFIG.drop(); db.COLL_ICRM_AI_ASSISTANT_AUDIT.drop(); db.COLL_ICRM_AI_ASSISTANT_EVAL_RUN.drop()"
 ```
 
 ### 7.2 查看稽核紀錄
 
 ```powershell
-docker compose exec mongo mongosh copilot --quiet --eval "db.COLL_ICRM_AI_ASSISTANT_AUDIT.find({}, {userId:1, customerId:1, question:1, createdAt:1}).sort({createdAt:-1}).limit(5)"
+docker compose exec mongo mongosh copilot --quiet --eval "db.COLL_ICRM_AI_ASSISTANT_AUDIT.find({}, {userId:1, roleKey:1, question:1, createdAt:1}).sort({createdAt:-1}).limit(5)"
 ```
+
+> 稽核紀錄不存顧客編號（`certNo` 是身分證字號）；`question` 是去識別化後的文字，本顧客的 `certNo` 會顯示為【本顧客】。

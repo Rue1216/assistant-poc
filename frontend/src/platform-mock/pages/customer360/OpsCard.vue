@@ -25,7 +25,7 @@ const insights = computed(() => props.management.insight.split('；').filter((s)
       <ul class="campaign-list">
         <li v-for="c in management.campaignList" :key="c.receiptNo">
           <div><strong>{{ c.campaignName }}</strong><span>{{ c.campaignDuration }}</span></div>
-          <span :class="['badge', c.campaignEnabled === 'Y' ? 'badge--info' : 'badge--draft']">{{ c.campaignEnabled === 'Y' ? '可推薦' : '未開放' }}</span>
+          <span :class="['badge', c.campaignEnabled === 'Y' ? 'badge--info' : 'badge--draft']">數位投放：{{ c.campaignEnabled === 'Y' ? '是' : '否' }}</span>
         </li>
       </ul>
     </section>

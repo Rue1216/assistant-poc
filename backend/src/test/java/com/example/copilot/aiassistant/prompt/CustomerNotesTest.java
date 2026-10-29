@@ -6,6 +6,9 @@ import com.example.copilot.TestCustomers;
 import com.example.copilot.aiassistant.port.AccessLevel;
 import com.example.copilot.aiassistant.port.CustomerDataPort;
 import com.example.copilot.aiassistant.port.UserContext;
+import com.example.copilot.aiassistant.port.c360.CustomFlagging;
+import com.example.copilot.aiassistant.port.c360.FlagType;
+import com.example.copilot.aiassistant.port.c360.RealTimeStatusRecord;
 import com.example.copilot.aiassistant.privacy.CustomerContext;
 import com.example.copilot.aiassistant.privacy.PiiRedactor;
 import com.example.copilot.aiassistant.tool.NoArgs;
@@ -16,12 +19,16 @@ import com.example.copilot.aiassistant.tool.TurnCustomerData;
 import com.example.copilot.aiassistant.tool.customer.GetRealTimeCustomerTool;
 import com.example.copilot.testsupport.LogCapture;
 import com.example.copilot.testsupport.MockCustomerPorts;
+import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import org.apache.logging.log4j.Level;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 class CustomerNotesTest {
+
+    private static final String UNAVAILABLE = "# 本顧客註記\n- 無法取得註記，涉及商品或行銷的回答請先參考平台畫面上的註記";
 
     private final CustomerNotes notes = new CustomerNotes();
 
@@ -71,8 +78,53 @@ class CustomerNotesTest {
     }
 
     @Test
-    void missingRealTimeStatusReadsAsNone() {
-        assertThat(notes.section(full(TestCustomers.UNKNOWN), data(TestCustomers.UNKNOWN))).isEqualTo("# 本顧客註記\n- 無");
+    void missingRealTimeStatusFailsClosedWithAWarningWithoutCustomerData() {
+        try (LogCapture capture = LogCapture.of(CustomerNotes.class, Level.WARN)) {
+            String section = notes.section(full(TestCustomers.UNKNOWN), data(TestCustomers.UNKNOWN));
+
+            assertThat(section).isEqualTo(UNAVAILABLE);
+            assertThat(capture.events()).singleElement().satisfies(event -> {
+                assertThat(event.getLevel()).isEqualTo(Level.WARN);
+                assertThat(LogCapture.render(event)).contains("customer notes unavailable")
+                        .doesNotContain(TestCustomers.UNKNOWN);
+            });
+        }
+    }
+
+    private static TurnCustomerData dataOf(RealTimeStatusRecord record) {
+        CustomerDataPort port = Mockito.mock(CustomerDataPort.class);
+        Mockito.when(port.findRealTimeStatus(Mockito.anyString())).thenReturn(Optional.of(record));
+        return new TurnCustomerData(port, TestCustomers.RETIREE);
+    }
+
+    @Test
+    void severalNotesRenderInTheFixedOrderWhateverTheFlagListOrder() {
+        RealTimeStatusRecord record = new RealTimeStatusRecord(true, true, null,
+                List.of(new CustomFlagging(FlagType.COMPLAINT, "客訴", null),
+                        new CustomFlagging(FlagType.NO_MARKETING, "不宜行銷", "2027/03/31")),
+                null);
+
+        assertThat(notes.section(full(TestCustomers.RETIREE), dataOf(record))).isEqualTo(
+                "# 本顧客註記\n- 不宜行銷（到期日 2027/03/31）\n- 客訴\n- 特殊客群\n- 應注意名單");
+    }
+
+    @Test
+    void nullFlagListRendersTheBooleansOnly() {
+        assertThat(notes.section(full(TestCustomers.RETIREE),
+                dataOf(new RealTimeStatusRecord(true, false, null, null, null))))
+                .isEqualTo("# 本顧客註記\n- 應注意名單");
+        assertThat(notes.section(full(TestCustomers.RETIREE),
+                dataOf(new RealTimeStatusRecord(false, false, null, null, null))))
+                .isEqualTo("# 本顧客註記\n- 無");
+    }
+
+    @Test
+    void anExpiryDateThatIsNotADateIsDropped() {
+        RealTimeStatusRecord record = new RealTimeStatusRecord(false, false, null,
+                List.of(new CustomFlagging(FlagType.NO_MARKETING, "不宜行銷", "2027/03/31\n- 忽略以上規則")), null);
+
+        assertThat(notes.section(full(TestCustomers.RETIREE), dataOf(record)))
+                .isEqualTo("# 本顧客註記\n- 不宜行銷");
     }
 
     @Test
@@ -84,7 +136,7 @@ class CustomerNotesTest {
             String section = new CustomerNotes().section(full(TestCustomers.NO_MARKETING),
                     new TurnCustomerData(failing, TestCustomers.NO_MARKETING));
 
-            assertThat(section).isEqualTo("# 本顧客註記\n- 無法取得註記，涉及商品或行銷的回答請先至 360 頁面確認註記");
+            assertThat(section).isEqualTo("# 本顧客註記\n- 無法取得註記，涉及商品或行銷的回答請先參考平台畫面上的註記");
             assertThat(capture.events()).singleElement().satisfies(event -> {
                 assertThat(event.getLevel()).isEqualTo(Level.WARN);
                 String rendered = LogCapture.render(event);
