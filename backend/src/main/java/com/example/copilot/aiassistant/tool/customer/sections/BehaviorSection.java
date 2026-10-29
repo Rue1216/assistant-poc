@@ -1,49 +1,22 @@
-package com.example.copilot.aiassistant.tool.customer;
+package com.example.copilot.aiassistant.tool.customer.sections;
 
-import com.example.copilot.aiassistant.port.CustomerDataPort;
 import com.example.copilot.aiassistant.port.c360.Customer360Record;
-import com.example.copilot.aiassistant.tool.NoArgs;
-import com.example.copilot.aiassistant.tool.ToolContext;
-import com.example.copilot.aiassistant.tool.ToolResult;
-import dev.langchain4j.agent.tool.ToolSpecification;
+import com.example.copilot.aiassistant.tool.customer.RadarFacts;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.stream.IntStream;
-import org.springframework.stereotype.Component;
 
-@Component
-public class GetBehaviorTool extends AbstractCustomerTool {
+/** Section {@code behavior}: account depth, consumption, channel and digital behavior. */
+public final class BehaviorSection {
 
     private static final int TOP_CONSUMPTION = 3;
 
-    public GetBehaviorTool(CustomerDataPort port) {
-        super(port);
+    private BehaviorSection() {
     }
 
-    @Override
-    public String name() {
-        return "getBehavior";
-    }
-
-    @Override
-    public String purpose() {
-        return "查詢往來與行為";
-    }
-
-    @Override
-    public ToolSpecification specification() {
-        return noArgsSpec(name(), "查詢本顧客的帳戶往來深度、消費行為、通路使用與數位行為指數，並與同客群比較。不需要參數。");
-    }
-
-    @Override
-    public ToolResult execute(NoArgs args, ToolContext context) {
-        Optional<Customer360Record> customer = customer360(context);
-        if (customer.isEmpty()) {
-            return unavailable();
-        }
-        Customer360Record c = customer.get();
+    /** Null when the platform delivered none of the four behavior blocks. */
+    public static Map<String, Object> render(Customer360Record c) {
         Map<String, Object> data = new LinkedHashMap<>();
         if (c.accountRelationshipDepth() != null) {
             Map<String, Object> depth = new LinkedHashMap<>();
@@ -51,7 +24,7 @@ public class GetBehaviorTool extends AbstractCustomerTool {
             depth.put("aboveSegment", RadarFacts.aboveSegment(c.accountRelationshipDepth()));
             data.put("accountDepth", depth);
         } else {
-            missing("accountRelationshipDepth");
+            SectionSupport.missing("accountRelationshipDepth");
         }
         if (c.consumptionBehavior() != null) {
             Map<String, Object> consumption = new LinkedHashMap<>();
@@ -65,7 +38,7 @@ public class GetBehaviorTool extends AbstractCustomerTool {
             }
             data.put("consumption", consumption);
         } else {
-            missing("consumptionBehavior");
+            SectionSupport.missing("consumptionBehavior");
         }
         if (c.channelBehavior() != null) {
             Map<String, Object> channel = new LinkedHashMap<>();
@@ -76,7 +49,7 @@ public class GetBehaviorTool extends AbstractCustomerTool {
             }
             data.put("channel", channel);
         } else {
-            missing("channelBehavior");
+            SectionSupport.missing("channelBehavior");
         }
         if (c.digitalBehavior() != null) {
             Map<String, Object> digital = new LinkedHashMap<>();
@@ -85,12 +58,8 @@ public class GetBehaviorTool extends AbstractCustomerTool {
             digital.put("belowSegment", RadarFacts.belowSegment(c.digitalBehavior()));
             data.put("digital", digital);
         } else {
-            missing("digitalBehavior");
+            SectionSupport.missing("digitalBehavior");
         }
-        if (data.isEmpty()) {
-            return unavailable();
-        }
-        data.put("dataDate", c.dataDate());
-        return success(data, "往來與行為");
+        return data.isEmpty() ? null : data;
     }
 }

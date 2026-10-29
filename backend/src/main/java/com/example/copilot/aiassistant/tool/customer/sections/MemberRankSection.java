@@ -1,49 +1,27 @@
-package com.example.copilot.aiassistant.tool.customer;
+package com.example.copilot.aiassistant.tool.customer.sections;
 
-import com.example.copilot.aiassistant.port.CustomerDataPort;
 import com.example.copilot.aiassistant.port.c360.Customer360Record;
 import com.example.copilot.aiassistant.port.c360.MemberRankData;
-import com.example.copilot.aiassistant.tool.NoArgs;
-import com.example.copilot.aiassistant.tool.ToolContext;
-import com.example.copilot.aiassistant.tool.ToolResult;
-import dev.langchain4j.agent.tool.ToolSpecification;
+import com.example.copilot.aiassistant.tool.customer.DisplayFormat;
+import com.example.copilot.aiassistant.tool.customer.MemberRankTable;
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Optional;
-import org.springframework.stereotype.Component;
 
-@Component
-public class GetMemberRankTool extends AbstractCustomerTool {
+/** Section {@code memberRank}: tier, progress, gaps, downgrade guard and benefits; never the tier code. */
+public final class MemberRankSection {
 
     private static final String RELATIONSHIP_NOTE = "此類顧客不適用等級進度與權益說明";
 
-    public GetMemberRankTool(CustomerDataPort port) {
-        super(port);
+    private MemberRankSection() {
     }
 
-    @Override
-    public String name() {
-        return "getMemberRank";
-    }
-
-    @Override
-    public String purpose() {
-        return "查詢理財會員等級";
-    }
-
-    @Override
-    public ToolSpecification specification() {
-        return noArgsSpec(name(), "查詢本顧客的理財會員等級、升降等進度、距下一級與防降等線的差距，以及目前與下一級權益。不需要參數。");
-    }
-
-    @Override
-    public ToolResult execute(NoArgs args, ToolContext context) {
-        Optional<Customer360Record> customer = customer360(context);
-        if (customer.isEmpty() || customer.get().memberRank() == null) {
-            return unavailable();
+    /** Null when the platform delivered no member rank. */
+    public static Map<String, Object> render(Customer360Record r) {
+        MemberRankData rank = r.memberRank();
+        if (rank == null) {
+            return null;
         }
-        MemberRankData rank = customer.get().memberRank();
         MemberRankTable.Tier tier = MemberRankTable.tierOf(rank.memberRankCode());
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("rank", tier.displayName());
@@ -55,15 +33,14 @@ public class GetMemberRankTool extends AbstractCustomerTool {
             }
             default -> general(data, tier, rank);
         }
-        data.put("dataDate", customer.get().dataDate());
-        return success(data, "會員等級");
+        return data;
     }
 
     private static void general(Map<String, Object> data, MemberRankTable.Tier tier, MemberRankData rank) {
-        BigDecimal progress = decimal(rank.progressPercent(), "progressPercent");
-        BigDecimal segmentProgress = decimal(rank.segmentProgressPercent(), "segmentProgressPercent");
-        BigDecimal aum = decimal(rank.customerAum(), "customerAum");
-        BigDecimal segmentAum = decimal(rank.segmentAverageAum(), "segmentAverageAum");
+        BigDecimal progress = SectionSupport.decimal(rank.progressPercent(), "progressPercent");
+        BigDecimal segmentProgress = SectionSupport.decimal(rank.segmentProgressPercent(), "segmentProgressPercent");
+        BigDecimal aum = SectionSupport.decimal(rank.customerAum(), "customerAum");
+        BigDecimal segmentAum = SectionSupport.decimal(rank.segmentAverageAum(), "segmentAverageAum");
         if (progress != null) {
             data.put("progressPercent", DisplayFormat.percent(progress));
         }

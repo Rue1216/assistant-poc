@@ -15,6 +15,7 @@ import com.example.copilot.aiassistant.common.ErrorCode;
 import com.example.copilot.aiassistant.common.RequestIdFilter;
 import com.example.copilot.aiassistant.config.AssistantConfig;
 import com.example.copilot.aiassistant.llm.LlmErrorMapper;
+import com.example.copilot.aiassistant.port.CustomerDataPort;
 import com.example.copilot.aiassistant.port.UserContext;
 import com.example.copilot.aiassistant.privacy.CustomerContext;
 import com.example.copilot.aiassistant.privacy.CustomerDeidentifier;
@@ -36,6 +37,7 @@ import com.example.copilot.aiassistant.tool.ToolContext;
 import com.example.copilot.aiassistant.tool.ToolExecutor;
 import com.example.copilot.aiassistant.tool.ToolOutcome;
 import com.example.copilot.aiassistant.tool.ToolRegistry;
+import com.example.copilot.aiassistant.tool.TurnCustomerData;
 import com.example.copilot.aiassistant.tool.market.MarketTool;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
@@ -86,6 +88,7 @@ public class ChatOrchestrator {
     private final PiiRedactor redactor;
     private final PromptAssembler promptAssembler;
     private final CustomerNotes customerNotes;
+    private final CustomerDataPort port;
     private final InstructionRouter router;
     private final AnswerAssembler answerAssembler;
     private final AuditLogger auditLogger;
@@ -94,8 +97,8 @@ public class ChatOrchestrator {
     private final Clock clock;
 
     public ChatOrchestrator(ChatModel chatModel, ToolRegistry registry, ToolExecutor executor, PiiRedactor redactor,
-                            PromptAssembler promptAssembler, CustomerNotes customerNotes, InstructionRouter router,
-                            AnswerAssembler answerAssembler, AuditLogger auditLogger, LlmErrorMapper errorMapper,
+                            PromptAssembler promptAssembler, CustomerNotes customerNotes, CustomerDataPort port,
+                            InstructionRouter router, AnswerAssembler answerAssembler, AuditLogger auditLogger, LlmErrorMapper errorMapper,
                             AiAssistantProperties props, Clock clock) {
         this.chatModel = chatModel;
         this.registry = registry;
@@ -103,6 +106,7 @@ public class ChatOrchestrator {
         this.redactor = redactor;
         this.promptAssembler = promptAssembler;
         this.customerNotes = customerNotes;
+        this.port = port;
         this.router = router;
         this.answerAssembler = answerAssembler;
         this.auditLogger = auditLogger;
@@ -170,6 +174,7 @@ public class ChatOrchestrator {
         private final Instant deadline = started.plus(limits.requestTimeout());
         private final UserContext user;
         private final CustomerContext customer;
+        private final TurnCustomerData data;
         private final ToolContext toolContext;
         /** False for an evaluation turn: no audit entry. */
         private final boolean audited;
@@ -195,7 +200,8 @@ public class ChatOrchestrator {
             this.user = user;
             this.customer = customer;
             this.audited = audited;
-            this.toolContext = new ToolContext(user, customer);
+            this.data = new TurnCustomerData(port, customer.certNo());
+            this.toolContext = new ToolContext(user, customer, data);
         }
 
         /**
@@ -206,7 +212,7 @@ public class ChatOrchestrator {
             redactedQuestion = redact(command.message());
             List<ChatMessage> redactedHistory = history(command.history());
             prompt = promptAssembler.assemble(configs, route(command.categoryKey(), redactedHistory),
-                    customerNotes.section(customer));
+                    customerNotes.section(customer, data));
             List<ChatMessage> messages = new ArrayList<>();
             messages.add(SystemMessage.from(prompt.text()));
             messages.addAll(redactedHistory);

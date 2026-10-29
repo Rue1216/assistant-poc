@@ -1,6 +1,5 @@
-package com.example.copilot.aiassistant.tool.customer;
+package com.example.copilot.aiassistant.tool.customer.sections;
 
-import com.example.copilot.aiassistant.port.CustomerDataPort;
 import com.example.copilot.aiassistant.port.c360.AssetBlock;
 import com.example.copilot.aiassistant.port.c360.AumItems;
 import com.example.copilot.aiassistant.port.c360.CategoryData;
@@ -9,10 +8,7 @@ import com.example.copilot.aiassistant.port.c360.LiabilityBlock;
 import com.example.copilot.aiassistant.port.c360.LumItems;
 import com.example.copilot.aiassistant.port.c360.ProductMix;
 import com.example.copilot.aiassistant.port.c360.ProductMixData;
-import com.example.copilot.aiassistant.tool.NoArgs;
-import com.example.copilot.aiassistant.tool.ToolContext;
-import com.example.copilot.aiassistant.tool.ToolResult;
-import dev.langchain4j.agent.tool.ToolSpecification;
+import com.example.copilot.aiassistant.tool.customer.DisplayFormat;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
@@ -21,65 +17,42 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.springframework.stereotype.Component;
 
-@Component
-public class GetAssetLiabilityTool extends AbstractCustomerTool {
+/** Section {@code assetLiability}: assets, liabilities, liability-to-asset ratio and product mix. */
+public final class AssetLiabilitySection {
 
     /** A category as output fields, with the customer ratio it is sorted by. */
     private record Row(Map<String, Object> fields, BigDecimal customerRatio) {
     }
 
-    public GetAssetLiabilityTool(CustomerDataPort port) {
-        super(port);
+    private AssetLiabilitySection() {
     }
 
-    @Override
-    public String name() {
-        return "getAssetLiability";
-    }
-
-    @Override
-    public String purpose() {
-        return "查詢資產負債與產品結構";
-    }
-
-    @Override
-    public ToolSpecification specification() {
-        return noArgsSpec(name(), "查詢本顧客的資產與負債各項金額、占比及與同客群、前十大顧客的比較，負債對資產比與產品結構（存放比、活存占比、財富管理資產占比）。不需要參數。");
-    }
-
-    @Override
-    public ToolResult execute(NoArgs args, ToolContext context) {
-        Optional<Customer360Record> customer = customer360(context);
-        if (customer.isEmpty()) {
-            return unavailable();
-        }
-        Customer360Record c = customer.get();
+    /** Null when the platform delivered none of aum, lum and productMix. */
+    public static Map<String, Object> render(Customer360Record c) {
         if (c.aum() == null && c.lum() == null && c.productMix() == null) {
-            return unavailable();
+            return null;
         }
         Map<String, Object> data = new LinkedHashMap<>();
         if (c.aum() != null && c.aum().auMData() != null) {
             data.put("assets", block(c.aum().customerTotal(), c.aum().segmentTotal(), c.aum().topTenTotal(),
                     assetRows(c.aum().auMData())));
         } else {
-            missing("aum");
+            SectionSupport.missing("aum");
         }
         if (c.lum() != null && c.lum().luMData() != null) {
             data.put("liabilities", block(c.lum().customerTotal(), c.lum().segmentTotal(), c.lum().topTenTotal(),
                     liabilityRows(c.lum().luMData())));
         } else {
-            missing("lum");
+            SectionSupport.missing("lum");
         }
         liabilityToAssetRatio(c.aum(), c.lum()).ifPresent(ratio -> data.put("liabilityToAssetRatio", ratio));
         if (c.productMix() != null) {
             data.put("productMix", productMix(c.productMix()));
         } else {
-            missing("productMix");
+            SectionSupport.missing("productMix");
         }
-        data.put("dataDate", c.dataDate());
-        return success(data, "資產負債");
+        return data;
     }
 
     private static Map<String, Object> block(long total, long segmentTotal, long topTenTotal, List<Row> rows) {
@@ -119,12 +92,12 @@ public class GetAssetLiabilityTool extends AbstractCustomerTool {
     private static void addRow(List<Row> rows, String item, CategoryData category) {
         if (category == null || category.ratioList() == null || category.ratioList().size() < 3
                 || category.amountList() == null || category.amountList().isEmpty()) {
-            missing("category " + item);
+            SectionSupport.missing("category " + item);
             return;
         }
-        BigDecimal customer = decimal(category.ratioList().get(0), item);
-        BigDecimal segment = decimal(category.ratioList().get(1), item);
-        BigDecimal topTen = decimal(category.ratioList().get(2), item);
+        BigDecimal customer = SectionSupport.decimal(category.ratioList().get(0), item);
+        BigDecimal segment = SectionSupport.decimal(category.ratioList().get(1), item);
+        BigDecimal topTen = SectionSupport.decimal(category.ratioList().get(2), item);
         if (customer == null || segment == null || topTen == null) {
             return;
         }
@@ -150,7 +123,7 @@ public class GetAssetLiabilityTool extends AbstractCustomerTool {
 
     private static Map<String, Object> productMix(ProductMix mix) {
         Map<String, Object> out = new LinkedHashMap<>();
-        BigDecimal yield = decimal(mix.aumYield(), "aumYield");
+        BigDecimal yield = SectionSupport.decimal(mix.aumYield(), "aumYield");
         if (yield != null) {
             out.put("aumYield", DisplayFormat.percent(yield));
         }

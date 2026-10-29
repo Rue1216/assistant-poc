@@ -1,48 +1,21 @@
-package com.example.copilot.aiassistant.tool.customer;
+package com.example.copilot.aiassistant.tool.customer.sections;
 
-import com.example.copilot.aiassistant.port.CustomerDataPort;
 import com.example.copilot.aiassistant.port.c360.Customer360Record;
 import com.example.copilot.aiassistant.port.c360.RadarView;
-import com.example.copilot.aiassistant.tool.NoArgs;
-import com.example.copilot.aiassistant.tool.ToolContext;
-import com.example.copilot.aiassistant.tool.ToolResult;
-import dev.langchain4j.agent.tool.ToolSpecification;
+import com.example.copilot.aiassistant.tool.customer.RadarFacts;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Optional;
-import org.springframework.stereotype.Component;
 
-@Component
-public class GetProductIntentTool extends AbstractCustomerTool {
+/** Section {@code productIntent}: wealth potential and the asset / liability-FX intent indexes. */
+public final class ProductIntentSection {
 
-    public GetProductIntentTool(CustomerDataPort port) {
-        super(port);
+    private ProductIntentSection() {
     }
 
-    @Override
-    public String name() {
-        return "getProductIntent";
-    }
-
-    @Override
-    public String purpose() {
-        return "查詢財富潛力與產品意圖";
-    }
-
-    @Override
-    public ToolSpecification specification() {
-        return noArgsSpec(name(), "查詢本顧客的財富潛力、資產產品意圖與負債外匯意圖指數，並與同客群比較。不需要參數。");
-    }
-
-    @Override
-    public ToolResult execute(NoArgs args, ToolContext context) {
-        Optional<Customer360Record> customer = customer360(context);
-        if (customer.isEmpty()) {
-            return unavailable();
-        }
-        Customer360Record c = customer.get();
+    /** Null when the platform delivered none of the three radar blocks. */
+    public static Map<String, Object> render(Customer360Record c) {
         if (c.wealthPotential() == null && c.assetProduct() == null && c.liabilitiesAndFx() == null) {
-            return unavailable();
+            return null;
         }
         Map<String, Object> data = new LinkedHashMap<>();
         if (c.wealthPotential() != null) {
@@ -51,17 +24,16 @@ public class GetProductIntentTool extends AbstractCustomerTool {
             wealth.put("aboveSegment", RadarFacts.aboveSegment(c.wealthPotential()));
             data.put("wealthPotential", wealth);
         } else {
-            missing("wealthPotential");
+            SectionSupport.missing("wealthPotential");
         }
         putIntent(data, "assetIntent", c.assetProduct(), "assetProduct");
         putIntent(data, "liabilityFxIntent", c.liabilitiesAndFx(), "liabilitiesAndFx");
-        data.put("dataDate", c.dataDate());
-        return success(data, "產品意圖");
+        return data;
     }
 
     private static void putIntent(Map<String, Object> data, String key, RadarView view, String block) {
         if (view == null) {
-            missing(block);
+            SectionSupport.missing(block);
             return;
         }
         Map<String, Object> intent = new LinkedHashMap<>();

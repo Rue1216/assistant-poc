@@ -12,14 +12,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** Turns a radar view (labels plus customer and segment indices) into facts the model can quote. */
-final class RadarFacts {
+public final class RadarFacts {
 
     private static final Logger log = LoggerFactory.getLogger(RadarFacts.class);
 
     private RadarFacts() {}
 
     /** Per label: item, index, optional value, segmentIndex, vsSegment (customer minus segment, signed). */
-    static List<Map<String, Object>> items(RadarView view, boolean withValue, boolean withHighlight) {
+    public static List<Map<String, Object>> items(RadarView view, boolean withValue, boolean withHighlight) {
         int size = size(view);
         List<Map<String, Object>> items = new ArrayList<>();
         for (int i = 0; i < size; i++) {
@@ -41,7 +41,7 @@ final class RadarFacts {
     }
 
     /** The {@code rank}-th highest customer index (1 is the highest) as item and index; null when there are fewer. */
-    static Map<String, Object> top(RadarView view, int rank) {
+    public static Map<String, Object> top(RadarView view, int rank) {
         // sorted() is stable, so equal indices keep the label order.
         List<Integer> order = IntStream.range(0, size(view)).boxed()
                 .sorted(Comparator.comparingInt((Integer i) -> view.customerData().get(i).rank()).reversed())
@@ -57,14 +57,14 @@ final class RadarFacts {
     }
 
     /** Labels where the customer index is above the segment, the biggest gap first. */
-    static List<String> aboveSegment(RadarView view) {
+    public static List<String> aboveSegment(RadarView view) {
         return IntStream.range(0, size(view)).boxed().filter(i -> gap(view, i) > 0)
                 .sorted(Comparator.comparingInt((Integer i) -> gap(view, i)).reversed())
                 .map(i -> view.labels().get(i)).toList();
     }
 
     /** Labels where the customer index is below the segment, the biggest gap first. */
-    static List<String> belowSegment(RadarView view) {
+    public static List<String> belowSegment(RadarView view) {
         return IntStream.range(0, size(view)).boxed().filter(i -> gap(view, i) < 0)
                 .sorted(Comparator.comparingInt((Integer i) -> gap(view, i)))
                 .map(i -> view.labels().get(i)).toList();

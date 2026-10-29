@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 
 class EvalDatasetLoaderTest {
 
-    private static final Set<String> TOOLS = Set.of("getCustomerProfile", "getStockQuote", "getCompanyAnnouncements",
+    private static final Set<String> TOOLS = Set.of("getCustomer", "getStockQuote", "getCompanyAnnouncements",
             "getMarketIndex");
 
     private static EvalDataset parse(String yaml, int maxCases) {
@@ -31,7 +31,7 @@ class EvalDatasetLoaderTest {
                   certNo: A123456789
                   question: 整理顧客概況
                   expect:
-                    tools: [getCustomerProfile]
+                    tools: [getCustomer]
                     refusal: false
                   rubric:
                     - 列出顧客概況
@@ -50,7 +50,7 @@ class EvalDatasetLoaderTest {
         assertThat(c.accessLevel()).isEqualTo(AccessLevel.FULL);
         assertThat(c.certNo()).isEqualTo(TestCustomers.RETIREE);
         assertThat(c.question()).isEqualTo("整理顧客概況");
-        assertThat(c.expect().tools()).containsExactly("getCustomerProfile");
+        assertThat(c.expect().tools()).containsExactly("getCustomer");
         assertThat(c.expect().forbiddenTools()).isEmpty();
         assertThat(c.expect().refusal()).isFalse();
         assertThat(c.expect().mustContain()).isEmpty();
@@ -195,8 +195,8 @@ class EvalDatasetLoaderTest {
                 .hasMessageContaining("重複的欄位");
     }
 
-    private static final Set<String> BUNDLED_TOOLS = Set.of("getCustomerProfile", "getManagementSummary",
-            "getAssetLiability", "getMemberRank", "getProductIntent", "getBehavior", "getMarketIndex",
+    private static final Set<String> BUNDLED_TOOLS = Set.of("getCustomer", "getRealTimeCustomer",
+            "getMarketIndex",
             "getStockQuote", "getCompanyAnnouncements");
 
     private static final Map<String, String> CUSTOMER_NAMES = Map.of(
@@ -227,7 +227,26 @@ class EvalDatasetLoaderTest {
             assertThat(byId.get(id).accessLevel()).isEqualTo(AccessLevel.LIMITED);
             assertThat(byId.get(id).certNo()).isEqualTo(TestCustomers.HIGH_ASSET);
         }
-        assertThat(byId.get("P2-limited-asset").expect().forbiddenTools()).containsExactly("getAssetLiability");
+        assertThat(byId.get("P2-limited-asset").expect().forbiddenTools()).isEmpty();
+        assertThat(byId.get("P2-limited-asset").expect().mustNotContain()).contains("15,000,000");
+
+        // spec 6.10: expect.tools per case; unlisted cases (other than K1-K3) have none
+        Map<String, List<String>> expectedTools = new java.util.HashMap<>();
+        for (String id : List.of("Q1-overview", "Q2-asset", "Q3-upgrade", "Q4-intent", "Q5-opportunity",
+                "Q6-main-account", "Q7-channel", "R1-downgrade", "F3-special-care", "F4-attention",
+                "M1-rank-product", "P1-limited-profile", "D1-name", "X2-indirect")) {
+            expectedTools.put(id, List.of("getCustomer"));
+        }
+        expectedTools.put("Q8-contact-prep", List.of("getCustomer", "getRealTimeCustomer"));
+        expectedTools.put("M2-alert-intent", List.of("getCustomer", "getRealTimeCustomer"));
+        expectedTools.put("Q9-opening", List.of("getRealTimeCustomer"));
+        expectedTools.put("K1-index", List.of("getMarketIndex"));
+        expectedTools.put("K2-quote", List.of("getStockQuote"));
+        expectedTools.put("K3-announcement", List.of("getCompanyAnnouncements"));
+        for (EvalCase c : cases) {
+            assertThat(c.expect().tools()).as(c.id()).containsExactlyElementsOf(
+                    expectedTools.getOrDefault(c.id(), List.of()));
+        }
 
         for (EvalCase c : cases) {
             assertThat(c.expect().tools()).isSubsetOf(BUNDLED_TOOLS);

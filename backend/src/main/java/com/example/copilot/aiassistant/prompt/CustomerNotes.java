@@ -1,11 +1,11 @@
 package com.example.copilot.aiassistant.prompt;
 
 import com.example.copilot.aiassistant.port.AccessLevel;
-import com.example.copilot.aiassistant.port.CustomerDataPort;
 import com.example.copilot.aiassistant.port.c360.CustomFlagging;
 import com.example.copilot.aiassistant.port.c360.FlagType;
 import com.example.copilot.aiassistant.port.c360.RealTimeStatusRecord;
 import com.example.copilot.aiassistant.privacy.CustomerContext;
+import com.example.copilot.aiassistant.tool.TurnCustomerData;
 import java.util.ArrayList;
 import java.util.List;
 import org.slf4j.Logger;
@@ -27,19 +27,16 @@ public class CustomerNotes {
     /** Flagging types that are listed, in this order (high asset, zone and professional-investor flags are not). */
     private static final List<FlagType> LISTED_FLAGS = List.of(FlagType.NO_MARKETING, FlagType.COMPLAINT);
 
-    private final CustomerDataPort port;
-
-    public CustomerNotes(CustomerDataPort port) {
-        this.port = port;
-    }
-
-    /** The section for a FULL customer, or null when the access level is below FULL. Never throws. */
-    public String section(CustomerContext customer) {
+    /**
+     * The section for a FULL customer, or null when the access level is below FULL. Never throws. The real-time
+     * data comes from the question's {@link TurnCustomerData}: read once for the prompt and the tools together.
+     */
+    public String section(CustomerContext customer, TurnCustomerData data) {
         if (customer.accessLevel() != AccessLevel.FULL) {
             return null;
         }
         try {
-            return port.findRealTimeStatus(customer.certNo()).map(CustomerNotes::render)
+            return data.realTime().map(CustomerNotes::render)
                     .orElse(HEADING + "- 無");
         } catch (RuntimeException e) {
             // Class name only: the exception message may carry customer data.

@@ -41,7 +41,7 @@ class ChatCitationFlowTest extends IntegrationTestBase {
     void answerCitesToolResultInResponseAndAudit() throws Exception {
         when(chatModel.chat(any(ChatRequest.class))).thenReturn(
                 text("{\"category\":\"none\"}", 10), // the routing round comes first
-                toolCalls(100, call("c1", "getCustomerProfile", "{}")),
+                toolCalls(100, call("c1", "getCustomer", "{\"sections\":[\"profile\"]}")),
                 text(blocks(block("paragraph", "本顧客屬退休客群", "S1")), 200));
 
         String body = mockMvc.perform(post(URL, TestCustomers.RETIREE).with(TestUsers.as("ICRM00028")).with(csrf())
@@ -55,10 +55,10 @@ class ChatCitationFlowTest extends IntegrationTestBase {
                 .andExpect(jsonPath("$.answer").value("本顧客屬退休客群"))
                 .andExpect(jsonPath("$.citations.length()").value(1))
                 .andExpect(jsonPath("$.citations[0].id").value(1))
-                .andExpect(jsonPath("$.citations[0].toolName").value("getCustomerProfile"))
+                .andExpect(jsonPath("$.citations[0].toolName").value("getCustomer"))
                 .andExpect(jsonPath("$.citations[0].title").value("個人360・顧客名片"))
                 .andExpect(jsonPath("$.citations[0].target").value(nullValue()))
-                .andExpect(jsonPath("$.citations[0].description").value(endsWith(" 個欄位")))
+                .andExpect(jsonPath("$.citations[0].description").value("資料日期 2026/10/27"))
                 .andExpect(jsonPath("$.citations[0].queriedAt").value(endsWith("+08:00")))
                 .andExpect(jsonPath("$.citations[0].cited").value(true))
                 .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);

@@ -73,8 +73,11 @@ class SeedLoaderTest extends IntegrationTestBase {
     }
 
     @Test
-    void systemMainMentionsNotesInvestmentAndRankTool() {
-        assertThat(content("system.main")).contains("## 顧客註記", "## 商品與投資", "getMemberRank");
+    void systemMainMentionsNotesInvestmentAndCustomerTools() {
+        String text = content("system.main");
+        assertThat(text).contains("## 顧客註記", "## 商品與投資", "getCustomer", "getRealTimeCustomer");
+        assertThat(java.util.regex.Pattern.compile("get[A-Z]\\w+").matcher(text).results().map(r -> r.group()))
+                .containsOnly("getCustomer", "getRealTimeCustomer");
     }
 
     @Test

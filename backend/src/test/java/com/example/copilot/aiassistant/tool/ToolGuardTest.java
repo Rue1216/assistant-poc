@@ -3,6 +3,8 @@ package com.example.copilot.aiassistant.tool;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.copilot.aiassistant.port.AccessLevel;
+import com.example.copilot.aiassistant.privacy.PiiRedactor;
+import com.example.copilot.aiassistant.tool.customer.GetCustomerTool;
 import com.example.copilot.aiassistant.tool.testsupport.EchoArgs;
 import com.example.copilot.aiassistant.tool.testsupport.FakeTool;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -38,6 +40,20 @@ class ToolGuardTest {
         assertThat(r.status()).isEqualTo(ToolStatus.DENIED);
         assertThat(r.errorCode()).isEqualTo(code);
         assertThat(r.message()).isEqualTo(message);
+    }
+
+    @Test
+    void getCustomerRejectsEmptyAndOversizedSections() {
+        ToolGuard customerGuard = new ToolGuard(new ToolRegistry(List.of(new GetCustomerTool(new PiiRedactor()))),
+                Validation.buildDefaultValidatorFactory().getValidator(), lenient);
+        Set<String> customerOffered = Set.of("getCustomer");
+
+        assertDenied(customerGuard.check(call("getCustomer", "{\"sections\":[]}"), customerOffered),
+                "TOOL_ARGUMENT_INVALID", "參數格式不正確");
+        assertDenied(customerGuard.check(call("getCustomer",
+                "{\"sections\":[\"profile\",\"management\",\"assetLiability\",\"memberRank\","
+                        + "\"productIntent\",\"behavior\",\"profile\"]}"), customerOffered),
+                "TOOL_ARGUMENT_INVALID", "參數格式不正確");
     }
 
     @Test

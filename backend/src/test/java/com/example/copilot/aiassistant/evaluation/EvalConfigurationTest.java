@@ -14,8 +14,8 @@ import org.springframework.core.io.DefaultResourceLoader;
 
 class EvalConfigurationTest {
 
-    private static final Set<String> TOOLS = Set.of("getCustomerProfile", "getManagementSummary", "getAssetLiability",
-            "getMemberRank", "getProductIntent", "getBehavior", "getMarketIndex", "getStockQuote",
+    private static final Set<String> TOOLS = Set.of("getCustomer", "getRealTimeCustomer",
+            "getMarketIndex", "getStockQuote",
             "getCompanyAnnouncements");
 
     private static EvalDataset load(int maxCases) {
