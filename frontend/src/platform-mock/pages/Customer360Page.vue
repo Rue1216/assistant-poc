@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { apiClient, ApiError } from '../apiClient'
+import type { CustomerDto, RealTimeCustomerDto } from '../customer360Types'
 import AssistantLauncher from '../../features/ai-assistant/components/AssistantLauncher.vue'
 import AssetCards from './customer360/AssetCards.vue'
 import BehaviorCards from './customer360/BehaviorCards.vue'
@@ -14,52 +16,78 @@ interface CustomerDetail {
   accessLevel: 'FULL' | 'LIMITED'
   name: string
   segment: string
-  relationshipYears: number
-  riskProfile?: string
-  marketingConsent?: boolean
-  preferredChannel?: string
-  tags?: string[]
-  assetAmount?: number
 }
 
 const props = defineProps<{ certNo: string }>()
+const router = useRouter()
 
 const customer = ref<CustomerDetail | null>(null)
+const data = ref<CustomerDto | null>(null)
+const realTime = ref<RealTimeCustomerDto | null>(null)
 const notFound = ref(false)
+const stopUse = ref(false)
+const dataFailed = ref(false)
 const loading = ref(true)
 
-/** Coarse tier so the card never shows an exact amount. */
-function assetTier(amount: number | undefined): string {
-  if (amount === undefined || amount === null) return '—'
-  if (amount < 10_000_000) return '1,000 萬以下'
-  if (amount < 30_000_000) return '1,000 萬–3,000 萬'
-  return '3,000 萬以上'
-}
+const path = (id: string, suffix = '') => `/mock/customers/${encodeURIComponent(id)}${suffix}`
 
-const tier = computed(() => assetTier(customer.value?.assetAmount))
-const consent = computed(() => {
-  const value = customer.value?.marketingConsent
-  if (value === undefined) return '—'
-  return value ? '同意' : '不同意'
+const flags = computed(() => {
+  const rt = realTime.value
+  if (!rt) return []
+  const list: { key: string; label: string; note: string }[] = rt.customerFlaggingList.map((f) => ({
+    key: f.type,
+    label: f.label,
+    note: f.expiryDate ? `至 ${f.expiryDate}` : '',
+  }))
+  if (rt.attentionCustomer) list.push({ key: 'ATTENTION', label: '應注意名單', note: '' })
+  if (rt.specialCareCustomer) list.push({ key: 'SPECIAL_CARE', label: '特殊客群', note: '' })
+  return list
 })
+
+function confirmStopUse() {
+  router.push('/customer')
+}
 
 watch(
   () => props.certNo,
   async (id) => {
+    const current = () => id === props.certNo // ignore a response that arrives after navigating to another customer
     loading.value = true
     notFound.value = false
+    stopUse.value = false
+    dataFailed.value = false
     customer.value = null
+    data.value = null
+    realTime.value = null
     try {
-      const res = await apiClient.get<CustomerDetail>(`/mock/customers/${encodeURIComponent(id)}`, {
+      const cip = await apiClient.get<{ stopUseCustomerDataFlag: 'Y' | 'N' }>(path(id, '/cip'), {
         meta: { silentCodes: ['AI_CUSTOMER_NOT_FOUND'] },
       })
-      // ignore a response that arrives after navigating to another customer
-      if (id === props.certNo) customer.value = res.data
+      if (!current()) return
+      if (cip.data.stopUseCustomerDataFlag === 'Y') {
+        stopUse.value = true
+        return
+      }
+      const res = await apiClient.get<CustomerDetail>(path(id), { meta: { silentCodes: ['AI_CUSTOMER_NOT_FOUND'] } })
+      if (!current()) return
+      customer.value = res.data
+      if (res.data.accessLevel !== 'FULL') return
+      try {
+        const [d, rt] = await Promise.all([
+          apiClient.get<CustomerDto>(path(id, '/360')),
+          apiClient.get<RealTimeCustomerDto>(path(id, '/real-time')),
+        ])
+        if (!current()) return
+        data.value = d.data
+        realTime.value = rt.data
+      } catch {
+        if (current()) dataFailed.value = true
+      }
     } catch (e) {
-      if (id !== props.certNo) return
+      if (!current()) return
       if (e instanceof ApiError && e.code === 'AI_CUSTOMER_NOT_FOUND') notFound.value = true
     } finally {
-      if (id === props.certNo) loading.value = false
+      if (current()) loading.value = false
     }
   },
   { immediate: true },
@@ -75,13 +103,15 @@ watch(
       <nav class="breadcrumb" aria-label="麵包屑">
         <RouterLink to="/customer">顧客經營</RouterLink><span aria-hidden="true">/</span><span>個人 360</span>
       </nav>
-      <span class="c360-topbar__time">
-        <template v-if="customer?.accessLevel === 'FULL'">圖表為示意資料・</template>資料更新 2026/10/20 08:00
-      </span>
+      <span v-if="data" class="c360-topbar__time">資料日期 {{ data.dataDate }}</span>
     </div>
 
     <p v-if="loading" class="c360-loading">載入中…</p>
     <p v-else-if="notFound" class="c360-notfound">查無此顧客或您沒有查看權限</p>
+    <div v-else-if="stopUse" class="card c360-notfound" role="alertdialog" aria-modal="true" aria-labelledby="c360-stop-use-msg">
+      <p id="c360-stop-use-msg">此為停止蒐集利用個資顧客，故無法查詢</p>
+      <button class="btn btn--primary" type="button" @click="confirmStopUse">確認</button>
+    </div>
 
     <template v-else-if="customer">
       <div class="c360-grid">
@@ -93,29 +123,34 @@ watch(
                 <h1 class="c360-namecard__name">{{ customer.name }}</h1>
                 <span class="badge badge--published badge--plain">{{ customer.segment }}</span>
               </div>
-              <span class="c360-namecard__id">{{ customer.certNo }}・往來 {{ customer.relationshipYears }} 年</span>
+              <span class="c360-namecard__id">{{ customer.certNo }}</span>
             </div>
           </div>
-          <div v-if="customer.tags?.length" class="c360-tags" aria-label="分群標籤">
-            <span v-for="t in customer.tags" :key="t" class="c360-tag">{{ t }}</span>
-          </div>
-          <dl class="c360-kv">
-            <div><dt>風險屬性</dt><dd>{{ customer.riskProfile ?? '—' }}</dd></div>
-            <div><dt>偏好管道</dt><dd>{{ customer.preferredChannel ?? '—' }}</dd></div>
-            <div><dt>行銷同意</dt><dd>{{ consent }}</dd></div>
-            <div><dt>資產級距</dt><dd>{{ tier }}</dd></div>
-          </dl>
+          <template v-if="data">
+            <div v-if="realTime?.profilePhoto.tags.length" class="c360-tags" aria-label="分群標籤">
+              <span v-for="t in realTime.profilePhoto.tags" :key="t" class="c360-tag">{{ t }}</span>
+            </div>
+            <div v-if="flags.length" class="c360-tags" aria-label="顧客註記">
+              <span v-for="f in flags" :key="f.key" class="c360-tag c360-tag--muted">{{ f.label }}<template v-if="f.note">（{{ f.note }}）</template></span>
+            </div>
+            <dl class="c360-kv">
+              <div><dt>年齡</dt><dd>{{ data.customerProfile.age }}</dd></div>
+              <div><dt>主要往來分行</dt><dd>{{ data.customerProfile.primaryBranch }}</dd></div>
+              <div><dt>理專</dt><dd>{{ data.customerProfile.financialCounsultant }}</dd></div>
+            </dl>
+          </template>
         </section>
 
         <p v-if="customer.accessLevel === 'LIMITED'" class="card c360-limited">
           您的角色僅能查看基本資料，其他區塊不顯示。
         </p>
-        <template v-else>
-          <OpsCard />
-          <AssetCards />
-          <ProfileCards />
-          <IntentCards />
-          <BehaviorCards />
+        <p v-else-if="dataFailed" class="card c360-notfound">無法載入 360 資料</p>
+        <template v-else-if="data && realTime">
+          <OpsCard :management="data.customerManagement" :alerts="realTime.keyAlerts.items" />
+          <AssetCards :aum="data.aum" :lum="data.lum" />
+          <ProfileCards :member-rank="data.memberRank" :wealth-potential="data.wealthPotential" :product-mix="data.productMix" />
+          <IntentCards :asset-product="data.assetProduct" :liabilities-and-fx="data.liabilitiesAndFx" :account-relationship-depth="data.accountRelationshipDepth" />
+          <BehaviorCards :consumption="data.consumptionBehavior" :channel="data.channelBehavior" :digital="data.digitalBehavior" />
         </template>
       </div>
 
