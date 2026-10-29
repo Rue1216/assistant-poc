@@ -15,8 +15,8 @@ class SuggestionControllerTest extends IntegrationTestBase {
     private static final String URL = "/api/ai-assistant/customers/{id}/suggestions";
 
     @Test
-    void suggestionsSameForLimitedAndFull() throws Exception {
-        for (String username : new String[] {"it.admin", "fc.officer"}) {
+    void suggestionsAreTheSameForEveryFullUser() throws Exception {
+        for (String username : new String[] {"EEE22222", "ICRM00028"}) {
             mockMvc.perform(get(URL, TestCustomers.RETIREE).with(TestUsers.as(username)))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.categories.length()").value(7))
@@ -28,14 +28,14 @@ class SuggestionControllerTest extends IntegrationTestBase {
 
     @Test
     void suggestionsForStopUseCustomerAre404() throws Exception {
-        mockMvc.perform(get(URL, TestCustomers.STOP_USE).with(TestUsers.as("fc.officer")))
+        mockMvc.perform(get(URL, TestCustomers.STOP_USE).with(TestUsers.as("ICRM00028")))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("AI_CUSTOMER_NOT_FOUND"));
     }
 
     @Test
     void suggestionsFor404Customer() throws Exception {
-        mockMvc.perform(get(URL, TestCustomers.COMPLAINT).with(TestUsers.as("ao.officer")))
+        mockMvc.perform(get(URL, TestCustomers.COMPLAINT).with(TestUsers.as("ICRM00040")))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("AI_CUSTOMER_NOT_FOUND"));
     }
@@ -50,7 +50,7 @@ class SuggestionControllerTest extends IntegrationTestBase {
 
     @Test
     void malformedCertNoIs400() throws Exception {
-        mockMvc.perform(get(URL, "X1").with(TestUsers.as("fc.officer")))
+        mockMvc.perform(get(URL, "X1").with(TestUsers.as("ICRM00028")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("AI_INPUT_INVALID"));
     }

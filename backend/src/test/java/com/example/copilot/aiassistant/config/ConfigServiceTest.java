@@ -50,8 +50,8 @@ class ConfigServiceTest extends IntegrationTestBase {
 
     private static final Instant NOW = Instant.parse("2026-10-20T02:00:00Z");
     private static final String KEY = "instruction.contact-prep";
-    private static final String ACTOR = "it.admin";
-    private static final String OTHER = "backoffice.admin";
+    private static final String ACTOR = "EEE22222";
+    private static final String OTHER = "EEE11111";
     private static final String INVALID_CONTENT = "## 適用問題\n只有一個章節";
     private static final String CONFIG = "COLL_ICRM_AI_ASSISTANT_CONFIG";
 

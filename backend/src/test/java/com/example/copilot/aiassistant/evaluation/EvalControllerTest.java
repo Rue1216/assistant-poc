@@ -40,8 +40,8 @@ class EvalControllerTest extends IntegrationTestBase {
     private static final String KEY = "instruction.contact-prep";
     private static final String BASE = "/api/ai-assistant/admin";
     private static final String LIST_URL = BASE + "/configs/" + KEY + "/evaluations";
-    private static final String ADMIN = "it.admin";
-    private static final String OFFICER = "fc.officer";
+    private static final String ADMIN = "EEE22222";
+    private static final String OFFICER = "ICRM00028";
 
     @MockitoBean EvalRunner runner;
 

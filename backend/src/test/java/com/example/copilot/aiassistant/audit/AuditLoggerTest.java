@@ -47,7 +47,7 @@ class AuditLoggerTest extends IntegrationTestBase {
     @Autowired AuditLogger auditLogger;
     @Autowired MongoTemplate mongo;
 
-    private static final UserContext USER = new UserContext("fc.officer", "Officer", "FC_OFFICER", Set.of());
+    private static final UserContext USER = new UserContext("ICRM00028", "Officer", "RM", Set.of());
     private static final CustomerContext CUSTOMER =
             new CustomerContext(TestCustomers.RETIREE, AccessLevel.FULL, Set.of("王小明", TestCustomers.RETIREE), Set.of());
 
@@ -99,8 +99,8 @@ class AuditLoggerTest extends IntegrationTestBase {
 
         assertThat(mongo.count(new Query(Criteria.where("requestId").is("req-write-1")), COLL)).isEqualTo(1);
         Document doc = find("req-write-1");
-        assertThat(doc.getString("userId")).isEqualTo("fc.officer");
-        assertThat(doc.getString("roleKey")).isEqualTo("FC_OFFICER");
+        assertThat(doc.getString("userId")).isEqualTo("ICRM00028");
+        assertThat(doc.getString("roleKey")).isEqualTo("RM");
         assertThat(doc.getString("accessLevel")).isEqualTo("FULL");
         assertThat(doc.getString("question")).isEqualTo("【本顧客】最近有什麼互動？");
         assertThat(doc.getString("answer")).isEqualTo("### 近期互動");

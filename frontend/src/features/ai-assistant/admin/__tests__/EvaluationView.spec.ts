@@ -76,11 +76,11 @@ describe('EvaluationView', () => {
 
   it('disables the button and says who is running which evaluation', async () => {
     api.currentEvaluation.mockResolvedValue({
-      runId: 'x', configKey: 'instruction.other', triggeredBy: 'it.admin', startedAt: 's', totalCases: 16, completedCases: 7,
+      runId: 'x', configKey: 'instruction.other', triggeredBy: 'EEE22222', startedAt: 's', totalCases: 16, completedCases: 7,
     })
     const w = await mountView({ nameOf: (k: string) => (k === 'instruction.other' ? '聯繫準備' : k) })
     expect(runButton(w)!.attributes('disabled')).toBeDefined()
-    expect(w.text()).toContain('it.admin 正在評測「聯繫準備」（7/16）')
+    expect(w.text()).toContain('EEE22222 正在評測「聯繫準備」（7/16）')
     w.unmount()
   })
 
@@ -115,7 +115,7 @@ describe('EvaluationView', () => {
 
   it('shows a progress bar for a running evaluation of this key', async () => {
     api.currentEvaluation.mockResolvedValue({
-      runId: 'r5', configKey: KEY, triggeredBy: 'it.admin', startedAt: 's', totalCases: 16, completedCases: 7,
+      runId: 'r5', configKey: KEY, triggeredBy: 'EEE22222', startedAt: 's', totalCases: 16, completedCases: 7,
     })
     api.listEvaluations.mockResolvedValue([runSummary({ runId: 'r5', status: 'RUNNING', summary: null, completedCases: 7 })])
     api.getEvaluation.mockResolvedValue(run({ runId: 'r5', status: 'RUNNING', summary: null, completedCases: 7, cases: [rec('Q1', result(), result({ passed: false }))] }))

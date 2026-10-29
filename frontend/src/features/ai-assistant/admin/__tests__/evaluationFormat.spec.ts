@@ -17,7 +17,7 @@ function rec(baseline: CaseResult | null, candidate: CaseResult | null): EvalCas
 
 function run(extra: Partial<EvalRunSummary> = {}): EvalRunSummary {
   return {
-    runId: 'r1', status: 'COMPLETED', errorCode: null, triggeredBy: 'it.admin', startedAt: 's', finishedAt: 'f',
+    runId: 'r1', status: 'COMPLETED', errorCode: null, triggeredBy: 'EEE22222', startedAt: 's', finishedAt: 'f',
     candidateVersion: 6, candidateUpdatedAt: 'u', candidateDocVersion: 5, datasetChanged: false, totalCases: 16,
     completedCases: 16, summary: null, ...extra,
   }

@@ -51,7 +51,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 class EvalRunServiceTest extends IntegrationTestBase {
 
     private static final String KEY = "instruction.contact-prep";
-    private static final String ACTOR = "it.admin";
+    private static final String ACTOR = "EEE22222";
 
     @MockitoBean EvalRunner runner;
 

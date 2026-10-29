@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.List;
+import java.util.stream.Stream;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.MediaType;
@@ -72,8 +73,12 @@ public class SecurityConfig {
         String encoded = encoder.encode(POC_PASSWORD);
         return new InMemoryUserDetailsManager(directory.all().stream()
                 .map(u -> User.withUsername(u.username()).password(encoded)
-                        .authorities(u.permissions().toArray(String[]::new)).build())
+                        .authorities(authorities(u)).build())
                 .toList());
+    }
+
+    private static String[] authorities(MockUser u) {
+        return Stream.concat(u.permissions().stream(), Stream.of("ROLE_" + u.roleKey())).toArray(String[]::new);
     }
 
     @Bean

@@ -13,8 +13,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 class CustomerContextFactoryTest extends IntegrationTestBase {
 
-    private static final UserContext AO = new UserContext("ao.officer", "AO 經辦", "AO_OFFICER", Set.of());
-    private static final UserContext ADMIN = new UserContext("it.admin", "IT 管理人員", "IT_ADMIN", Set.of());
+    private static final UserContext AO = new UserContext("ICRM00040", "AO經辦", "AO", Set.of());
+    private static final UserContext ADMIN = new UserContext("EEE22222", "IT 管理人員", "ADMIN", Set.of());
 
     @Autowired
     CustomerContextFactory factory;
@@ -45,7 +45,9 @@ class CustomerContextFactoryTest extends IntegrationTestBase {
 
     @Test
     void limitedAccessCarriesLevel() {
-        CustomerContext ctx = factory.create(ADMIN, TestCustomers.RETIREE).orElseThrow();
+        CustomerContextFactory limited = new CustomerContextFactory((user, certNo) -> AccessLevel.LIMITED, dataPort);
+
+        CustomerContext ctx = limited.create(ADMIN, TestCustomers.RETIREE).orElseThrow();
         assertThat(ctx.accessLevel()).isEqualTo(AccessLevel.LIMITED);
         assertThat(ctx.selfReferences()).contains("王小明", TestCustomers.RETIREE);
         assertThat(ctx.sensitiveValues()).contains("0912-000-111",

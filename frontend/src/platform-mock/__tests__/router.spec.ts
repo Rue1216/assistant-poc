@@ -28,15 +28,15 @@ function meAdapter(me: object | null): AxiosAdapter {
 }
 
 const fcOfficer = {
-  username: 'fc.officer',
+  username: 'ICRM00028',
   displayName: '理專',
-  roleKey: 'FC_OFFICER',
+  roleKey: 'RM',
   roleName: '理專',
   permissions: ['CUSTOMER_360_VIEW', 'AI_ASSISTANT_USE'],
 }
 const itAdmin = {
   ...fcOfficer,
-  username: 'it.admin',
+  username: 'EEE22222',
   permissions: [...fcOfficer.permissions, 'AI_CONFIG_READ', 'AI_CONFIG_EDIT', 'AI_CONFIG_PUBLISH'],
 }
 

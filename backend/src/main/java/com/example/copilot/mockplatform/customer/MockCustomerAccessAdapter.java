@@ -49,20 +49,18 @@ public class MockCustomerAccessAdapter implements CustomerAccessPort {
         String branch = u.branchCode();
         boolean mine = u.username().equals(c.assigneeId());
         boolean unit = u.marketingUnit() != null && u.marketingUnit().equals(c.marketingUnit());
-        return switch (u.roleKey()) {
-            case "HQ_VIEWER" -> AccessLevel.FULL;
-            case "REGION_VIEWER" -> full(inRegion(u, c.primaryBranch(), c.profitBranch(), c.wealthBranch(),
+        return switch (u.scope()) {
+            case ALL -> AccessLevel.FULL;
+            case REGION -> full(inRegion(u, c.primaryBranch(), c.profitBranch(), c.wealthBranch(),
                     c.assigneeBranch()));
-            case "BRANCH_MANAGER" -> full(anyEquals(branch, c.primaryBranch(), c.profitBranch(), c.wealthBranch(),
+            case BRANCH -> full(anyEquals(branch, c.primaryBranch(), c.profitBranch(), c.wealthBranch(),
                     c.assigneeBranch()));
-            case "FC_SUPERVISOR" -> full(anyEquals(branch, c.primaryBranch(), c.wealthBranch(),
+            case BRANCH_WEALTH -> full(anyEquals(branch, c.primaryBranch(), c.wealthBranch(),
                     c.assigneeBranch()));
-            case "FC_OFFICER" -> full(anyEquals(branch, c.primaryBranch(), c.wealthBranch()) || mine);
-            case "AO_SUPERVISOR" -> full(anyEquals(branch, c.primaryBranch(), c.profitBranch(),
+            case ASSIGNEE_WEALTH -> full(anyEquals(branch, c.primaryBranch(), c.wealthBranch()) || mine);
+            case MARKETING_UNIT -> full(anyEquals(branch, c.primaryBranch(), c.profitBranch(),
                     c.assigneeBranch()) || unit);
-            case "AO_OFFICER" -> full(anyEquals(branch, c.primaryBranch(), c.profitBranch()) || mine || unit);
-            case "BACKOFFICE_ADMIN", "IT_ADMIN" -> AccessLevel.LIMITED;
-            default -> AccessLevel.NONE;
+            case ASSIGNEE_MARKETING -> full(anyEquals(branch, c.primaryBranch(), c.profitBranch()) || mine || unit);
         };
     }
 

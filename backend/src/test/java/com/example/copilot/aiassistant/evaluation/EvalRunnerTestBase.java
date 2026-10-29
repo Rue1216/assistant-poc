@@ -55,7 +55,7 @@ abstract class EvalRunnerTestBase extends IntegrationTestBase {
     EvalRun insertRun(int totalCases, Duration age) {
         Instant started = clock.instant().minus(age);
         EvalRun draft = new EvalRun(null, "instruction.contact-prep", 2, 0L, started,
-                List.of(new PromptVersion("system-prompt", 1)), "h".repeat(64), EvalStatus.RUNNING, null, "it.admin",
+                List.of(new PromptVersion("system-prompt", 1)), "h".repeat(64), EvalStatus.RUNNING, null, "EEE22222",
                 started, started, null, totalCases, 0, null, List.of(), 0L);
         return runs.findById(runs.insert(draft)).orElseThrow();
     }

@@ -47,9 +47,9 @@ function version(configType: ConfigType, status: ConfigStatus, extra: Partial<Co
     version: 2,
     basedOnVersion: null,
     changeNote: null,
-    createdBy: 'it.admin',
+    createdBy: 'EEE22222',
     createdAt: '2026-10-19T10:00:00+08:00',
-    updatedBy: 'backoffice.admin',
+    updatedBy: 'EEE11111',
     updatedAt: '2026-10-19T10:00:00+08:00',
     scheduledAt: null,
     docVersion: 3,
@@ -63,8 +63,8 @@ async function mountEditor(
 ) {
   const published = { ...working, status: 'PUBLISHED' as const, version: 1, updatedAt: '2026-10-19T09:30:00+08:00' }
   api.listVersions.mockResolvedValue([
-    { version: 2, status: working.status, scheduledAt: working.scheduledAt, changeNote: null, basedOnVersion: null, createdBy: 'it.admin', updatedBy: 'it.admin', updatedAt: working.updatedAt },
-    { version: 1, status: 'PUBLISHED', scheduledAt: null, changeNote: null, basedOnVersion: null, createdBy: 'it.admin', updatedBy: 'it.admin', updatedAt: published.updatedAt },
+    { version: 2, status: working.status, scheduledAt: working.scheduledAt, changeNote: null, basedOnVersion: null, createdBy: 'EEE22222', updatedBy: 'EEE22222', updatedAt: working.updatedAt },
+    { version: 1, status: 'PUBLISHED', scheduledAt: null, changeNote: null, basedOnVersion: null, createdBy: 'EEE22222', updatedBy: 'EEE22222', updatedAt: published.updatedAt },
   ])
   api.getVersion.mockImplementation(async (_k: string, v: number) => (v === 1 ? published : working))
   const admin = usePromptAdmin(ref(working.configKey))

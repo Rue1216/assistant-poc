@@ -16,6 +16,6 @@ class ApplicationSmokeTest extends IntegrationTestBase {
 
     @Test
     void envEndpointIsNotExposed() throws Exception {
-        mockMvc.perform(get("/actuator/env").with(TestUsers.as("it.admin"))).andExpect(status().isNotFound());
+        mockMvc.perform(get("/actuator/env").with(TestUsers.as("EEE22222"))).andExpect(status().isNotFound());
     }
 }

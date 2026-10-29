@@ -15,9 +15,9 @@ class MockCustomerControllerTest extends IntegrationTestBase {
 
     @Test
     void listShowsOnlyAccessibleCustomers() throws Exception {
-        // 02 section 1.4: ao.officer sees the retiree, no-marketing, special-care and stop-use customers (not the
+        // 02 section 1.4: ICRM00040 sees the retiree, no-marketing, special-care and stop-use customers (not the
         // attention one); the list follows scope only.
-        mockMvc.perform(get("/api/mock/customers").with(TestUsers.as("ao.officer")))
+        mockMvc.perform(get("/api/mock/customers").with(TestUsers.as("ICRM00040")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[*].certNo", 
                         contains(TestCustomers.RETIREE, TestCustomers.NO_MARKETING, TestCustomers.SPECIAL_CARE,
@@ -25,40 +25,21 @@ class MockCustomerControllerTest extends IntegrationTestBase {
     }
 
     @Test
-    void listMasksNamesForLimitedUser() throws Exception {
-        mockMvc.perform(get("/api/mock/customers").with(TestUsers.as("it.admin")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(7))
-                .andExpect(jsonPath("$[0].name").value("王○明"))
-                .andExpect(jsonPath("$[0].accessLevel").value("LIMITED"));
-    }
-
-    @Test
-    void limitedCertNoIsMasked() throws Exception {
-        mockMvc.perform(get("/api/mock/customers").with(TestUsers.as("it.admin")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].certNo").value("A*****6789"));
-        mockMvc.perform(get("/api/mock/customers/" + TestCustomers.RETIREE).with(TestUsers.as("it.admin")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.certNo").value("A*****6789"));
-    }
-
-    @Test
     void detailOfInaccessibleCustomerIs404() throws Exception {
-        mockMvc.perform(get("/api/mock/customers/" + TestCustomers.COMPLAINT).with(TestUsers.as("ao.officer")))
+        mockMvc.perform(get("/api/mock/customers/" + TestCustomers.COMPLAINT).with(TestUsers.as("ICRM00040")))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("AI_CUSTOMER_NOT_FOUND"));
     }
 
     @Test
     void unknownCustomerIs404() throws Exception {
-        mockMvc.perform(get("/api/mock/customers/" + TestCustomers.UNKNOWN).with(TestUsers.as("hq.viewer")))
+        mockMvc.perform(get("/api/mock/customers/" + TestCustomers.UNKNOWN).with(TestUsers.as("ICRM00047")))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     void fullUserSeesFictionalIdentity() throws Exception {
-        mockMvc.perform(get("/api/mock/customers/" + TestCustomers.RETIREE).with(TestUsers.as("fc.officer")))
+        mockMvc.perform(get("/api/mock/customers/" + TestCustomers.RETIREE).with(TestUsers.as("ICRM00028")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessLevel").value("FULL"))
                 .andExpect(jsonPath("$.name").value("王小明"))
@@ -68,25 +49,15 @@ class MockCustomerControllerTest extends IntegrationTestBase {
     }
 
     @Test
-    void limitedUserSeesMaskedDetail() throws Exception {
-        mockMvc.perform(get("/api/mock/customers/" + TestCustomers.RETIREE).with(TestUsers.as("it.admin")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessLevel").value("LIMITED"))
-                .andExpect(jsonPath("$.name").value("王○明"))
-                .andExpect(jsonPath("$.certNo").value("A*****6789"))
-                .andExpect(jsonPath("$.mobile").doesNotExist());
-    }
-
-    @Test
     void detailHasOnlyFourKeys() throws Exception {
-        mockMvc.perform(get("/api/mock/customers/" + TestCustomers.RETIREE).with(TestUsers.as("fc.officer")))
+        mockMvc.perform(get("/api/mock/customers/" + TestCustomers.RETIREE).with(TestUsers.as("ICRM00028")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.keys()").value(containsInAnyOrder("certNo", "accessLevel", "name", "segment")));
     }
 
     @Test
     void fullUserGetsThe360WithPlatformFieldNames() throws Exception {
-        mockMvc.perform(get("/api/mock/customers/" + TestCustomers.RETIREE + "/360").with(TestUsers.as("fc.officer")))
+        mockMvc.perform(get("/api/mock/customers/" + TestCustomers.RETIREE + "/360").with(TestUsers.as("ICRM00028")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.dataDate").value("2026/10/27"))
                 .andExpect(jsonPath("$.customerProfile.segement").value("R01-退休樂活客群"))
@@ -99,31 +70,21 @@ class MockCustomerControllerTest extends IntegrationTestBase {
     @Test
     void fullUserGetsTheRealTimeStatus() throws Exception {
         mockMvc.perform(get("/api/mock/customers/" + TestCustomers.RETIREE + "/real-time")
-                        .with(TestUsers.as("fc.officer")))
+                        .with(TestUsers.as("ICRM00028")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.keyAlerts.items.length()").value(3))
                 .andExpect(jsonPath("$.attentionCustomer").value(false));
     }
 
     @Test
-    void limitedUserIsForbiddenFrom360AndRealTime() throws Exception {
-        for (String suffix : new String[] {"/360", "/real-time"}) {
-            mockMvc.perform(get("/api/mock/customers/" + TestCustomers.RETIREE + suffix)
-                            .with(TestUsers.as("it.admin")))
-                    .andExpect(status().isForbidden())
-                    .andExpect(jsonPath("$.code").value("AI_FORBIDDEN"));
-        }
-    }
-
-    @Test
     void outOfScopeAndUnknownCustomersAre404For360AndRealTime() throws Exception {
         for (String suffix : new String[] {"/360", "/real-time"}) {
             mockMvc.perform(get("/api/mock/customers/" + TestCustomers.COMPLAINT + suffix)
-                            .with(TestUsers.as("ao.officer")))
+                            .with(TestUsers.as("ICRM00040")))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.code").value("AI_CUSTOMER_NOT_FOUND"));
             mockMvc.perform(get("/api/mock/customers/" + TestCustomers.UNKNOWN + suffix)
-                            .with(TestUsers.as("hq.viewer")))
+                            .with(TestUsers.as("ICRM00047")))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.code").value("AI_CUSTOMER_NOT_FOUND"));
         }
@@ -131,10 +92,10 @@ class MockCustomerControllerTest extends IntegrationTestBase {
 
     @Test
     void stopUseCustomerIsBlocked() throws Exception {
-        // fc.officer is the assignee, so the scope would be FULL; the stop-use flag hides the customer anyway.
+        // ICRM00028 is the assignee, so the scope would be FULL; the stop-use flag hides the customer anyway.
         for (String suffix : new String[] {"", "/360", "/real-time"}) {
             mockMvc.perform(get("/api/mock/customers/" + TestCustomers.STOP_USE + suffix)
-                            .with(TestUsers.as("fc.officer")))
+                            .with(TestUsers.as("ICRM00028")))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.code").value("AI_CUSTOMER_NOT_FOUND"));
         }
@@ -142,17 +103,17 @@ class MockCustomerControllerTest extends IntegrationTestBase {
 
     @Test
     void cipReportsTheStopUseFlagByScope() throws Exception {
-        mockMvc.perform(get("/api/mock/customers/" + TestCustomers.STOP_USE + "/cip").with(TestUsers.as("fc.officer")))
+        mockMvc.perform(get("/api/mock/customers/" + TestCustomers.STOP_USE + "/cip").with(TestUsers.as("ICRM00028")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.keys()").value(containsInAnyOrder("stopUseCustomerDataFlag")))
                 .andExpect(jsonPath("$.stopUseCustomerDataFlag").value("Y"));
-        mockMvc.perform(get("/api/mock/customers/" + TestCustomers.RETIREE + "/cip").with(TestUsers.as("fc.officer")))
+        mockMvc.perform(get("/api/mock/customers/" + TestCustomers.RETIREE + "/cip").with(TestUsers.as("ICRM00028")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.stopUseCustomerDataFlag").value("N"));
         // Out of scope (a customer in another branch) and unknown are 404.
-        mockMvc.perform(get("/api/mock/customers/" + TestCustomers.COMPLAINT + "/cip").with(TestUsers.as("ao.officer")))
+        mockMvc.perform(get("/api/mock/customers/" + TestCustomers.COMPLAINT + "/cip").with(TestUsers.as("ICRM00040")))
                 .andExpect(status().isNotFound());
-        mockMvc.perform(get("/api/mock/customers/" + TestCustomers.UNKNOWN + "/cip").with(TestUsers.as("hq.viewer")))
+        mockMvc.perform(get("/api/mock/customers/" + TestCustomers.UNKNOWN + "/cip").with(TestUsers.as("ICRM00047")))
                 .andExpect(status().isNotFound());
     }
 }

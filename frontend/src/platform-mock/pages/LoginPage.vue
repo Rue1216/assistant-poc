@@ -4,16 +4,16 @@ import { useRouter } from 'vue-router'
 import { ApiError } from '../apiClient'
 import { useAuthStore } from '../useAuthStore'
 
-const DEMO_ACCOUNTS = [
-  'hq.viewer',
-  'region.north',
-  'branch.mgr',
-  'fc.supervisor',
-  'fc.officer',
-  'ao.supervisor',
-  'ao.officer',
-  'backoffice.admin',
-  'it.admin',
+const DEMO_ACCOUNTS: { username: string; roleName: string }[] = [
+  { username: 'ICRM00047', roleName: '總行查詢人員' },
+  { username: 'ICRM00007', roleName: '區域查詢人員' },
+  { username: 'ICRM00018', roleName: '分行單位主管' },
+  { username: 'ICRM00024', roleName: '理專主管' },
+  { username: 'ICRM00028', roleName: '理專經辦' },
+  { username: 'ICRM00036', roleName: 'AO主管' },
+  { username: 'ICRM00040', roleName: 'AO經辦' },
+  { username: 'EEE11111', roleName: '後台管理人員' },
+  { username: 'EEE22222', roleName: 'IT 管理人員' },
 ]
 
 const auth = useAuthStore()
@@ -54,7 +54,9 @@ async function onSubmit() {
         <span class="field__label">示範帳號</span>
         <select v-model="username" class="input">
           <option value="" disabled>請選擇示範帳號</option>
-          <option v-for="a in DEMO_ACCOUNTS" :key="a" :value="a">{{ a }}</option>
+          <option v-for="a in DEMO_ACCOUNTS" :key="a.username" :value="a.username">
+            {{ a.username }} {{ a.roleName }}
+          </option>
         </select>
       </label>
       <label class="field">

@@ -46,7 +46,7 @@ class ScheduledPublishJobTest extends IntegrationTestBase {
 
     private static final Instant NOW = Instant.parse("2026-10-20T02:00:00Z");
     private static final String KEY = "instruction.contact-prep";
-    private static final String ACTOR = "it.admin";
+    private static final String ACTOR = "EEE22222";
 
     @Autowired AssistantConfigRepository repository;
     @Autowired MongoTemplate mongo;
@@ -166,7 +166,7 @@ class ScheduledPublishJobTest extends IntegrationTestBase {
 
         SaveCommand stale = new SaveCommand("late save", published + "\n- late edit\n", "note", SaveMode.KEEP_STATUS,
                 scheduled.getDocVersion());
-        assertThatThrownBy(() -> service.saveWorkingCopy(KEY, stale, "backoffice.admin"))
+        assertThatThrownBy(() -> service.saveWorkingCopy(KEY, stale, "EEE11111"))
                 .isInstanceOfSatisfying(AssistantException.class, e -> assertThat(e.code())
                         .isEqualTo(ErrorCode.AI_CONFIG_CONFLICT));
 

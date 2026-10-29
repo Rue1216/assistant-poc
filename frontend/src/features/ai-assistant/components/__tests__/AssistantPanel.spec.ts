@@ -29,7 +29,7 @@ async function mountPanel(certNo = RETIREE, roleKey = 'SALES_RM') {
   const pinia = createPinia()
   setActivePinia(pinia)
   useAuthStore().user = {
-    username: roleKey === 'BACKOFFICE_ADMIN' ? 'backoffice.admin' : 'sales.rm',
+    username: roleKey === 'ADMIN' ? 'EEE11111' : 'sales.rm',
     displayName: 'Test',
     roleKey,
     roleName: roleKey,
@@ -140,7 +140,7 @@ describe('AssistantPanel', () => {
 
   it('shows all categories for LIMITED users without the limited note', async () => {
     // the backend returns the same five categories to every accessible user (spec 02 2.2)
-    const { wrapper } = await mountPanel(RETIREE, 'BACKOFFICE_ADMIN')
+    const { wrapper } = await mountPanel(RETIREE, 'ADMIN')
     expect(wrapper.findAll('.ai-quick-group')).toHaveLength(5)
     expect(wrapper.text()).not.toContain('僅能查看基本輪廓')
   })

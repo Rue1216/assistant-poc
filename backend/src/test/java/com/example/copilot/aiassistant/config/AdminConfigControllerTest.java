@@ -38,7 +38,7 @@ class AdminConfigControllerTest extends IntegrationTestBase {
     private static final String PUBLISH_URL = BASE + "/" + KEY + "/publish";
     private static final String VERSIONS_URL = BASE + "/" + KEY + "/versions";
     private static final String INVALID_CONTENT = "## 適用問題\n只有一個章節";
-    private static final String ADMIN = "it.admin";
+    private static final String ADMIN = "EEE22222";
     private static final String WORKING_COPY_PATH = "$[?(@.configKey=='" + KEY + "')].workingCopy";
 
     @Autowired AssistantConfigRepository repository;
@@ -99,10 +99,10 @@ class AdminConfigControllerTest extends IntegrationTestBase {
 
     @Test
     void fcOfficerGets403() throws Exception {
-        mockMvc.perform(get(BASE).with(TestUsers.as("fc.officer")))
+        mockMvc.perform(get(BASE).with(TestUsers.as("ICRM00028")))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("AI_FORBIDDEN"));
-        mockMvc.perform(post(DRAFT_URL).with(TestUsers.as("fc.officer")).with(csrf()))
+        mockMvc.perform(post(DRAFT_URL).with(TestUsers.as("ICRM00028")).with(csrf()))
                 .andExpect(status().isForbidden());
     }
 

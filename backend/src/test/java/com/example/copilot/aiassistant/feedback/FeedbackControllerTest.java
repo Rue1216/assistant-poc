@@ -68,8 +68,8 @@ class FeedbackControllerTest extends IntegrationTestBase {
 
     @Test
     void ratesOwnAnswer() throws Exception {
-        insert(audit("a1b2c3d4", "fc.officer", "ANSWERED", new Date()));
-        rate("a1b2c3d4", TestUsers.as("fc.officer"), "{\"rating\":\"UP\"}").andExpect(status().isNoContent());
+        insert(audit("a1b2c3d4", "ICRM00028", "ANSWERED", new Date()));
+        rate("a1b2c3d4", TestUsers.as("ICRM00028"), "{\"rating\":\"UP\"}").andExpect(status().isNoContent());
         Document d = find("a1b2c3d4").get(0);
         assertThat(d.getString("feedback")).isEqualTo("UP");
         assertThat(d.get("feedbackAt")).isNotNull();
@@ -77,20 +77,20 @@ class FeedbackControllerTest extends IntegrationTestBase {
 
     @Test
     void switchAndCancel() throws Exception {
-        insert(audit("a1b2c3d5", "fc.officer", "ANSWERED", new Date()));
-        rate("a1b2c3d5", TestUsers.as("fc.officer"), "{\"rating\":\"UP\"}").andExpect(status().isNoContent());
-        rate("a1b2c3d5", TestUsers.as("fc.officer"), "{\"rating\":\"DOWN\"}").andExpect(status().isNoContent());
+        insert(audit("a1b2c3d5", "ICRM00028", "ANSWERED", new Date()));
+        rate("a1b2c3d5", TestUsers.as("ICRM00028"), "{\"rating\":\"UP\"}").andExpect(status().isNoContent());
+        rate("a1b2c3d5", TestUsers.as("ICRM00028"), "{\"rating\":\"DOWN\"}").andExpect(status().isNoContent());
         assertThat(find("a1b2c3d5").get(0).getString("feedback")).isEqualTo("DOWN");
-        rate("a1b2c3d5", TestUsers.as("fc.officer"), "{\"rating\":null}").andExpect(status().isNoContent());
+        rate("a1b2c3d5", TestUsers.as("ICRM00028"), "{\"rating\":null}").andExpect(status().isNoContent());
         assertThat(find("a1b2c3d5").get(0).getString("feedback")).isNull();
     }
 
     @Test
     void othersAnswerFailedAndUnknownAreSame404() throws Exception {
-        insert(audit("a1b2c3d6", "ao.officer", "ANSWERED", new Date()));
-        insert(audit("a1b2c3d7", "fc.officer", "FAILED", new Date()));
+        insert(audit("a1b2c3d6", "ICRM00040", "ANSWERED", new Date()));
+        insert(audit("a1b2c3d7", "ICRM00028", "FAILED", new Date()));
         for (String id : List.of("a1b2c3d6", "a1b2c3d7", "a1b2c3d8")) {
-            rate(id, TestUsers.as("fc.officer"), "{\"rating\":\"UP\"}")
+            rate(id, TestUsers.as("ICRM00028"), "{\"rating\":\"UP\"}")
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.code").value("AI_FEEDBACK_NOT_FOUND"))
                     .andExpect(jsonPath("$.message").value("這則回答已無法評分"));
@@ -100,9 +100,9 @@ class FeedbackControllerTest extends IntegrationTestBase {
 
     @Test
     void newestOfDuplicatesIsUpdated() throws Exception {
-        insert(audit("a1b2c3d9", "fc.officer", "ANSWERED", new Date(1_000_000L)));
-        insert(audit("a1b2c3d9", "fc.officer", "ANSWERED", new Date(2_000_000L)));
-        rate("a1b2c3d9", TestUsers.as("fc.officer"), "{\"rating\":\"DOWN\"}").andExpect(status().isNoContent());
+        insert(audit("a1b2c3d9", "ICRM00028", "ANSWERED", new Date(1_000_000L)));
+        insert(audit("a1b2c3d9", "ICRM00028", "ANSWERED", new Date(2_000_000L)));
+        rate("a1b2c3d9", TestUsers.as("ICRM00028"), "{\"rating\":\"DOWN\"}").andExpect(status().isNoContent());
         List<Document> docs = find("a1b2c3d9");
         assertThat(docs.get(0).get("feedback")).isNull();
         assertThat(docs.get(1).getString("feedback")).isEqualTo("DOWN");
@@ -110,17 +110,17 @@ class FeedbackControllerTest extends IntegrationTestBase {
 
     @Test
     void invalidInputIs400() throws Exception {
-        rate("XYZ", TestUsers.as("fc.officer"), "{\"rating\":\"UP\"}")
+        rate("XYZ", TestUsers.as("ICRM00028"), "{\"rating\":\"UP\"}")
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("AI_INPUT_INVALID"));
-        rate("a1b2c3da", TestUsers.as("fc.officer"), "{\"rating\":\"MAYBE\"}")
+        rate("a1b2c3da", TestUsers.as("ICRM00028"), "{\"rating\":\"MAYBE\"}")
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("AI_INPUT_INVALID"));
     }
 
     @Test
     void legacyAuditWithoutNewFieldsCanBeRated() throws Exception {
-        insert(audit("a1b2c3db", "fc.officer", "ANSWERED", new Date()));
+        insert(audit("a1b2c3db", "ICRM00028", "ANSWERED", new Date()));
         assertThat(find("a1b2c3db").get(0).containsKey("feedback")).isFalse();
-        rate("a1b2c3db", TestUsers.as("fc.officer"), "{\"rating\":\"UP\"}").andExpect(status().isNoContent());
+        rate("a1b2c3db", TestUsers.as("ICRM00028"), "{\"rating\":\"UP\"}").andExpect(status().isNoContent());
         assertThat(find("a1b2c3db").get(0).getString("feedback")).isEqualTo("UP");
     }
 
@@ -132,7 +132,7 @@ class FeedbackControllerTest extends IntegrationTestBase {
         insert(withVersion(audit("b0000004", "fb-user", "ANSWERED", new Date()), KEY, 3, "UP"));
         insert(withVersion(audit("b0000005", "fb-user", "ANSWERED", new Date()), KEY, 3, null));
         insert(withVersion(audit("b0000006", "fb-user", "ANSWERED", new Date()), OTHER_KEY, 2, "UP"));
-        mockMvc.perform(get(STATS_URL, KEY).with(TestUsers.as("it.admin")))
+        mockMvc.perform(get(STATS_URL, KEY).with(TestUsers.as("EEE22222")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].version").value(3))
@@ -160,7 +160,7 @@ class FeedbackControllerTest extends IntegrationTestBase {
     @Test
     void instructionStatsCountOnlyRoutedAndChip() throws Exception {
         insertRouteFixtures(KEY, 91, "c000000");
-        mockMvc.perform(get(STATS_URL, KEY).with(TestUsers.as("it.admin")))
+        mockMvc.perform(get(STATS_URL, KEY).with(TestUsers.as("EEE22222")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].version").value(91))
@@ -171,7 +171,7 @@ class FeedbackControllerTest extends IntegrationTestBase {
     @Test
     void systemMainStatsCountEverything() throws Exception {
         insertRouteFixtures("system.main", 91, "d000000");
-        mockMvc.perform(get(STATS_URL, "system.main").with(TestUsers.as("it.admin")))
+        mockMvc.perform(get(STATS_URL, "system.main").with(TestUsers.as("EEE22222")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.version==91)].up").value(3))
                 .andExpect(jsonPath("$[?(@.version==91)].down").value(1));
@@ -179,13 +179,13 @@ class FeedbackControllerTest extends IntegrationTestBase {
 
     @Test
     void statsUnknownKeyIs404() throws Exception {
-        mockMvc.perform(get(STATS_URL, "instruction.no-such-key").with(TestUsers.as("it.admin")))
+        mockMvc.perform(get(STATS_URL, "instruction.no-such-key").with(TestUsers.as("EEE22222")))
                 .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("AI_CONFIG_NOT_FOUND"));
     }
 
     @Test
     void statsNeedsConfigRead() throws Exception {
-        mockMvc.perform(get(STATS_URL, KEY).with(TestUsers.as("fc.officer")))
+        mockMvc.perform(get(STATS_URL, KEY).with(TestUsers.as("ICRM00028")))
                 .andExpect(status().isForbidden());
     }
 }

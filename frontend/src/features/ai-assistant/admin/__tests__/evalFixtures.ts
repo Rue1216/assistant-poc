@@ -27,7 +27,7 @@ export function summary(base: Partial<EvalMetrics> = {}, cand: Partial<EvalMetri
 
 export function runSummary(extra: Partial<EvalRunSummary> = {}): EvalRunSummary {
   return {
-    runId: 'r1', status: 'COMPLETED', errorCode: null, triggeredBy: 'it.admin', startedAt: '2026-10-24T15:07:00+08:00',
+    runId: 'r1', status: 'COMPLETED', errorCode: null, triggeredBy: 'EEE22222', startedAt: '2026-10-24T15:07:00+08:00',
     finishedAt: '2026-10-24T15:20:00+08:00', candidateVersion: 6, candidateUpdatedAt: '2026-10-24T14:58:00+08:00',
     candidateDocVersion: 5, datasetChanged: false, totalCases: 16, completedCases: 16, summary: summary(), ...extra,
   }

@@ -26,7 +26,7 @@ function loginAdapter(status: number, data: unknown): AxiosAdapter {
 
 async function submitLogin() {
   const wrapper = mount(LoginPage)
-  await wrapper.find('input[type="text"]').setValue('fc.officer')
+  await wrapper.find('input[type="text"]').setValue('ICRM00028')
   await wrapper.find('form').trigger('submit')
   await flushPromises()
   return wrapper
@@ -37,6 +37,15 @@ describe('LoginPage', () => {
     show.mockReset()
     push.mockReset()
     setActivePinia(createPinia())
+  })
+
+  it('lists the nine employee accounts as "帳號 職稱"', () => {
+    const options = mount(LoginPage)
+      .findAll('select option')
+      .filter((o) => o.attributes('value'))
+    expect(options).toHaveLength(9)
+    expect(options[0].text()).toBe('ICRM00047 總行查詢人員')
+    expect(options[0].attributes('value')).toBe('ICRM00047')
   })
 
   it('shows 帳號或密碼錯誤 inline on 401 without a toast', async () => {

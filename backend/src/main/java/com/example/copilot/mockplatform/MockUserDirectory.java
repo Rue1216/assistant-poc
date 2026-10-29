@@ -20,16 +20,21 @@ public class MockUserDirectory {
     private static final Set<String> ADMIN = withExtra(AI_CONFIG_READ, AI_CONFIG_EDIT, AI_CONFIG_PUBLISH);
 
     private final List<MockUser> users = List.of(
-            new MockUser("hq.viewer", "總行查詢人員", "HQ_VIEWER", "總行查詢人員", BASE, "HQ", Set.of(), null),
-            new MockUser("region.north", "區域查詢人員", "REGION_VIEWER", "區域查詢人員", BASE, "B101",
-                    Set.of("B101", "B102"), null),
-            new MockUser("branch.mgr", "分行單位主管", "BRANCH_MANAGER", "分行單位主管", BASE, "B101", Set.of(), null),
-            new MockUser("fc.supervisor", "理專主管", "FC_SUPERVISOR", "理專主管", BASE, "B101", Set.of(), null),
-            new MockUser("fc.officer", "理專經辦", "FC_OFFICER", "理專經辦", BASE, "B101", Set.of(), null),
-            new MockUser("ao.supervisor", "AO 主管", "AO_SUPERVISOR", "AO 主管", BASE, "B101", Set.of(), "MU-N1"),
-            new MockUser("ao.officer", "AO 經辦", "AO_OFFICER", "AO 經辦", BASE, "B101", Set.of(), "MU-N1"),
-            new MockUser("backoffice.admin", "後台管理人員", "BACKOFFICE_ADMIN", "後台管理人員", ADMIN, "HQ", Set.of(), null),
-            new MockUser("it.admin", "IT 管理人員", "IT_ADMIN", "IT 管理人員", ADMIN, "HQ", Set.of(), null));
+            new MockUser("ICRM00047", "總行查詢人員", "ANALYST", "總行查詢人員", BASE, "HQ", Set.of(), null, MockScope.ALL),
+            new MockUser("ICRM00007", "區域查詢人員", "ANALYST", "區域查詢人員", BASE, "B101",
+                    Set.of("B101", "B102"), null, MockScope.REGION),
+            new MockUser("ICRM00018", "分行單位主管", "MANAGER", "分行單位主管", BASE, "B101", Set.of(), null,
+                    MockScope.BRANCH),
+            new MockUser("ICRM00024", "理專主管", "MANAGER", "理專主管", BASE, "B101", Set.of(), null,
+                    MockScope.BRANCH_WEALTH),
+            new MockUser("ICRM00028", "理專經辦", "RM", "理專經辦", BASE, "B101", Set.of(), null,
+                    MockScope.ASSIGNEE_WEALTH),
+            new MockUser("ICRM00036", "AO主管", "MANAGER", "AO主管", BASE, "B101", Set.of(), "MU-N1",
+                    MockScope.MARKETING_UNIT),
+            new MockUser("ICRM00040", "AO經辦", "AO", "AO經辦", BASE, "B101", Set.of(), "MU-N1",
+                    MockScope.ASSIGNEE_MARKETING),
+            new MockUser("EEE11111", "後台管理人員", "ADMIN", "後台管理人員", ADMIN, "HQ", Set.of(), null, MockScope.ALL),
+            new MockUser("EEE22222", "IT 管理人員", "ADMIN", "IT 管理人員", ADMIN, "HQ", Set.of(), null, MockScope.ALL));
 
     private static Set<String> withExtra(String... extra) {
         Set<String> all = new LinkedHashSet<>(BASE);

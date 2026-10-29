@@ -8,7 +8,7 @@ describe('EvaluationHistory', () => {
     const w = mount(EvaluationHistory, { props: { runs: [runSummary()], selectedId: null } })
     const text = w.find('.ev-hist__row').text()
     expect(text).toContain('10/24 15:07')
-    expect(text).toContain('it.admin')
+    expect(text).toContain('EEE22222')
     expect(text).toContain('81% → 94%')
   })
 

@@ -44,7 +44,7 @@ class ChatCitationFlowTest extends IntegrationTestBase {
                 toolCalls(100, call("c1", "getCustomerProfile", "{}")),
                 text(blocks(block("paragraph", "本顧客屬退休客群", "S1")), 200));
 
-        String body = mockMvc.perform(post(URL, TestCustomers.RETIREE).with(TestUsers.as("fc.officer")).with(csrf())
+        String body = mockMvc.perform(post(URL, TestCustomers.RETIREE).with(TestUsers.as("ICRM00028")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"message\":\"顧客概況？\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.keys()").value(containsInAnyOrder("requestId", "blocks", "answer",

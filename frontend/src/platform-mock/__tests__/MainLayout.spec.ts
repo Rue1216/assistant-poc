@@ -14,7 +14,7 @@ async function mountLayout(allowLeave: boolean, permissions: string[] = []) {
   const pinia = createPinia()
   setActivePinia(pinia)
   const auth = useAuthStore()
-  auth.user = { username: 'it.admin', displayName: 'IT', roleKey: 'IT_ADMIN', roleName: 'IT', permissions }
+  auth.user = { username: 'EEE22222', displayName: 'IT', roleKey: 'ADMIN', roleName: 'IT', permissions }
   const post = vi.spyOn(apiClient, 'post').mockResolvedValue({ data: null })
   const router = createRouter({
     history: createMemoryHistory(),

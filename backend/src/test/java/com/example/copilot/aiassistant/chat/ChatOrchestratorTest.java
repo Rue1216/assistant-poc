@@ -110,7 +110,7 @@ class ChatOrchestratorTest {
     private static final List<String> RETIREE_IDENTIFIERS = List.of("王小明", TestCustomers.RETIREE, "0912-000-111",
             "0912000111", "xiaoming.wang@example.com", "0123456789012");
 
-    private static final UserContext USER = new UserContext("fc.officer", "理專", "FC", Set.of("AI_ASSISTANT_USE"));
+    private static final UserContext USER = new UserContext("ICRM00028", "理專", "FC", Set.of("AI_ASSISTANT_USE"));
     private static final CustomerContext RETIREE_FULL = retiree(AccessLevel.FULL);
 
     private final MutableClock clock = new MutableClock(NOW);
@@ -1102,7 +1102,7 @@ class ChatOrchestratorTest {
         }
 
         assertThat(lines).anySatisfy(line -> assertThat(line).contains("chat answered", "requestId=" + REQUEST_ID,
-                "userId=fc.officer", "modelCalls=2", "toolCalls=1", "totalTokens=250", "blocks=2", "citedBlocks=1",
+                "userId=ICRM00028", "modelCalls=2", "toolCalls=1", "totalTokens=250", "blocks=2", "citedBlocks=1",
                 "peakOutputTokens=30"));
         assertThat(lines).allSatisfy(line -> assertThat(line).doesNotContain("提問內容子丑寅", "回答內容甲乙丙",
                 "標題戊己庚", "月配息", "\"blocks\"", "\"sources\""));

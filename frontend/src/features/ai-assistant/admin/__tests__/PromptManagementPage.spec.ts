@@ -51,7 +51,7 @@ const NAMES: Record<string, string> = {
 }
 
 function item(version: number, status: ConfigStatus, updatedAt: string, extra: Partial<VersionHistoryItem> = {}): VersionHistoryItem {
-  return { version, status, scheduledAt: null, changeNote: null, basedOnVersion: null, createdBy: 'it.admin', updatedBy: 'it.admin', updatedAt, ...extra }
+  return { version, status, scheduledAt: null, changeNote: null, basedOnVersion: null, createdBy: 'EEE22222', updatedBy: 'EEE22222', updatedAt, ...extra }
 }
 
 /** Content names the status (no digits), so it can never be mistaken for a version number. */
@@ -79,7 +79,7 @@ const BASE_HISTORY: Record<string, VersionHistoryItem[]> = {
   'system.main': [item(9102, 'DRAFT', T.v2), item(9101, 'PUBLISHED', T.v1)],
   'instruction.contact-prep': [
     item(9113, 'SCHEDULED', T.v3, { scheduledAt: T.sched }),
-    item(9112, 'PUBLISHED', T.v2, { updatedBy: 'backoffice.admin' }),
+    item(9112, 'PUBLISHED', T.v2, { updatedBy: 'EEE11111' }),
     item(9111, 'ARCHIVED', T.v1, { updatedBy: 'system' }),
   ],
   'instruction.customer-overview': [item(9121, 'PUBLISHED', T.v1, { updatedBy: 'system' })],
@@ -88,8 +88,8 @@ const BASE_HISTORY: Record<string, VersionHistoryItem[]> = {
 let HISTORY: Record<string, VersionHistoryItem[]> = {}
 
 const CONFIGS: ConfigSummary[] = [
-  { configKey: 'system.main', configType: 'SYSTEM_PROMPT', name: '主要系統提示', published: { version: 9101, status: 'PUBLISHED', scheduledAt: null, updatedBy: 'it.admin', updatedAt: T.v1 }, workingCopy: { version: 9102, status: 'DRAFT', scheduledAt: null, updatedBy: 'it.admin', updatedAt: T.v2 } },
-  { configKey: 'instruction.contact-prep', configType: 'SYSTEM_INSTRUCTION', name: '聯繫準備', published: { version: 9112, status: 'PUBLISHED', scheduledAt: null, updatedBy: 'backoffice.admin', updatedAt: T.v2 }, workingCopy: { version: 9113, status: 'SCHEDULED', scheduledAt: T.sched, updatedBy: 'it.admin', updatedAt: T.v3 } },
+  { configKey: 'system.main', configType: 'SYSTEM_PROMPT', name: '主要系統提示', published: { version: 9101, status: 'PUBLISHED', scheduledAt: null, updatedBy: 'EEE22222', updatedAt: T.v1 }, workingCopy: { version: 9102, status: 'DRAFT', scheduledAt: null, updatedBy: 'EEE22222', updatedAt: T.v2 } },
+  { configKey: 'instruction.contact-prep', configType: 'SYSTEM_INSTRUCTION', name: '聯繫準備', published: { version: 9112, status: 'PUBLISHED', scheduledAt: null, updatedBy: 'EEE11111', updatedAt: T.v2 }, workingCopy: { version: 9113, status: 'SCHEDULED', scheduledAt: T.sched, updatedBy: 'EEE22222', updatedAt: T.v3 } },
   { configKey: 'instruction.customer-overview', configType: 'SYSTEM_INSTRUCTION', name: '顧客概況', published: { version: 9121, status: 'PUBLISHED', scheduledAt: null, updatedBy: 'system', updatedAt: T.v1 }, workingCopy: null },
 ]
 
@@ -97,9 +97,9 @@ async function mountPage() {
   const pinia = createPinia()
   setActivePinia(pinia)
   useAuthStore().user = {
-    username: 'it.admin',
+    username: 'EEE22222',
     displayName: 'IT',
-    roleKey: 'IT_ADMIN',
+    roleKey: 'ADMIN',
     roleName: 'IT 管理',
     permissions: ['AI_CONFIG_READ', 'AI_CONFIG_EDIT', 'AI_CONFIG_PUBLISH'],
   }
@@ -436,9 +436,9 @@ describe('PromptManagementPage', () => {
       setActivePinia(pinia)
       const auth = useAuthStore()
       auth.user = {
-        username: 'it.admin',
+        username: 'EEE22222',
         displayName: 'IT',
-        roleKey: 'IT_ADMIN',
+        roleKey: 'ADMIN',
         roleName: 'IT 管理',
         permissions: ['AI_CONFIG_READ', 'AI_CONFIG_EDIT', 'AI_CONFIG_PUBLISH'],
       }

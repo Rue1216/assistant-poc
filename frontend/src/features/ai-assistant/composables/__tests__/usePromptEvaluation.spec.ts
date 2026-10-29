@@ -21,7 +21,7 @@ const KEY = 'instruction.contact-prep'
 
 function summary(runId: string, status: EvalStatus = 'COMPLETED', completed = 16): EvalRunSummary {
   return {
-    runId, status, errorCode: null, triggeredBy: 'it.admin', startedAt: 's', finishedAt: status === 'RUNNING' ? null : 'f',
+    runId, status, errorCode: null, triggeredBy: 'EEE22222', startedAt: 's', finishedAt: status === 'RUNNING' ? null : 'f',
     candidateVersion: 6, candidateUpdatedAt: 'u', candidateDocVersion: 5, datasetChanged: false, totalCases: 16,
     completedCases: completed, summary: null,
   }
@@ -32,7 +32,7 @@ function detail(runId: string, status: EvalStatus = 'COMPLETED', completed = 16)
 }
 
 function current(runId: string, configKey = KEY): CurrentEvaluation {
-  return { runId, configKey, triggeredBy: 'it.admin', startedAt: 's', totalCases: 16, completedCases: 3 }
+  return { runId, configKey, triggeredBy: 'EEE22222', startedAt: 's', totalCases: 16, completedCases: 3 }
 }
 
 describe('usePromptEvaluation', () => {

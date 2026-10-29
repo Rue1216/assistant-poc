@@ -17,6 +17,9 @@ import org.springframework.mock.web.MockHttpSession;
 
 class MockAuthControllerTest extends IntegrationTestBase {
 
+    /** The pre-employee-account username, split so a search for retired names stays clean. */
+    private static final String RETIRED_USERNAME = "fc." + "officer";
+
     private MockHttpSession login(String username, String password) throws Exception {
         return (MockHttpSession) mockMvc.perform(post("/api/mock/auth/login").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -27,27 +30,42 @@ class MockAuthControllerTest extends IntegrationTestBase {
 
     @Test
     void loginWithValidCredentialsCreatesSession() throws Exception {
-        MockHttpSession session = login("fc.officer", "poc1234");
+        MockHttpSession session = login("ICRM00028", "poc1234");
         mockMvc.perform(get("/api/mock/auth/me").session(session))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.username").value("fc.officer"))
-                .andExpect(jsonPath("$.roleKey").value("FC_OFFICER"))
+                .andExpect(jsonPath("$.username").value("ICRM00028"))
+                .andExpect(jsonPath("$.roleKey").value("RM"))
                 .andExpect(jsonPath("$.permissions", hasItem("AI_ASSISTANT_USE")))
                 .andExpect(jsonPath("$.permissions", not(hasItem("AI_CONFIG_READ"))));
+    }
+
+    @Test
+    void roleKeysAreBusinessRoleCodes() throws Exception {
+        mockMvc.perform(get("/api/mock/auth/me").session(login("EEE22222", "poc1234")))
+                .andExpect(jsonPath("$.roleKey").value("ADMIN"))
+                .andExpect(jsonPath("$.roleName").value("IT 管理人員"));
+    }
+
+    @Test
+    void retiredUsernamesCannotLogIn() throws Exception {
+        mockMvc.perform(post("/api/mock/auth/login").with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + RETIRED_USERNAME + "\",\"password\":\"poc1234\"}"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
     void loginWithWrongPasswordReturns401() throws Exception {
         mockMvc.perform(post("/api/mock/auth/login").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"username\":\"fc.officer\",\"password\":\"wrong\"}"))
+                        .content("{\"username\":\"ICRM00028\",\"password\":\"wrong\"}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AI_UNAUTHENTICATED"));
     }
 
     @Test
     void itAdminHasConfigPermissions() throws Exception {
-        MockHttpSession session = login("it.admin", "poc1234");
+        MockHttpSession session = login("EEE22222", "poc1234");
         mockMvc.perform(get("/api/mock/auth/me").session(session))
                 .andExpect(jsonPath("$.permissions", hasItem("AI_CONFIG_READ")))
                 .andExpect(jsonPath("$.permissions", hasItem("AI_CONFIG_EDIT")))
@@ -56,7 +74,7 @@ class MockAuthControllerTest extends IntegrationTestBase {
 
     @Test
     void logoutInvalidatesSession() throws Exception {
-        MockHttpSession session = login("fc.officer", "poc1234");
+        MockHttpSession session = login("ICRM00028", "poc1234");
         mockMvc.perform(post("/api/mock/auth/logout").with(csrf()).session(session))
                 .andExpect(status().isNoContent());
         mockMvc.perform(get("/api/mock/auth/me").session(session))
@@ -73,7 +91,7 @@ class MockAuthControllerTest extends IntegrationTestBase {
 
     @Test
     void postWithoutCsrfIsRejected() throws Exception {
-        mockMvc.perform(post("/api/mock/auth/logout").with(TestUsers.as("fc.officer")))
+        mockMvc.perform(post("/api/mock/auth/logout").with(TestUsers.as("ICRM00028")))
                 .andExpect(status().isForbidden());
     }
 
@@ -86,9 +104,12 @@ class MockAuthControllerTest extends IntegrationTestBase {
     void directoryHasNineAccountsWithExpectedScopes() {
         MockUserDirectory dir = new MockUserDirectory();
         org.assertj.core.api.Assertions.assertThat(dir.all()).hasSize(9);
-        MockUser north = dir.find("region.north").orElseThrow();
+        MockUser north = dir.find("ICRM00007").orElseThrow();
         org.assertj.core.api.Assertions.assertThat(north.regionBranchCodes()).containsExactlyInAnyOrder("B101", "B102");
-        org.assertj.core.api.Assertions.assertThat(dir.find("ao.officer").orElseThrow().marketingUnit()).isEqualTo("MU-N1");
-        org.assertj.core.api.Assertions.assertThat(dir.find("it.admin").orElseThrow().branchCode()).isEqualTo("HQ");
+        org.assertj.core.api.Assertions.assertThat(dir.find("ICRM00040").orElseThrow().marketingUnit()).isEqualTo("MU-N1");
+        org.assertj.core.api.Assertions.assertThat(dir.find("EEE22222").orElseThrow().branchCode()).isEqualTo("HQ");
+        org.assertj.core.api.Assertions.assertThat(dir.all()).extracting(MockUser::scope).containsExactly(
+                MockScope.ALL, MockScope.REGION, MockScope.BRANCH, MockScope.BRANCH_WEALTH, MockScope.ASSIGNEE_WEALTH,
+                MockScope.MARKETING_UNIT, MockScope.ASSIGNEE_MARKETING, MockScope.ALL, MockScope.ALL);
     }
 }

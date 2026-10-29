@@ -10,8 +10,8 @@ function item(version: number, status: ConfigStatus, updatedAt: string, extra: P
     scheduledAt: null,
     changeNote: null,
     basedOnVersion: null,
-    createdBy: 'it.admin',
-    updatedBy: 'it.admin',
+    createdBy: 'EEE22222',
+    updatedBy: 'EEE22222',
     updatedAt,
     ...extra,
   } satisfies VersionHistoryItem
@@ -19,9 +19,9 @@ function item(version: number, status: ConfigStatus, updatedAt: string, extra: P
 
 const VERSIONS: VersionHistoryItem[] = [
   item(9135, 'ARCHIVED', '2026-10-19T08:00:00+08:00', { updatedBy: 'system', changeNote: '初始版本' }),
-  item(9136, 'PUBLISHED', '2026-10-19T09:30:00+08:00', { updatedBy: 'backoffice.admin', changeNote: '新增段落' }),
+  item(9136, 'PUBLISHED', '2026-10-19T09:30:00+08:00', { updatedBy: 'EEE11111', changeNote: '新增段落' }),
   item(9137, 'DISCARDED', '2026-10-19T10:40:00+08:00', {
-    createdBy: 'backoffice.admin',
+    createdBy: 'EEE11111',
     scheduledAt: '2026-10-22T09:00:00+08:00',
     changeNote: '只列最近 3 筆',
   }),
@@ -45,8 +45,8 @@ describe('VersionHistory', () => {
     const w = mountHistory()
     const text = w.text()
     expect(text).toContain('10/19 09:30')
-    expect(text).toContain('backoffice.admin 發布')
-    expect(text).toContain('it.admin 儲存')
+    expect(text).toContain('EEE11111 發布')
+    expect(text).toContain('EEE22222 儲存')
     expect(text).toContain('預約 10/24 09:00 發布')
     expect(text).not.toMatch(/\bv\d+\b/i)
     expect(text).not.toMatch(/版本\s*\d/)
@@ -110,8 +110,8 @@ describe('VersionHistory', () => {
     await toggle.find('input').setValue(true)
 
     const discarded = rows(w).find((r) => r.classes('is-discarded'))!
-    expect(discarded.text()).toContain('it.admin 捨棄')
-    expect(discarded.text()).toContain('原作者 backoffice.admin')
+    expect(discarded.text()).toContain('EEE22222 捨棄')
+    expect(discarded.text()).toContain('原作者 EEE11111')
     expect(discarded.text()).toContain('原預約 10/22 09:00')
     expect(discarded.text()).toContain('只列最近 3 筆')
   })
