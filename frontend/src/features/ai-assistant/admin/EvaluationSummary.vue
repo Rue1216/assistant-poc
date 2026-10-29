@@ -1,68 +1,33 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { EvalSummary } from '../types'
-import { formatRate, rateDirection, tokenChange, tokenDirection, type Direction } from './evaluationFormat'
+import { changeText, formatRate, metricRows, tokenRow, type Direction } from './evaluationFormat'
 
 const props = defineProps<{ summary: EvalSummary }>()
 
-interface Row {
-  label: string
-  base: string
-  cand: string
-  direction: Direction
-  /** token row only */
-  change?: string
-}
-
 const count = (n: number, d: number) => (d === 0 ? '—' : `${formatRate(n, d)}（${n}/${d}）`)
+const tokens = (n: number) => Math.round(n).toLocaleString('en-US')
+const colour = (d: Direction) => (d === 'same' ? '' : `is-${d}`)
 
-const rows = computed<Row[]>(() => {
-  const b = props.summary.baseline
-  const c = props.summary.candidate
-  const tokens = (n: number) => Math.round(n).toLocaleString('en-US')
-  return [
-    {
-      label: '正確率',
-      base: count(b.correct, b.total),
-      cand: count(c.correct, c.total),
-      direction: rateDirection(b.correct, c.correct, b.total, true),
-    },
-    {
-      label: '工具選擇正確率',
-      base: count(b.toolsOk, b.total),
-      cand: count(c.toolsOk, c.total),
-      direction: rateDirection(b.toolsOk, c.toolsOk, b.total, true),
-    },
-    {
-      label: '分類正確率',
-      base: count(b.routeOk ?? 0, b.routeCases ?? 0),
-      cand: count(c.routeOk ?? 0, c.routeCases ?? 0),
-      direction: rateDirection(b.routeOk ?? 0, c.routeOk ?? 0, b.routeCases ?? 0, true),
-    },
-    {
-      label: '拒答率（應拒答題）',
-      base: count(b.refusedExpected, b.expectedRefusals),
-      cand: count(c.refusedExpected, c.expectedRefusals),
-      direction: rateDirection(b.refusedExpected, c.refusedExpected, b.expectedRefusals, true),
-    },
-    {
-      label: '拒答率（一般題）',
-      base: count(b.refusedNormal, b.normalCases),
-      cand: count(c.refusedNormal, c.normalCases),
-      direction: rateDirection(b.refusedNormal, c.refusedNormal, b.normalCases, false),
-    },
-    {
-      label: '平均 Token',
-      base: tokens(b.avgTotalTokens),
-      cand: tokens(c.avgTotalTokens),
-      direction: tokenDirection(b.avgTotalTokens, c.avgTotalTokens),
-      change: tokenChange(b.avgTotalTokens, c.avgTotalTokens),
-    },
-  ]
+const rows = computed(() =>
+  metricRows(props.summary).map((r) => ({
+    label: r.label,
+    base: count(r.base, r.d),
+    cand: count(r.cand, r.d),
+    change: changeText(r),
+    direction: r.direction,
+    lowerIsBetter: r.lowerIsBetter,
+  })),
+)
+
+const token = computed(() => {
+  const t = tokenRow(props.summary)
+  let change = '持平'
+  if (t.direction !== 'same' && t.percent !== null) {
+    change = t.percent > 0 ? `多 ${t.percent}%` : `少 ${Math.abs(t.percent)}%`
+  }
+  return { base: tokens(t.base), cand: tokens(t.cand), change, direction: t.direction }
 })
-
-const MARK: Record<Direction, string> = { better: '▲', worse: '▼', same: '' }
-const LABEL: Record<Direction, string> = { better: '變好', worse: '變差', same: '' }
 </script>
 
 <template>
@@ -70,32 +35,34 @@ const LABEL: Record<Direction, string> = { better: '變好', worse: '變差', sa
     <table class="ev-table">
       <thead>
         <tr>
-          <th scope="col"><span class="sr-only">指標</span></th>
-          <th scope="col">已發布版本</th>
-          <th scope="col">編輯中版本</th>
-          <th scope="col"><span class="sr-only">差異</span></th>
+          <th scope="col">指標</th>
+          <th scope="col">目前生效</th>
+          <th scope="col">草稿</th>
+          <th scope="col">變化</th>
         </tr>
       </thead>
       <tbody>
         <tr v-for="r in rows" :key="r.label">
-          <th scope="row">{{ r.label }}</th>
+          <th scope="row">
+            {{ r.label }}<small v-if="r.lowerIsBetter" class="ev-hint">越低越好</small>
+          </th>
           <td>{{ r.base }}</td>
           <td>{{ r.cand }}</td>
           <td>
-            <span
-              v-if="r.direction !== 'same'"
-              class="ev-dir"
-              :class="`is-${r.direction}`"
-              role="img"
-              :aria-label="LABEL[r.direction]"
-              >{{ MARK[r.direction] }}</span
-            >
-            <span v-if="r.change" class="ev-change">{{ r.change }}</span>
+            <span :class="colour(r.direction)">{{ r.change }}</span>
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">平均 Token<small class="ev-hint">越低越好</small></th>
+          <td>{{ token.base }}</td>
+          <td>{{ token.cand }}</td>
+          <td>
+            <span :class="colour(token.direction)">{{ token.change }}</span>
           </td>
         </tr>
       </tbody>
     </table>
-    <p class="ev-note">差異在 1 題以內可能是模型隨機性</p>
+    <p class="ev-note">差 1 題以內標為持平，可能只是模型隨機性。</p>
   </div>
 </template>
 
@@ -119,30 +86,23 @@ const LABEL: Record<Direction, string> = { better: '變好', worse: '變差', sa
   font-weight: 500;
   color: var(--color-text-strong);
 }
-.ev-dir {
-  font-weight: 700;
-}
-.ev-dir.is-better {
+.is-better {
+  font-weight: 600;
   color: var(--green-700);
 }
-.ev-dir.is-worse {
+.is-worse {
+  font-weight: 600;
   color: var(--red-600);
 }
-.ev-change {
+.ev-hint {
   margin-left: 6px;
+  font-size: var(--text-xs);
+  font-weight: 400;
   color: var(--color-text-muted);
 }
 .ev-note {
   margin-top: 8px;
   font-size: var(--text-xs);
   color: var(--color-text-muted);
-}
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
 }
 </style>

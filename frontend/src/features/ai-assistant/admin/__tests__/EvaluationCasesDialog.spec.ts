@@ -29,4 +29,11 @@ describe('EvaluationCasesDialog', () => {
     expect(cell(3)).toBe('instruction.x')
     expect(cell(4)).toBe('—')
   })
+
+  it('keeps the header cells on one line', () => {
+    const w = mount(EvaluationCasesDialog, { props: { open: true, cases: { datasetHash: 'h', cases: [kase('A')] }, nameOf } })
+    const ths = w.findAll('thead th')
+    expect(ths.length).toBeGreaterThan(0)
+    for (const th of ths) expect(th.classes()).toContain('ev-dialog__th')
+  })
 })

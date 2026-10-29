@@ -79,7 +79,7 @@ const meta = computed(() => {
         :aria-selected="tab === t.key"
         @click="emit('update:tab', t.key)"
       >
-        {{ t.label }}<template v-if="t.key === 'evaluation' && verdictMark"> {{ verdictMark }}</template>
+        {{ t.key === 'evaluation' && verdictMark ? `${t.label} ${verdictMark}` : t.label }}
       </button>
     </div>
   </div>

@@ -33,6 +33,7 @@ import { ApiError, apiClient } from '../../../../platform-mock/apiClient'
 import { createAppRouter } from '../../../../platform-mock/router'
 import { useAuthStore } from '../../../../platform-mock/useAuthStore'
 import PromptManagementPage from '../PromptManagementPage.vue'
+import { run, runSummary } from './evalFixtures'
 
 const T = {
   v1: '2026-10-19T08:00:00+08:00',
@@ -378,14 +379,76 @@ describe('PromptManagementPage', () => {
 
     await openTab(w, '評測')
     expect(w.find('textarea').exists()).toBe(false)
-    expect(w.text()).toContain('評測：聯繫準備')
-    expect(w.text()).toContain('請先儲存，評測使用已儲存的內容')
+    expect(w.text()).toContain('有未儲存的修改，評測只會用已儲存的內容')
+    expect(w.text()).not.toContain('評測：聯繫準備')
     expect(api.listEvaluations).toHaveBeenCalledWith('instruction.contact-prep')
     expect(w.text()).not.toContain('返回')
 
     await openTab(w, '內容')
     expect(textarea(w).value).toBe('我的未儲存內容')
     expect(w.find('[role="dialog"]').exists()).toBe(false)
+  })
+
+  describe('evaluation state on the page', () => {
+    const SAVED_RUN = { candidateVersion: 9102, candidateDocVersion: 5, configKey: 'system.main' }
+
+    it('shows the verdict mark on the 評測 tab', async () => {
+      api.listEvaluations.mockResolvedValue([runSummary(SAVED_RUN)])
+      api.getEvaluation.mockResolvedValue(run(SAVED_RUN))
+      const w = await mountPage()
+      expect(pageTab(w, '評測').text()).toBe('評測 ▲')
+    })
+
+    it('save and run saves first then starts', async () => {
+      api.saveDraft.mockImplementation(async () => ({ ...full('system.main', HISTORY['system.main']![0]!, '改過的內容'), docVersion: 6 }))
+      api.startEvaluation.mockResolvedValue({ runId: 'r9', status: 'RUNNING', totalCases: 17 })
+      const w = await mountPage()
+      await w.find('textarea').setValue('改過的內容')
+      await openTab(w, '評測')
+      await byText(w, '.ev-verdict button', '儲存並評測').trigger('click')
+      await flushPromises()
+      expect(api.saveDraft).toHaveBeenCalledTimes(1)
+      expect(api.startEvaluation).toHaveBeenCalledWith('system.main', 6)
+      expect(api.saveDraft.mock.invocationCallOrder[0]).toBeLessThan(api.startEvaluation.mock.invocationCallOrder[0]!)
+      expect(w.find('.ev-verdict__title').text()).toBe('評測中 0/17')
+    })
+
+    it('save and run does not start when the save fails', async () => {
+      api.saveDraft.mockRejectedValue(new ApiError(422, 'AI_CONFIG_VALIDATION_FAILED', 'x', undefined, []))
+      const w = await mountPage()
+      await w.find('textarea').setValue('改過的內容')
+      await openTab(w, '評測')
+      await byText(w, '.ev-verdict button', '儲存並評測').trigger('click')
+      await flushPromises()
+      expect(api.saveDraft).toHaveBeenCalledTimes(1)
+      expect(api.startEvaluation).not.toHaveBeenCalled()
+      expect(w.find('.ev-verdict__title').text()).toBe('有未儲存的修改，評測只會用已儲存的內容')
+    })
+
+    it('save and run does not start when the save conflicts', async () => {
+      api.saveDraft.mockRejectedValue(new ApiError(409, 'AI_CONFIG_CONFLICT', 'x'))
+      const w = await mountPage()
+      await w.find('textarea').setValue('改過的內容')
+      await openTab(w, '評測')
+      await byText(w, '.ev-verdict button', '儲存並評測').trigger('click')
+      await flushPromises()
+      expect(api.startEvaluation).not.toHaveBeenCalled()
+      expect(w.find('.ev-verdict__title').text()).toBe('有未儲存的修改，評測只會用已儲存的內容')
+    })
+
+    it('keeps the progress across tab switches', async () => {
+      api.startEvaluation.mockResolvedValue({ runId: 'r9', status: 'RUNNING', totalCases: 17 })
+      const w = await mountPage()
+      await openTab(w, '評測')
+      await byText(w, '.ev-verdict button', '執行評測').trigger('click')
+      await flushPromises()
+      expect(w.find('.ev-verdict__title').text()).toBe('評測中 0/17')
+      expect(pageTab(w, '評測').text()).toBe('評測 …')
+      await openTab(w, '內容')
+      await openTab(w, '評測')
+      expect(w.find('.ev-verdict__title').text()).toBe('評測中 0/17')
+      expect(api.startEvaluation).toHaveBeenCalledTimes(1)
+    })
   })
 
   it('shows the header meta and the three tabs', async () => {

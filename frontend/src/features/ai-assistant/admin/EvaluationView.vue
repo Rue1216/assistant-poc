@@ -1,16 +1,19 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, toRef } from 'vue'
-import { usePromptEvaluation } from '../composables/usePromptEvaluation'
+import { computed, ref } from 'vue'
+import type { PromptEvaluation } from '../composables/usePromptEvaluation'
 import { formatTaipeiShort } from '../taipeiTime'
 import type { ConfigVersion } from '../types'
 import EvaluationCaseList from './EvaluationCaseList.vue'
 import EvaluationCasesDialog from './EvaluationCasesDialog.vue'
 import EvaluationHistory from './EvaluationHistory.vue'
 import EvaluationSummary from './EvaluationSummary.vue'
-import { versionState } from './evaluationFormat'
+import EvaluationVerdict, { type VerdictTone } from './EvaluationVerdict.vue'
+import { overallVerdict, verdictSubtitle, versionState } from './evaluationFormat'
 import './prompt-admin.css'
 
 const props = defineProps<{
+  /** Lives in the page, so progress survives tab switches. */
+  evaluation: PromptEvaluation
   configKey: string
   name: string
   /** The saved working copy; the evaluation runs against it, not against the form. */
@@ -18,125 +21,179 @@ const props = defineProps<{
   /** Unsaved edits in the form */
   dirty: boolean
   canEdit: boolean
+  /** The page is saving or publishing */
+  busy: boolean
   /** Display name of another key, for "who is evaluating what" */
   nameOf?: (configKey: string) => string
 }>()
+const emit = defineEmits<{ 'save-and-run': [] }>()
 
-const evaluation = usePromptEvaluation(toRef(props, 'configKey'))
-const state = evaluation.state
+const state = props.evaluation.state
 
 /** The composable has already shown API errors; this only keeps them from becoming unhandled rejections. */
-const swallow = () => {}
+async function quietly(action: () => Promise<unknown>) {
+  try {
+    await action()
+  } catch {
+    // already shown by the global handler
+  }
+}
 
-onMounted(() => void evaluation.refresh().catch(swallow))
-
+const historyOpen = ref(false)
 const casesOpen = ref(false)
 
 const nameOfKey = (key: string) => (key === props.configKey ? props.name : (props.nameOf?.(key) ?? key))
 
 const latestCompleted = computed(() => state.history.find((r) => r.status === 'COMPLETED'))
 const vState = computed(() => versionState(latestCompleted.value, props.workingCopy))
-const VERSION_TEXT = { none: '', 'not-evaluated': '尚未評測', evaluated: '已評測', modified: '評測後內容已修改' } as const
-
-const runningHere = computed(() => !!state.current && state.current.configKey === props.configKey)
-
-/** Why the run button is off, in the order the user can fix them. */
-const blocked = computed(() => {
-  if (!props.workingCopy) return '沒有編輯中的版本'
-  if (props.dirty) return '請先儲存，評測使用已儲存的內容'
-  const c = state.current
-  if (c) {
-    const name = c.configKey === props.configKey ? props.name : (props.nameOf?.(c.configKey) ?? c.configKey)
-    return `${c.triggeredBy ? c.triggeredBy + ' ' : ''}正在評測「${name}」（${c.completedCases}/${c.totalCases}）`
-  }
-  return ''
-})
-
-const disabled = computed(() => !!blocked.value || state.starting)
-
-async function onRun() {
-  const wc = props.workingCopy
-  if (!wc || disabled.value) return
-  try {
-    await evaluation.start(wc.docVersion)
-  } catch {
-    // already shown by the global handler
-  }
-}
-
-async function onSelect(runId: string) {
-  try {
-    await evaluation.open(runId)
-  } catch {
-    // already shown by the global handler
-  }
-}
-
-async function onOpenCases() {
-  casesOpen.value = true
-  try {
-    await evaluation.loadCases()
-  } catch {
-    // already shown by the global handler
-  }
-}
-
+const run = computed(() => state.run)
 const caseCount = computed(() => state.cases?.cases.length ?? state.run?.totalCases ?? state.current?.totalCases ?? null)
 
-const run = computed(() => state.run)
-const progress = computed(() => state.current)
+/** This config's own running run is the latest one: its case list follows it, so there is nothing to go back to. */
+const viewingOlder = computed(
+  () =>
+    !!run.value && state.history.length > 0 && state.current?.configKey !== props.configKey && run.value.runId !== state.history[0]!.runId,
+)
+
+const VERDICT_TITLE = {
+  better: '草稿比目前生效的版本好',
+  worse: '草稿有指標變差',
+  same: '草稿和目前生效的版本差不多',
+} as const
+
+type Action = 'run' | 'save-and-run'
+interface Card {
+  tone: VerdictTone
+  title: string
+  subtitle: string
+  progress?: { completed: number; total: number }
+  button?: { label: string; action: Action; primary?: boolean; disabled?: boolean }
+}
+
+/** First matching state wins (design 5.1). */
+const card = computed<Card>(() => {
+  const cur = state.current
+  if (cur && cur.configKey === props.configKey) {
+    return {
+      tone: 'neutral',
+      title: `評測中 ${cur.completedCases}/${cur.totalCases}`,
+      subtitle: '',
+      progress: { completed: cur.completedCases, total: cur.totalCases },
+    }
+  }
+  if (cur) {
+    const prefix = cur.triggeredBy ? `${cur.triggeredBy} ` : ''
+    return {
+      tone: 'neutral',
+      title: `${prefix}正在評測「${nameOfKey(cur.configKey)}」（${cur.completedCases}/${cur.totalCases}），完成後才能執行`,
+      subtitle: '',
+    }
+  }
+  if (!props.workingCopy) {
+    const s = latestCompleted.value?.summary
+    const verdict = s ? overallVerdict(s) : null
+    return {
+      tone: verdict ?? 'neutral',
+      title: verdict ? VERDICT_TITLE[verdict] : '還沒有評測紀錄',
+      subtitle: '評測會比較草稿和目前生效的版本，請先在內容分頁按「編輯」',
+    }
+  }
+  if (props.dirty) {
+    return {
+      tone: 'neutral',
+      title: '有未儲存的修改，評測只會用已儲存的內容',
+      subtitle: '',
+      button: { label: '儲存並評測', action: 'save-and-run', disabled: props.busy },
+    }
+  }
+  if (run.value?.status === 'FAILED') {
+    return {
+      tone: 'neutral',
+      title: '這次評測沒有完成，已完成的題目仍列在下方',
+      subtitle: '',
+      button: { label: '重新評測', action: 'run', disabled: state.starting },
+    }
+  }
+  if (vState.value === 'not-evaluated') {
+    const n = caseCount.value === null ? '固定題目' : ` ${caseCount.value} 題`
+    return {
+      tone: 'neutral',
+      title: '這份草稿還沒評測',
+      subtitle: `會用${n}分別問目前生效的版本和草稿，比較兩者的回答，約需 2–3 分鐘。`,
+      button: { label: '執行評測', action: 'run', primary: true, disabled: state.starting },
+    }
+  }
+  const rerun = { label: '重新評測', action: 'run' as const, disabled: state.starting }
+  const s = latestCompleted.value?.summary
+  if (vState.value === 'modified') {
+    return { tone: 'neutral', title: '評測後內容已修改，結果可能不準', subtitle: '', button: rerun }
+  }
+  if (!s) return { tone: 'neutral', title: '這次評測沒有可比較的結果', subtitle: '', button: rerun }
+  const verdict = overallVerdict(s)
+  return { tone: verdict, title: VERDICT_TITLE[verdict], subtitle: verdictSubtitle(s), button: rerun }
+})
+
+function onButton(action: Action) {
+  if (action === 'save-and-run') {
+    emit('save-and-run')
+    return
+  }
+  const wc = props.workingCopy
+  if (wc) void quietly(() => props.evaluation.start(wc.docVersion))
+}
+
+function onOpenCases() {
+  casesOpen.value = true
+  void quietly(() => props.evaluation.loadCases())
+}
+
+const backToLatest = () => quietly(() => props.evaluation.open(state.history[0]!.runId))
 </script>
 
 <template>
-  <section class="pm-eval" aria-labelledby="ev-title">
-    <header class="pm-editor__head">
-      <div class="pm-editor__title-row">
-        <h2 id="ev-title" class="pm-editor__title">評測：{{ name }}</h2>
-      </div>
-    </header>
-
+  <section class="pm-eval">
     <div class="pm-editor__body">
-      <div class="ev-actions">
-        <button v-if="canEdit" class="btn btn--primary" type="button" :disabled="disabled" @click="onRun">執行評測</button>
-        <button class="btn btn--ghost" type="button" @click="onOpenCases">
-          查看題目{{ caseCount === null ? '' : `（${caseCount}）` }}
-        </button>
-      </div>
-      <p v-if="canEdit && blocked" class="ev-hint" role="status">{{ blocked }}</p>
-      <p v-if="workingCopy" class="ev-state">
-        編輯中版本（{{ formatTaipeiShort(workingCopy.updatedAt) }} 儲存）：{{ VERSION_TEXT[vState] }}
+      <p v-if="viewingOlder && run" class="ev-viewing">
+        正在看 {{ formatTaipeiShort(run.startedAt) }} 的結果・<button class="btn btn--ghost" type="button" @click="backToLatest">回到最新</button>
       </p>
 
-      <div v-if="runningHere && progress" class="ev-progress">
-        <span>執行中 {{ progress.completedCases }}/{{ progress.totalCases }}</span>
-        <div
-          class="ev-progress__bar"
-          role="progressbar"
-          aria-label="評測進度"
-          aria-valuemin="0"
-          :aria-valuemax="progress.totalCases"
-          :aria-valuenow="progress.completedCases"
+      <EvaluationVerdict :tone="card.tone" :title="card.title" :subtitle="card.subtitle" :progress="card.progress">
+        <button
+          v-if="canEdit && card.button"
+          class="btn"
+          :class="card.button.primary ? 'btn--primary' : 'btn--secondary'"
+          type="button"
+          :disabled="card.button.disabled"
+          @click="onButton(card.button.action)"
         >
-          <div
-            class="ev-progress__fill"
-            :style="{ width: progress.totalCases ? `${(progress.completedCases / progress.totalCases) * 100}%` : '0%' }"
-          ></div>
-        </div>
-      </div>
+          {{ card.button.label }}
+        </button>
+      </EvaluationVerdict>
 
       <template v-if="run">
-        <h3 class="ev-h">最近一次結果 {{ formatTaipeiShort(run.startedAt) }} · {{ run.triggeredBy }}</h3>
-        <EvaluationSummary v-if="run.summary" :summary="run.summary" />
-        <p v-else-if="run.status === 'FAILED'" class="ev-hint">這次評測沒有完成，已完成的題目仍列在下方。</p>
+        <details v-if="run.summary" class="ev-metrics">
+          <summary>全部指標</summary>
+          <EvaluationSummary :summary="run.summary" />
+        </details>
         <h3 class="ev-h">題目</h3>
         <EvaluationCaseList :key="run.runId" :cases="run.cases" :name-of="nameOfKey" />
       </template>
-      <p v-else class="ev-hint">還沒有評測紀錄。</p>
 
-      <template v-if="state.history.length">
-        <h3 class="ev-h">評測歷程</h3>
-        <EvaluationHistory :runs="state.history" :selected-id="run?.runId ?? null" @select="onSelect" />
-      </template>
+      <div class="ev-links">
+        <button class="btn btn--ghost" type="button" :aria-expanded="historyOpen" @click="historyOpen = !historyOpen">
+          評測歷程（{{ state.history.length }}）
+        </button>
+        <button class="btn btn--ghost" type="button" @click="onOpenCases">
+          題庫{{ caseCount === null ? '' : `（${caseCount} 題）` }}
+        </button>
+      </div>
+
+      <EvaluationHistory
+        v-if="historyOpen && state.history.length"
+        :runs="state.history"
+        :selected-id="run?.runId ?? null"
+        @select="(id: string) => quietly(() => evaluation.open(id))"
+      />
     </div>
 
     <EvaluationCasesDialog :open="casesOpen" :cases="state.cases" :name-of="nameOfKey" @close="casesOpen = false" />
@@ -147,40 +204,27 @@ const progress = computed(() => state.current)
 .pm-eval {
   min-width: 0;
 }
-.ev-actions {
+.ev-viewing {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-3);
-}
-.ev-hint {
+  margin: 0;
   font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
-.ev-state {
-  font-size: var(--text-sm);
-  color: var(--color-text);
+.ev-metrics > summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--color-text-strong);
 }
 .ev-h {
   font-size: var(--text-lg);
   font-weight: 700;
   color: var(--color-text-strong);
 }
-.ev-progress {
+.ev-links {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: var(--text-sm);
-}
-.ev-progress__bar {
-  height: 8px;
-  border-radius: 4px;
-  background: var(--gray-100);
-  overflow: hidden;
-}
-.ev-progress__fill {
-  height: 100%;
-  background: var(--color-primary);
-  transition: width 0.3s;
+  flex-wrap: wrap;
+  gap: var(--space-3);
 }
 </style>

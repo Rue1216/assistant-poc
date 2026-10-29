@@ -189,3 +189,5 @@ export function usePromptEvaluation(configKey: Ref<string>) {
 
   return { state, refresh, start, open, loadCases, stopPolling }
 }
+
+export type PromptEvaluation = ReturnType<typeof usePromptEvaluation>

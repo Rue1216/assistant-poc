@@ -39,14 +39,14 @@ const list = (items: string[]) => (items.length ? items.join('、') : '—')
         <table class="ev-dialog__table">
           <thead>
             <tr>
-              <th scope="col">題號</th>
-              <th scope="col">分組</th>
-              <th scope="col">存取等級／顧客</th>
-              <th scope="col">問題</th>
-              <th scope="col">預期工具</th>
-              <th scope="col">應拒答</th>
-              <th scope="col">預期分類</th>
-              <th scope="col">評分要點</th>
+              <th class="ev-dialog__th" scope="col">題號</th>
+              <th class="ev-dialog__th" scope="col">分組</th>
+              <th class="ev-dialog__th" scope="col">存取等級／顧客</th>
+              <th class="ev-dialog__th" scope="col">問題</th>
+              <th class="ev-dialog__th" scope="col">預期工具</th>
+              <th class="ev-dialog__th" scope="col">應拒答</th>
+              <th class="ev-dialog__th" scope="col">預期分類</th>
+              <th class="ev-dialog__th" scope="col">評分要點</th>
             </tr>
           </thead>
           <tbody>
@@ -95,6 +95,9 @@ const list = (items: string[]) => (items.length ? items.join('、') : '—')
   text-align: left;
   vertical-align: top;
   border-bottom: 1px solid var(--color-border);
+}
+.ev-dialog__th {
+  white-space: nowrap;
 }
 .ev-dialog__rubric {
   margin: 0;

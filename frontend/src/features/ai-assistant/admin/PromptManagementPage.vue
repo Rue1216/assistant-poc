@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { useAuthStore } from '../../../platform-mock/useAuthStore'
 import { usePromptAdmin } from '../composables/usePromptAdmin'
+import { usePromptEvaluation } from '../composables/usePromptEvaluation'
 import { formatTaipeiShort } from '../taipeiTime'
 import type { ConfigType, OverwritePendingDetail, VersionHistoryItem } from '../types'
 import ConfigEditor from './ConfigEditor.vue'
@@ -13,6 +14,7 @@ import EvaluationView from './EvaluationView.vue'
 import NewInstructionDialog from './NewInstructionDialog.vue'
 import VersionsTab from './VersionsTab.vue'
 import VersionViewer from './VersionViewer.vue'
+import { verdictMark } from './evaluationFormat'
 import './prompt-admin.css'
 
 const auth = useAuthStore()
@@ -25,6 +27,28 @@ const selectedKey = ref('')
 
 const admin = usePromptAdmin(selectedKey)
 const state = admin.state
+
+// Owned by the page, not by the 評測 tab: progress and the tab mark outlive tab switches.
+const evaluation = usePromptEvaluation(selectedKey)
+// The composable refreshes when the key changes; the key is only known once the config list has loaded,
+// so this covers a key that is already there at mount.
+onMounted(() => {
+  if (selectedKey.value) void evaluation.refresh().catch(() => {})
+})
+const mark = computed(() =>
+  verdictMark(evaluation.state.history, evaluation.state.current, selectedKey.value, state.workingCopy),
+)
+
+/** Save first; the evaluation starts only if the save went through (errors are shown by the save itself). */
+async function onSaveAndRun() {
+  const saved = await admin.save('KEEP_STATUS')
+  if (!saved || saved.configKey !== selectedKey.value) return
+  try {
+    await evaluation.start(saved.docVersion)
+  } catch {
+    // already shown by the global handler
+  }
+}
 
 const selectedSummary = computed(() => state.configs.find((c) => c.configKey === selectedKey.value) ?? null)
 const configType = computed<ConfigType>(() => selectedSummary.value?.configType ?? 'SYSTEM_PROMPT')
@@ -209,7 +233,7 @@ async function onCreateInstruction(keySuffix: string, name: string) {
         :config-key="selectedKey"
         :working-copy="state.workingCopy"
         :published="state.published"
-        verdict-mark=""
+        :verdict-mark="mark"
         @select="selectConfig"
       />
 
@@ -256,12 +280,15 @@ async function onCreateInstruction(keySuffix: string, name: string) {
 
       <EvaluationView
         v-else
+        :evaluation="evaluation"
         :config-key="selectedKey"
         :name="selectedSummary?.name ?? ''"
         :working-copy="state.workingCopy"
         :dirty="admin.dirty.value"
         :can-edit="canEdit"
+        :busy="state.busy"
         :name-of="nameOfKey"
+        @save-and-run="onSaveAndRun"
       />
     </section>
     <template v-else>

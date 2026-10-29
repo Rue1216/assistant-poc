@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { CaseResult, ConfigVersion, EvalCaseRecord, EvalRunSummary } from '../../types'
-import { caseChanged, caseErrorMessage, formatRate, rateDirection, tokenChange, tokenDirection, versionState } from '../evaluationFormat'
+import { caseChanged, caseErrorMessage, changeText, formatRate, metricRows, overallVerdict, rateDirection, tokenChange, tokenDirection, tokenRow, verdictMark, verdictSubtitle, versionState } from '../evaluationFormat'
+import { runSummary, summary } from './evalFixtures'
 
 function result(extra: Partial<CaseResult> = {}): CaseResult {
   return {
@@ -89,5 +90,79 @@ describe('evaluationFormat', () => {
     expect(caseErrorMessage('AI_INTERNAL_ERROR')).toBe('系統發生錯誤，請稍後再試')
     expect(caseErrorMessage('AI_SOMETHING_NEW')).toBe('AI_SOMETHING_NEW')
     expect(caseErrorMessage(null)).toBe('')
+  })
+
+  // same-everything baseline; tests override single fields
+  const flat = { correct: 11, total: 17, toolsOk: 16, routeOk: 12, routeCases: 13, refusedExpected: 2, expectedRefusals: 2, refusedNormal: 0, normalCases: 10, avgTotalTokens: 3470 }
+  const sum = (cand: Record<string, number> = {}) => summary(flat, { ...flat, ...cand })
+  const rowOf = (s: ReturnType<typeof sum>, label: string) => metricRows(s).find((r) => r.label === label)!
+
+  it('lists the five quality rows in order', () => {
+    const rows = metricRows(sum())
+    expect(rows.map((r) => r.label)).toEqual(['正確率', '工具選擇正確率', '分類正確率', '拒答率（應拒答題）', '拒答率（一般題）'])
+    expect(rows.map((r) => r.lowerIsBetter)).toEqual([false, false, false, false, true])
+    expect(rows[0]).toMatchObject({ base: 11, cand: 11, d: 17, direction: 'same' })
+  })
+
+  it('token row gives a rounded percent, null when the base is 0', () => {
+    expect(tokenRow(sum({ avgTotalTokens: 3927 }))).toEqual({ base: 3470, cand: 3927, direction: 'worse', percent: 13 })
+    expect(tokenRow(sum({ avgTotalTokens: 3000 }))).toMatchObject({ direction: 'better', percent: -14 })
+    expect(tokenRow(summary({ ...flat, avgTotalTokens: 0 }, flat)).percent).toBeNull()
+  })
+
+  it('overall verdict follows the quality rows only', () => {
+    expect(overallVerdict(sum({ correct: 14 }))).toBe('better')
+    expect(overallVerdict(sum({ correct: 14, toolsOk: 13 }))).toBe('worse')
+    expect(overallVerdict(sum({ correct: 12 }))).toBe('same')
+    expect(overallVerdict(sum({ avgTotalTokens: 3927 }))).toBe('same')
+    expect(overallVerdict(sum({ refusedNormal: 3 }))).toBe('worse')
+  })
+
+  it('writes the change text with the sign of cand minus base', () => {
+    expect(changeText(rowOf(sum({ correct: 14 }), '正確率'))).toBe('變好（+3 題）')
+    expect(changeText(rowOf(sum({ refusedNormal: 2 }), '拒答率（一般題）'))).toBe('變差（+2 題）')
+    expect(changeText(rowOf(summary({ ...flat, correct: 14 }, flat), '正確率'))).toBe('變差（−3 題）')
+    expect(changeText(rowOf(sum({ correct: 12 }), '正確率'))).toBe('持平')
+    const none = { ...flat, expectedRefusals: 0, refusedExpected: 0 }
+    expect(changeText(rowOf(summary(none, none), '拒答率（應拒答題）'))).toBe('—')
+  })
+
+  it('writes the verdict subtitle', () => {
+    expect(verdictSubtitle(sum({ correct: 14, avgTotalTokens: 3927 }))).toBe('正確率 65% → 82%；其他指標持平；平均 Token 多 13%')
+    expect(verdictSubtitle(sum())).toBe('各項指標持平')
+    expect(verdictSubtitle(sum({ avgTotalTokens: 3000 }))).toBe('各項指標持平；平均 Token 少 14%')
+    expect(verdictSubtitle(sum({ correct: 14, toolsOk: 13 }))).toBe('正確率 65% → 82%；工具選擇正確率 94% → 76%；其他指標持平')
+  })
+})
+
+describe('verdictMark', () => {
+  const KEY = 'instruction.contact-prep'
+  const wc = { configKey: KEY, version: 6, docVersion: 5 } as ConfigVersion
+  const running = (configKey: string) => ({ runId: 'x', configKey, triggeredBy: 'E', startedAt: 's', totalCases: 16, completedCases: 1 })
+
+  it('shows an ellipsis while this config is evaluating', () => {
+    expect(verdictMark([], running(KEY), KEY, wc)).toBe('…')
+  })
+
+  it("verdictMark ignores another key's running evaluation", () => {
+    expect(verdictMark([runSummary()], running('instruction.other'), KEY, wc)).toBe('▲')
+  })
+
+  it('maps the verdict of the newest completed run to a symbol', () => {
+    expect(verdictMark([runSummary()], null, KEY, wc)).toBe('▲')
+    expect(verdictMark([runSummary({ summary: summary({ correct: 15 }, { correct: 13 }) })], null, KEY, wc)).toBe('▼')
+    expect(verdictMark([runSummary({ summary: summary({}, { correct: 13 }) })], null, KEY, wc)).toBe('≈')
+  })
+
+  it('skips failed runs when looking for the newest completed one', () => {
+    const failed = runSummary({ runId: 'f', status: 'FAILED', summary: null })
+    expect(verdictMark([failed, runSummary()], null, KEY, wc)).toBe('▲')
+  })
+
+  it('is empty when modified, without history, without a working copy or without a summary', () => {
+    expect(verdictMark([runSummary({ candidateDocVersion: 4 })], null, KEY, wc)).toBe('')
+    expect(verdictMark([], null, KEY, wc)).toBe('')
+    expect(verdictMark([runSummary()], null, KEY, null)).toBe('')
+    expect(verdictMark([runSummary({ summary: null })], null, KEY, wc)).toBe('')
   })
 })
