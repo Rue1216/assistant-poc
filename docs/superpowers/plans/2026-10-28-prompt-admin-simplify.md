@@ -26,9 +26,9 @@
 ## Review Focus
 
 1. **換設定時在「放棄尚未儲存的修改？」按取消**：應停在原設定、原分頁，不得先跳回內容分頁。→ Task 1 測試 `cancelling the discard dialog keeps the config and the tab`。
-2. **在版本分頁發布或建立草稿後，版本清單更新**：預設選取要重算（例如發布後沒有草稿 → 右側改顯示目前生效版本），不得殘留舊的差異。→ Task 7 測試 `recomputes the default pane when the versions change`。
-3. **他人正在評測別的設定**：本設定的評測分頁標題不顯示「…」；本設定評測執行中切到其他分頁再回來，進度仍在。→ Task 9 測試 `verdictMark ignores another key's running evaluation` 與 `keeps the progress across tab switches`。
-4. **「儲存並評測」時儲存失敗（422 驗證錯誤或 409 衝突）**：不開始評測，結論卡維持「有未儲存的修改」。→ Task 9 測試 `save and run does not start when the save fails`。
+2. **在版本分頁發布或建立草稿後，版本清單更新**：預設選取要重算（例如發布後沒有草稿 → 右側改顯示目前生效版本），不得殘留舊的差異。→ Task 8 測試 `recomputes the default pane when the versions change`。
+3. **他人正在評測別的設定**：本設定的評測分頁標題不顯示「…」；本設定評測執行中切到其他分頁再回來，進度仍在。→ Task 10 測試 `verdictMark ignores another key's running evaluation` 與 `keeps the progress across tab switches`。
+4. **「儲存並評測」時儲存失敗（422 驗證錯誤或 409 衝突）**：不開始評測，結論卡維持「有未儲存的修改」。→ Task 10 測試 `save and run does not start when the save fails`。
 5. **已排程時改了日期卻按「立即發布」**：送 `IMMEDIATE`，不帶日期；草稿按「預約…」再按「取消」回到「立即發布」。→ Task 4 測試 `scheduled 立即發布 publishes immediately` 與 `預約… then 取消 restores 立即發布`。
 6. **發布流程中的儲存不得觸發自動檢查**：發布成功後已沒有編輯中版本，遲到的檢查回 409 會誤顯示衝突橫幅。→ Task 4 測試 `publish does not auto-check after its save step`。
 7. **網址白名單比對**：host 須完全相等（不分大小寫）；`docs.example.com.evil.com`、`evil.com/docs.example.com`、`docs.example.com@evil.com` 都不得通過；IP 不因列入白名單而通過。→ Task 2 測試 `urlAllowlistMatchesExactHostOnly` 與 `ipIsForbiddenEvenWhenAllowlisted`。
@@ -84,8 +84,8 @@ backend/src/main/
 **Interfaces:**
 - Produces:
   - `type PageTab = 'content' | 'versions' | 'evaluation'`（`ConfigHeader.vue` export）
-  - `ConfigHeader` props `{ name: string; configKey: string; workingCopy: ConfigVersion | null; published: ConfigVersion | null; tab: PageTab; verdictMark: string }`，emit `'update:tab': [tab: PageTab]`。本任務頁面傳 `verdictMark=""`（Task 9 接上）。
-  - 頁面中原本的 `tab: Ref<ConfigType>` 改名為 `configType`；新 `tab: Ref<PageTab>`；版本分頁右側暫用 `versionPane: Ref<null | { kind: 'version'; version: ConfigVersion } | { kind: 'diff'; before: VersionHistoryItem; after: VersionHistoryItem; nameDiff: DiffLine[]; contentDiff: DiffLine[] }>`（Task 7 改由 `VersionsTab` 自己管理）。
+  - `ConfigHeader` props `{ name: string; configKey: string; workingCopy: ConfigVersion | null; published: ConfigVersion | null; tab: PageTab; verdictMark: string }`，emit `'update:tab': [tab: PageTab]`。本任務頁面傳 `verdictMark=""`（Task 10 接上）。
+  - 頁面中原本的 `tab: Ref<ConfigType>` 改名為 `configType`；新 `tab: Ref<PageTab>`；版本分頁右側暫用 `versionPane: Ref<null | { kind: 'version'; version: ConfigVersion } | { kind: 'diff'; before: VersionHistoryItem; after: VersionHistoryItem; nameDiff: DiffLine[]; contentDiff: DiffLine[] }>`（Task 8 改由 `VersionsTab` 自己管理）。
   - `ConfigList` 不再有 `history` slot。
 
 規則：
@@ -305,9 +305,61 @@ backend/src/main/
 
 ---
 
-## Phase D：版本分頁
+## Phase D：設定選單與版本分頁
 
-### Task 6：行內差異與比較畫面
+### Task 6：設定選單取代左側清單（規格 v0.3）
+
+**Files:**
+- Create: `admin/ConfigPicker.vue`；Test: Create `admin/__tests__/ConfigPicker.spec.ts`
+- Delete: `admin/ConfigList.vue`（與其測試，若有）
+- Modify: `admin/ConfigHeader.vue`（名稱改為 `ConfigPicker`）、`admin/PromptManagementPage.vue`、`admin/prompt-admin.css`
+- Test: Modify `admin/__tests__/PromptManagementPage.spec.ts`、`admin/__tests__/ConfigEditor.spec.ts`（若斷言 `go-instructions` 行為）
+
+**Interfaces:**
+- Produces:
+  - `ConfigPicker` props `{ configs: ConfigSummary[]; selectedKey: string; loading: boolean }`，emits `{ select: [configKey: string] }`；`defineExpose({ open })`（展開面板並聚焦搜尋框）。
+  - `ConfigHeader` 新增 props `configs: ConfigSummary[]`、`loading: boolean`，新增 emit `select: [configKey: string]`，`defineExpose({ openPicker })`（轉呼叫 `ConfigPicker.open()`）；原 `name` prop 保留給選單按鈕文字。
+  - 頁面：`selectedKey: Ref<string>`（單一選取，取代 `configType`＋`selected` 兩個狀態）；`configType` 改為 `computed(() => selectedSummary.value?.configType ?? 'SYSTEM_PROMPT')`。
+
+規則（規格 2、2.1、2.2、2.4、3.1 第 1 點）：
+- 版面：刪除 `ConfigList` 與 `.pm-layout` 兩欄格線；主卡片全寬。1100px 以下的頁首上下排與版本分頁上下排規則保留。
+- 初始選取：設定清單載入後，若目前沒有選取或選取的 key 已不存在，選第一個 `SYSTEM_PROMPT`；沒有則選第一個問題分類；都沒有則空字串（沿用既有空狀態文字）。
+- `ConfigPicker`：
+  - 收合：`<button type="button" aria-haspopup="listbox" :aria-expanded>`，文字為目前設定名稱（套用既有 `.pm-editor__title` 字級）＋「▾」；清單未載入時文字「載入中…」，沒有選取時「請選擇設定」。
+  - 展開面板：搜尋 `<input role="combobox" aria-autocomplete="list" :aria-controls :aria-activedescendant>`，placeholder「搜尋名稱或 key」，展開時自動聚焦；`<ul role="listbox">` 內兩組（`role="group"`＋`aria-labelledby` 組名）：「System Prompt」「問題分類 {N}」（N 為問題分類總數，不受搜尋影響）；每項 `role="option"`、`aria-selected`（目前設定），文字為名稱＋狀態標籤（`SCHEDULED` 且有 `scheduledAt` →「已排程 {formatTaipeiShort}」、有 `workingCopy` →「草稿」、否則無；沿用原 `ConfigList` 的 badge class）；目前設定以 `box-shadow: inset 3px 0 0 var(--color-primary)` 與 `var(--color-primary-subtle)` 底色標示（同原清單）。
+  - 搜尋：名稱或 key 包含輸入（trim、不分大小寫）；沒有符合項目的組整組隱藏；兩組都空 → 「沒有符合的設定」（清單本身為空時「尚無設定」）。
+  - 鍵盤：按鈕 Enter／Space／↓ 展開；搜尋框 ↓／↑ 在可見選項間移動（到底不循環），初始為目前設定（若可見）否則第一項；Enter 選取目前項目；Esc 關閉並聚焦按鈕；Tab 關閉。
+  - 點擊：點選項 → emit `select` 並關閉；點面板與按鈕以外的地方 → 關閉（`pointerdown` 監聽掛在 `document`，卸載時移除）。
+  - 選取目前已選的設定 → 只關閉，不 emit。
+  - 面板：`position: absolute`，`min-width: 320px`、`max-height: 60vh`、`overflow-y: auto`，背景 `var(--color-surface)`、邊框與陰影用既有變數；1100px 以下 `left: 0; right: 0` 與卡片同寬。
+- 頁面：
+  - `ConfigHeader` 的 `select` → 既有換設定流程：`if (key !== selectedKey.value) guarded(() => (selectedKey.value = key))`。按「放棄修改？」的取消 → 選取不變、分頁不變（Review Focus 1 照舊）。
+  - `watch(selectedKey, showContent)` 保留。
+  - 「＋ 新增問題分類」：移除 `configType === 'SYSTEM_INSTRUCTION'` 條件，只保留 `canEdit`；建立成功 → `selectedKey.value = created.configKey`。
+  - `ConfigEditor` 的 `go-instructions` → 呼叫 `ConfigHeader` 的 `openPicker()`（提示列「查看問題分類 →」展開設定選單）。
+  - 頁面沒有設定可顯示時（`state.workingCopy` 與 `state.published` 皆無），維持既有空狀態卡片，但頁首仍顯示（`ConfigHeader` 不顯示時，空狀態卡片上方另外放一個 `ConfigPicker`，讓使用者仍可切換）。
+  - 移除 `selectConfigType`、`selected` reactive 與「keep a valid selection per tab」watch（改為上述初始選取規則）。
+
+- [ ] **Step 1：寫失敗測試**
+  - `ConfigPicker.spec.ts`（`attachTo: document.body`）：
+    - `shows the current name and opens on click`：按鈕文字含目前名稱；點擊後出現搜尋框且為 `document.activeElement`，`aria-expanded="true"`。
+    - `groups configs with status badges`：兩組標題「System Prompt」「問題分類 2」；已排程項目含「已排程 10/24 09:00」、草稿項目含「草稿」；目前設定的 option `aria-selected="true"`。
+    - `filters by name or key and hides empty groups`：輸入 `contact` → 只剩「聯繫準備」，System Prompt 組不存在；輸入 `zzz` → 「沒有符合的設定」。
+    - `keyboard: arrow keys and Enter select`：按鈕上 `ArrowDown` 展開；搜尋框 `ArrowDown` 後 `aria-activedescendant` 指向下一項；`Enter` → emit `select` 帶該 key，面板關閉。
+    - `Escape closes and returns focus to the button`。
+    - `pointerdown outside closes`。
+    - `selecting the current config only closes`：不 emit。
+  - `PromptManagementPage.spec.ts`：
+    - 改寫 `lists configs by name and status only` → `the picker lists configs and selecting one switches config`：頁面沒有 `.pm-sidebar`；展開選單點「聯繫準備」→ 標題為「聯繫準備」、「內容」分頁 selected。
+    - 改寫 Review Focus 1 測試：在「版本」分頁、表單有修改時用選單選另一個設定 → 確認框按「取消」→ 仍是原設定、「版本」仍 selected。
+    - `new instruction button is always shown and selects the new config`：System Prompt 選取時也有「＋ 新增問題分類」；建立後標題為新名稱。
+    - `查看問題分類 opens the picker`：System Prompt 內容分頁點「查看問題分類 →」→ 選單面板展開。
+    - 其餘依賴 `ConfigList`、`.pm-tabs`（設定類型頁籤）的既有斷言改用選單操作。
+- [ ] **Step 2：執行確認失敗** — `npm test -- ConfigPicker PromptManagementPage`。
+- [ ] **Step 3：實作**；刪除 `ConfigList.vue` 與其引用。
+- [ ] **Step 4：執行確認通過** — `npm test` 全部、`npx vue-tsc -b`。
+
+### Task 7：行內差異與比較畫面
 
 **Files:**
 - Modify: `markdown/lineDiff.ts`、`admin/diffRows.ts`、`admin/VersionDiff.vue`、`admin/prompt-admin.css`
@@ -337,7 +389,7 @@ backend/src/main/
 - [ ] **Step 3：實作**；頁面更新 `VersionDiff` 的 props。
 - [ ] **Step 4：執行確認通過** — `npm test` 全部、`npx vue-tsc -b`。
 
-### Task 7：版本分頁元件
+### Task 8：版本分頁元件
 
 **Files:**
 - Create: `admin/VersionsTab.vue`
@@ -346,7 +398,7 @@ backend/src/main/
 - Test: Create `admin/__tests__/VersionsTab.spec.ts`；Modify `VersionList.spec.ts`、`PromptManagementPage.spec.ts`
 
 **Interfaces:**
-- Consumes: Task 5 `VersionViewer`（`action='apply'`）、`LIST_STATUS`；Task 6 `VersionDiff`；`PromptAdmin`（`state.versions`、`state.feedback`、`state.workingCopy`、`state.published`、`state.busy`、`loadVersion(version)`、`compare(a, b)`）。
+- Consumes: Task 5 `VersionViewer`（`action='apply'`）、`LIST_STATUS`；Task 7 `VersionDiff`；`PromptAdmin`（`state.versions`、`state.feedback`、`state.workingCopy`、`state.published`、`state.busy`、`loadVersion(version)`、`compare(a, b)`）。
 - Produces:
   - `VersionList` props `{ versions: VersionHistoryItem[]; selected: number[]; checked: number[]; feedback: Record<number, VersionFeedback>; configType: ConfigType }`，emits `{ view: [version: number]; 'update:checked': [versions: number[]]; compare: [] }`
   - `VersionsTab` props `{ admin: PromptAdmin; configType: ConfigType; canEdit: boolean }`，emits `{ 'open-content': []; apply: [version: number] }`
@@ -386,7 +438,7 @@ backend/src/main/
 
 ## Phase E：評測分頁
 
-### Task 8：指標列與結論規則
+### Task 9：指標列與結論規則
 
 **Files:**
 - Modify: `admin/evaluationFormat.ts`、`admin/EvaluationSummary.vue`
@@ -413,7 +465,7 @@ backend/src/main/
 - [ ] **Step 3：實作**（`EvaluationSummary` 改用 `metricRows`／`tokenRow`，移除自身重複的列計算）。
 - [ ] **Step 4：執行確認通過** — `npm test` 全部、`npx vue-tsc -b`。
 
-### Task 9：評測狀態提升、結論卡與分頁標示
+### Task 10：評測狀態提升、結論卡與分頁標示
 
 **Files:**
 - Create: `admin/EvaluationVerdict.vue`
@@ -421,7 +473,7 @@ backend/src/main/
 - Test: `admin/__tests__/EvaluationView.spec.ts`、`admin/__tests__/evaluationFormat.spec.ts`、`admin/__tests__/PromptManagementPage.spec.ts`
 
 **Interfaces:**
-- Consumes: Task 8 `overallVerdict`、`verdictSubtitle`；既有 `usePromptEvaluation`（`state.current`、`state.history`、`state.run`、`refresh()`、`start(docVersion)`、`open(runId)`、`loadCases()`）、`versionState`；Task 1 `ConfigHeader` 的 `verdictMark`。
+- Consumes: Task 9 `overallVerdict`、`verdictSubtitle`；既有 `usePromptEvaluation`（`state.current`、`state.history`、`state.run`、`refresh()`、`start(docVersion)`、`open(runId)`、`loadCases()`）、`versionState`；Task 1 `ConfigHeader` 的 `verdictMark`。
 - Produces:
   - `export type PromptEvaluation = ReturnType<typeof usePromptEvaluation>`（`usePromptEvaluation.ts`）
   - `export function verdictMark(history: EvalRunSummary[], current: CurrentEvaluation | null, configKey: string, wc: ConfigVersion | null): string`（`evaluationFormat.ts`）：`current?.configKey === configKey` →「…」；否則最新 `COMPLETED` 且 `versionState === 'evaluated'` 且有 `summary` → `better`「▲」／`worse`「▼」／`same`「≈」；其他 → 空字串。
@@ -440,7 +492,7 @@ backend/src/main/
   7. `modified` → title「評測後內容已修改，結果可能不準」，tone `neutral`；按鈕「重新評測」。
   8. `evaluated` → tone 與 title 依 `overallVerdict`：「草稿比目前生效的版本好」／「草稿有指標變差」／「草稿和目前生效的版本差不多」；subtitle `verdictSubtitle`；按鈕「重新評測」。
   - 沒有 `canEdit` 時一律不顯示按鈕。
-- 結論卡下方：`<details>`「全部指標」（預設收合，內含 `EvaluationSummary`）；題目清單（Task 10 調整內容）；底部兩個連結按鈕：「評測歷程（{history.length}）」切換顯示 `EvaluationHistory`、「題庫（{N} 題）」開啟 `EvaluationCasesDialog`。正在看的 run 不是最新一筆時，結論卡上方顯示「正在看 {formatTaipeiShort(run.startedAt)} 的結果・」＋按鈕「回到最新」（`open(history[0].runId)`）。
+- 結論卡下方：`<details>`「全部指標」（預設收合，內含 `EvaluationSummary`）；題目清單（Task 11 調整內容）；底部兩個連結按鈕：「評測歷程（{history.length}）」切換顯示 `EvaluationHistory`、「題庫（{N} 題）」開啟 `EvaluationCasesDialog`。正在看的 run 不是最新一筆時，結論卡上方顯示「正在看 {formatTaipeiShort(run.startedAt)} 的結果・」＋按鈕「回到最新」（`open(history[0].runId)`）。
 - 移除：標題列、「編輯中版本（…）：已評測」那一行、「最近一次結果 …」標題、原本停用按鈕旁的說明文字。
 
 - [ ] **Step 1：寫失敗測試**
@@ -455,7 +507,7 @@ backend/src/main/
 - [ ] **Step 3：實作**。
 - [ ] **Step 4：執行確認通過** — `npm test` 全部、`npx vue-tsc -b`。
 
-### Task 10：題目清單與題庫對話框
+### Task 11：題目清單與題庫對話框
 
 **Files:**
 - Modify: `admin/EvaluationCaseList.vue`、`admin/EvaluationCasesDialog.vue`
@@ -493,7 +545,7 @@ backend/src/main/
 
 ## Phase F：文件與實測
 
-### Task 11：文件同步
+### Task 12：文件同步
 
 **Files:** 規格第 11 節所列文件；`docs/superpowers/specs/2026-10-28-prompt-admin-simplify-design.md`
 
@@ -510,7 +562,7 @@ backend/src/main/
   - 本規格狀態改為「已實作」、版本 v0.3。
 - [ ] **Step 2** — `grep -rn "返回編輯\|存成草稿\|重新檢查\|尚未檢查\|越權指令\|1–5 題\|1 至 5\|版本歷程對\|標題列的「評測」" docs` 只剩歷史紀錄性質的段落（舊計畫、版本紀錄）。
 
-### Task 12：實際操作驗證（主控者與使用者一起做）
+### Task 13：實際操作驗證（主控者與使用者一起做）
 
 - [ ] **Step 1** — 使用者啟動前後端；主控者以 Playwright（本機 Edge，`backoffice.admin`／`it.admin`，密碼 `poc1234`）截圖：內容分頁（草稿、已排程、沒有草稿、檢查未通過、有未儲存修改時的「儲存後重新檢查」）、版本分頁三種預設、比較（行內標示）、評測分頁（已評測、評測後已修改、有未儲存的修改）、深色模式、視窗寬 1000px 的單欄版面。不按發布與執行評測，除非使用者同意。
 - [ ] **Step 2** — 與使用者一起跑 demo 檢查清單步驟 12、15、18、19、20（19、20 會呼叫 GPT，需使用者同意）。另驗證規格 10.3：把一個問題分類的範例問題全部刪除後發布，對話視窗不顯示該分類，直接輸入相關問題仍分到該分類（會呼叫 GPT，需使用者同意；驗證後以「以此版本建立草稿」還原）。
