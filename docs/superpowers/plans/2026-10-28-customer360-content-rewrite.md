@@ -385,18 +385,69 @@ frontend/src/platform-mock/
 
 ---
 
-## Phase E：文件與實測
+## Phase E：工具整併（v0.2）
 
-### Task 10：文件同步
+規格 v0.2 第 4 節、6.10。6 個 360 工具整併為 `getCustomer(sections)` 與 `getRealTimeCustomer`，加上每題資料暫存。
 
-- [ ] **Step 1** — 依規格第 8 節逐一更新文件；`questions-for-manager.md` 新增規格第 10 節 6 項（E1–E13 合併為一項並列出子項）；`ideas-backlog.md` 新增互動紀錄工具、持股工具、通路回應率、router 雙意圖 4 項；規格狀態改為「已實作」、v0.2。
+### Task 10：getCustomer、getRealTimeCustomer 與每題資料暫存
+
+**Files:**
+- Create: `aiassistant/tool/TurnCustomerData.java`、`tool/customer/GetCustomerTool.java`、`tool/customer/GetRealTimeCustomerTool.java`、`tool/customer/CustomerSection.java`、`tool/customer/sections/`（每個分組一個格式化類別：`ProfileSection`、`ManagementSection`、`AssetLiabilitySection`、`MemberRankSection`、`ProductIntentSection`、`BehaviorSection`）
+- Modify: `tool/ToolContext.java`、`tool/customer/AbstractCustomerTool.java`、`chat/ChatOrchestrator.java`、`evaluation/EvalRunner.java`（只在建立 ToolContext 的地方）、`prompt/CustomerNotes.java`
+- Delete: `GetCustomerProfileTool.java`、`GetManagementSummaryTool.java`、`GetAssetLiabilityTool.java`、`GetMemberRankTool.java`、`GetProductIntentTool.java`、`GetBehaviorTool.java`
+- Test: `tool/customer/CustomerToolsTest.java`（改寫為兩個工具；v0.1 各工具測試的值全部保留，改由對應分組斷言）、`tool/TurnCustomerDataTest.java`（新）、`prompt/CustomerNotesTest.java`、`chat/ChatOrchestratorTest.java`、`tool/ToolRegistryTest.java`、`evaluation/EvalRunnerTest.java`、`ToolSpecificationConsistencyTest`（`sections` 不是顧客參數，仍須通過）、`chat/ChatCitationFlowTest.java`（引用標題與說明改為新格式）
+
+**Interfaces:**
+- Produces:
+  - `TurnCustomerData`（每題一份，非 Spring bean）：`TurnCustomerData(CustomerDataPort port, String certNo)`；`Optional<Customer360Record> customer360()`、`Optional<RealTimeStatusRecord> realTime()` — 各自第一次呼叫時才讀 port，之後回傳同一結果；port 丟例外時記住並在之後每次呼叫重丟同一例外（不再呼叫 port）
+  - `ToolContext(UserContext user, CustomerContext customer, TurnCustomerData data)`
+  - `enum CustomerSection { PROFILE("profile", "顧客名片"), MANAGEMENT("management", "顧客經營"), ASSET_LIABILITY("assetLiability", "資產負債"), MEMBER_RANK("memberRank", "會員等級"), PRODUCT_INTENT("productIntent", "產品意圖"), BEHAVIOR("behavior", "往來與行為") }`，`String key()`、`String displayName()`、`String description()`（參數說明用）、`static Optional<CustomerSection> fromKey(String)`
+  - `GetCustomerTool`：name `getCustomer`、purpose `查詢顧客 360 資料`、args `record CustomerArgs(@NotEmpty @Size(max = 6) List<String> sections)`；JSON schema 的 `sections` 為字串陣列、enum 為 6 個 key、description 逐一列出各分組內容；不合法的 key → `ToolStatus.DENIED`、`TOOL_ARGUMENT_INVALID`、`參數格式不正確`（與 `ToolGuard` 相同文字）
+  - `GetRealTimeCustomerTool`：name `getRealTimeCustomer`、purpose `查詢顧客即時註記與提醒`、`NoArgs`、FULL
+  - citation：`getCustomer` 標題為 `個人360・` 加實際回傳分組的 `displayName()`（依 enum 順序、以「、」連接；LIMITED 只有 `顧客名片`；`unavailableSections` 不列入）、description 為 `資料日期 ` + `dataDate`、`resultCount` 為回傳分組數；`getRealTimeCustomer` 標題 `個人360・即時註記與提醒`、description `註記、畫像標籤、關鍵提醒`、`resultCount` 3
+  - `CustomerNotes.section(CustomerContext customer, TurnCustomerData data): String`（取代單參數版本）
+
+- [ ] **Step 1：寫失敗測試 `TurnCustomerDataTest`** — 以計數包裝 port：連續呼叫 `customer360()` 3 次只讀 port 1 次；`realTime()` 同；port 丟例外時第二次呼叫重丟同一例外且 port 呼叫次數仍為 1；兩個方法彼此獨立。
+- [ ] **Step 2：改寫 `CustomerToolsTest`** — 把 v0.1 每個工具測試的斷言搬到對應分組，例如原 `assetLiability` 的 `assets.items[0]` 斷言改為 `getCustomer(["assetLiability"])` 回傳中 `assetLiability.assets.items[0]`；另加：
+  - `onlyRequestedSections`：`["memberRank","behavior"]` → 回傳只有 `dataDate`、`memberRank`、`behavior`。
+  - `duplicateSectionsCollapse`：`["profile","profile"]` → 只有一個 `profile`；citation `resultCount` 1。
+  - `unknownSectionIsRejected`：`["aum"]` → `DENIED`、`TOOL_ARGUMENT_INVALID`；`[]` 由 `ToolGuard` 驗證擋下。
+  - `missingSectionIsListed`：自訂 port，`memberRank` 為 null → `["memberRank","profile"]` 回 `profile` 與 `unavailableSections: ["memberRank"]`；只指定 `["memberRank"]` → `CUSTOMER_DATA_UNAVAILABLE`。
+  - `limitedGetsProfileOnly`：LIMITED、`["profile","assetLiability"]` → 只有 `profile{subject, ageRange, segment}`、`accessNote`、`unavailableSections: ["assetLiability"]`；不含 `primaryBranch`、`高資產`。
+  - `realTimeCustomer`：黃俊豪 → `notes` 含 `{category: 不宜行銷, expiryDate: 2027/03/31}`；王小明 → `keyAlerts` 3 筆、第一筆 category `資金活水`、`profileTags` 3 個；`requiredAccessLevel` FULL。
+  - `citations`：王小明 `["memberRank","assetLiability"]` → 標題 `個人360・資產負債、會員等級`（依 enum 順序，不是傳入順序）、description `資料日期 2026/10/27`、`resultCount` 2；`missingSectionIsListed` 的情況標題只含 `顧客名片`；LIMITED 標題 `個人360・顧客名片`；`getRealTimeCustomer` 標題 `個人360・即時註記與提醒`、description `註記、畫像標籤、關鍵提醒`、`resultCount` 3；citation 沒有 excerpt。
+  - 隱私斷言沿用：不含姓名、`58 歲`、`李大發`、`16888`、`receiptNo`、`attachment`、等級代碼欄位。
+- [ ] **Step 3：寫失敗測試** — `CustomerNotesTest`：改用 `TurnCustomerData`，原 8 個案例照舊；新增「註記注入與 `getRealTimeCustomer` 共用同一次讀取」（同一個 `TurnCustomerData` 先 `section(...)` 再執行工具，port 的 `findRealTimeStatus` 只被呼叫 1 次）。`ChatOrchestratorTest.oneFetchPerTurn`：模型先呼叫 `getCustomer`（2 個分組）再呼叫 `getRealTimeCustomer` → 整題 `findCustomer360` 1 次、`findRealTimeStatus` 1 次。`ToolRegistryTest`／`EvalRunnerTest`：LIMITED 工具為 `getCustomer` 與 3 個市場工具，FULL 另有 `getRealTimeCustomer`。
+- [ ] **Step 4：執行確認失敗，再實作** — v0.1 6 個工具的 `execute` 邏輯搬到 6 個分組類別（每個類別一個方法 `Map<String,Object> render(Customer360Record r, ToolContext ctx)`，區塊不存在回 null），工具類別只做分組解析、組合與 citation。`ChatOrchestrator.Turn` 建立 `TurnCustomerData` 並放入 `ToolContext`；`EvalRunner` 每題同樣建立。
+- [ ] **Step 5：執行確認通過** — `.\mvnw test` 全部。
+- [ ] **Step 6：確認舊工具名已不存在** — `grep -rnE "getCustomerProfile|getManagementSummary|getAssetLiability|getMemberRank|getProductIntent|getBehavior" backend/src/main` 沒有結果（`eval-cases.yml` 由 Task 11 改）。
+
+### Task 11：system.main 與評測集對應新工具
+
+**Files:**
+- Modify: `resources/seed/system.main.md`（只改「可用資料」一節，照規格 5.1 v0.2 原文）、`resources/eval/eval-cases.yml`（`expect.tools` 依規格 6.10；P2 依規格 6.5）
+- Test: `config/SeedLoaderTest.java`、`config/ConfigValidatorTest.java`（若斷言舊工具名）、`evaluation/EvalDatasetLoaderTest.bundledDatasetMatchesSpec`
+
+- [ ] **Step 1：寫失敗測試** — `SeedLoaderTest`：`system.main` 含 `getCustomer`、`getRealTimeCustomer`，不含任何 v0.1 工具名。`bundledDatasetMatchesSpec`：依規格 6.10 逐題斷言 `expect.tools`；P2 沒有 `forbiddenTools`、`mustNotContain` 含 `15,000,000`；所有工具名都已註冊。
+- [ ] **Step 2：執行確認失敗，再修改兩個資源檔**。
+- [ ] **Step 3：執行確認通過** — `.\mvnw test` 全部；`grep -rnE "getCustomerProfile|getManagementSummary|getAssetLiability|getMemberRank|getProductIntent|getBehavior" backend/src` 沒有結果。
+
+**Phase E 結束：** 交付 commit 訊息檔（例如 `refactor(backend): getCustomer(sections) and getRealTimeCustomer replace six 360 tools`），停下等使用者 commit。
+
+---
+
+## Phase F：文件與實測
+
+### Task 12：文件同步
+
+- [ ] **Step 1** — 依規格第 8 節逐一更新文件；`questions-for-manager.md` 新增規格第 10 節 6 項（E1–E13 合併為一項並列出子項）；`ideas-backlog.md` 新增互動紀錄工具、持股工具、通路回應率、router 雙意圖、依分類預載資料（方案 C）5 項；規格狀態改為「已實作」、v0.2。
 - [ ] **Step 2** — setup.md、demo-checklist.md 寫明 demo 前執行 `docker compose down -v` 清空 MongoDB（或刪除設定、audit、feedback、評測紀錄 collection），以及新帳號清單。
-- [ ] **Step 3** — `grep -rE "customerId|getCustomerHoldings|getRecentInteractions|getCampaignResults|contact-topic|hq\.viewer|fc\.officer|it\.admin" docs/spec docs/setup.md docs/demo-checklist.md` 沒有結果（`docs/superpowers/` 下的舊規格與計畫是歷史紀錄，不改）。
+- [ ] **Step 3** — `grep -rE "customerId|getCustomerHoldings|getRecentInteractions|getCampaignResults|getCustomerProfile|getManagementSummary|getAssetLiability|getMemberRank|getProductIntent|getBehavior|contact-topic|hq\.viewer|fc\.officer|it\.admin" docs/spec docs/setup.md docs/demo-checklist.md` 沒有結果（`docs/superpowers/` 下的舊規格與計畫是歷史紀錄，不改）。
 
-### Task 11：真實模型評測（主控者與使用者一起做）
+### Task 13：真實模型評測（主控者與使用者一起做）
 
 - [ ] **Step 1** — 使用者清空 MongoDB 後啟動，確認 Prompt 管理頁出現 7 個分類、快速提問 chip 順序正確。
 - [ ] **Step 2** — 用 `EEE22222` 在評測頁跑一次 30 題（使用者的 GPT key）。
 - [ ] **Step 3** — 把結果摘要寫進 demo-checklist：各 group 通過數、分類正確率、雙意圖 2 題的路由結果與 rubric 結果、未通過的題目與原因。
 - [ ] **Step 4** — 依雙意圖結果，與使用者討論 router 選項 A／B／C（不在本計畫實作）。
-- [ ] **Step 5** — 交付 Phase E 的 commit 指令（例如 `docs: customer 360 rewrite specs, setup and evaluation results`）。
+- [ ] **Step 5** — 交付 Phase F 的 commit 指令（例如 `docs: customer 360 rewrite specs, setup and evaluation results`）。
