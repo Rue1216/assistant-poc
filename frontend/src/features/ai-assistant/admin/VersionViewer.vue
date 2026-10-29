@@ -2,46 +2,27 @@
 import { computed, useId } from 'vue'
 import { useToast } from '../../../platform-mock/useToast'
 import SafeMarkdown from '../markdown/SafeMarkdown'
-import { formatTaipei, formatTaipeiShort } from '../taipeiTime'
 import type { ConfigVersion, VersionHistoryItem } from '../types'
-import { APPLICABLE, STATUS_BADGE, STATUS_LABEL } from './promptLabels'
+import { APPLICABLE, versionMeta } from './promptLabels'
 import './prompt-admin.css'
 
 const props = defineProps<{
   version: ConfigVersion
   versions: VersionHistoryItem[]
-  workingCopy: ConfigVersion | null
   canEdit: boolean
   busy: boolean
   conflict: boolean
+  /** edit: the live version on the content tab (edit makes a draft); apply: a history version (apply makes a draft) */
+  action: 'edit' | 'apply'
 }>()
-defineEmits<{ apply: [version: number]; 'create-draft': []; reload: [] }>()
+defineEmits<{ edit: []; apply: [version: number]; reload: [] }>()
 
 const id = useId()
 const toast = useToast()
 
 const v = computed(() => props.version)
-const time = computed(() => formatTaipei(v.value.updatedAt))
-/** R27: no working copy and this is the live version, so offer 建立草稿 (02 section 3.5) instead of 套用. */
-const offerCreateDraft = computed(() => !props.workingCopy && v.value.status === 'PUBLISHED')
-const canApply = computed(() => props.canEdit && !offerCreateDraft.value && APPLICABLE.includes(v.value.status))
-
-const appliedFrom = computed(() => {
-  if (v.value.basedOnVersion == null) return '—'
-  const source = props.versions.find((x) => x.version === v.value.basedOnVersion)
-  return source ? `${formatTaipei(source.updatedAt)} 的版本` : '先前的版本'
-})
-
-const footerNote = computed(() => {
-  if (offerCreateDraft.value) return '建立草稿會以目前生效的內容新增一份草稿，需再發布才會生效。'
-  const wc = props.workingCopy
-  if (!wc) return '套用會以這個版本的內容新增一份草稿，需再發布才會生效。'
-  const current =
-    wc.status === 'SCHEDULED' && wc.scheduledAt
-      ? `目前預約於 ${formatTaipeiShort(wc.scheduledAt)} 發布的版本會取消排程並標為已捨棄`
-      : `目前 ${formatTaipeiShort(wc.updatedAt)} 儲存的草稿會被標為已捨棄`
-  return `套用會以這個版本的內容新增一份草稿；${current}，仍可在版本歷程中找回。新草稿需再發布才會生效。`
-})
+const meta = computed(() => versionMeta(v.value, props.versions))
+const canApply = computed(() => props.canEdit && props.action === 'apply' && APPLICABLE.includes(v.value.status))
 
 async function copyMarkdown() {
   try {
@@ -55,19 +36,8 @@ async function copyMarkdown() {
 
 <template>
   <section class="pm-viewer" :aria-labelledby="`${id}-title`">
-    <header class="pm-editor__head">
-      <div class="pm-editor__title-row">
-        <h2 :id="`${id}-title`" class="pm-editor__title">{{ v.name }}</h2>
-        <span class="badge" :class="STATUS_BADGE[v.status]">{{ STATUS_LABEL[v.status] }}</span>
-      </div>
-      <div class="pm-editor__meta">
-        <code>{{ v.configKey }}</code>
-        <template v-if="v.changeNote">
-          <span class="pm-dot" aria-hidden="true"></span>
-          <span>修改說明：{{ v.changeNote }}</span>
-        </template>
-      </div>
-    </header>
+    <h2 :id="`${id}-title`" class="sr-only">{{ v.name }}</h2>
+    <p class="pm-viewer__meta">{{ meta }}</p>
 
     <div v-if="conflict" class="pm-banner pm-banner--conflict" role="alert">
       <span class="pm-banner__icon" aria-hidden="true">!</span>
@@ -76,43 +46,21 @@ async function copyMarkdown() {
     </div>
 
     <div class="pm-editor__body">
-      <dl class="pm-verinfo">
-        <div><dt>狀態</dt><dd>{{ STATUS_LABEL[v.status] }}</dd></div>
-        <div><dt>原作者</dt><dd>{{ v.createdBy }}</dd></div>
-        <div>
-          <dt>{{ v.status === 'DISCARDED' ? '捨棄' : v.status === 'PUBLISHED' || v.status === 'ARCHIVED' ? '發布' : '最後儲存' }}</dt>
-          <dd>{{ v.updatedBy }}・{{ time }}</dd>
-        </div>
-        <div>
-          <dt>{{ v.status === 'DISCARDED' ? '原預約' : '預約時間' }}</dt>
-          <dd>{{ v.scheduledAt ? formatTaipei(v.scheduledAt) : '—' }}</dd>
-        </div>
-        <div><dt>套用來源</dt><dd>{{ appliedFrom }}</dd></div>
-      </dl>
-
-      <div class="pm-pane pm-pane--auto">
-        <div class="pm-pane__head">
-          <span class="pm-pane__title">內容預覽</span>
-          <button class="btn btn--ghost btn--sm" type="button" @click="copyMarkdown">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V6a2 2 0 0 1 2-2h9" /></svg>
-            複製 Markdown
-          </button>
-        </div>
-        <div class="pm-preview"><div class="md"><SafeMarkdown :source="v.content" /></div></div>
-      </div>
+      <div class="pm-preview"><div class="md"><SafeMarkdown :source="v.content" /></div></div>
     </div>
 
-    <footer class="pm-actionbar pm-actionbar--viewer">
-      <p class="pm-actionbar__note">{{ footerNote }}</p>
+    <footer class="pm-actionbar">
+      <p v-if="action === 'edit'" class="pm-actionbar__note">編輯會建立一份草稿，發布前不影響線上。</p>
       <div class="pm-actionbar__buttons">
+        <button class="btn btn--ghost" type="button" @click="copyMarkdown">複製 Markdown</button>
         <button
-          v-if="offerCreateDraft && canEdit"
+          v-if="action === 'edit' && canEdit"
           class="btn btn--primary"
           type="button"
           :disabled="busy"
-          @click="$emit('create-draft')"
+          @click="$emit('edit')"
         >
-          建立草稿
+          編輯
         </button>
         <button
           v-if="canApply"
@@ -121,7 +69,7 @@ async function copyMarkdown() {
           :disabled="busy"
           @click="$emit('apply', v.version)"
         >
-          套用此版本
+          以此版本建立草稿
         </button>
       </div>
     </footer>
@@ -133,29 +81,15 @@ async function copyMarkdown() {
   min-width: 0;
 }
 
+/* grows with the content so the page scrolls and the sticky action bar stays reachable */
 .pm-viewer .pm-preview {
-  max-height: 560px;
+  overflow: visible;
 }
 
-.pm-verinfo {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
-  gap: 10px 16px;
+.pm-viewer__meta {
   margin: 0;
-  padding: 12px 16px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--gray-25);
-}
-
-.pm-verinfo dt {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-}
-
-.pm-verinfo dd {
-  margin: 0;
+  padding: var(--space-3) var(--space-6) 0;
   font-size: var(--text-sm);
-  font-weight: 600;
+  color: var(--color-text-muted);
 }
 </style>

@@ -54,6 +54,13 @@ describe('MarkdownEditor', () => {
     expect(wrapper.findAll('.pm-chips-preview .chip').map((c) => c.text())).toEqual(['問題一', '問題二'])
   })
 
+  it('says which required heading is missing in the header, only for instructions', () => {
+    expect(mountEditor('## 範例問題\n- 問題一').text()).toContain('缺少「## 適用問題」')
+    expect(mountEditor('## 適用問題').text()).not.toContain('缺少')
+    for (const c of ['', '   ', '## 角色']) expect(mountEditor(c, 'SYSTEM_PROMPT').text()).not.toContain('缺少')
+    expect(mountEditor('## 範例問題').text()).not.toContain('必要章節')
+  })
+
   it('has no chips preview and no required-section list for the system prompt', async () => {
     const wrapper = mountEditor('## 角色\n\n## 回答格式', 'SYSTEM_PROMPT')
     expect(wrapper.text()).not.toContain('必要章節')

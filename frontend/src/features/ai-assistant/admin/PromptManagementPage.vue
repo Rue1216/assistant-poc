@@ -301,12 +301,12 @@ async function onCreateInstruction(keySuffix: string, name: string) {
             v-else
             :version="state.published!"
             :versions="state.versions"
-            :working-copy="null"
+            action="edit"
             :can-edit="canEdit"
             :busy="state.busy"
             :conflict="state.conflict"
             @apply="onApply"
-            @create-draft="onCreateDraft"
+            @edit="onCreateDraft"
             @reload="onReload"
           />
         </template>
@@ -331,12 +331,12 @@ async function onCreateInstruction(keySuffix: string, name: string) {
             v-if="versionPane?.kind === 'version'"
             :version="versionPane.version"
             :versions="state.versions"
-            :working-copy="state.workingCopy"
+            action="apply"
             :can-edit="canEdit"
             :busy="state.busy"
             :conflict="state.conflict"
             @apply="onApply"
-            @create-draft="onCreateDraft"
+            @edit="onCreateDraft"
             @reload="onReload"
           />
           <VersionDiff

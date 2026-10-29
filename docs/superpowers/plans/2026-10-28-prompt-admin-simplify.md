@@ -285,6 +285,7 @@ backend/src/main/
 - `VersionViewer`：移除唯讀橫幅與五格資訊卡；上方一行 `versionMeta`；內容 `SafeMarkdown`；動作列：
   - `action='edit'`：提示「編輯會建立一份草稿，發布前不影響線上。」＋`複製 Markdown`＋`編輯`（主要，`canEdit` 時）。
   - `action='apply'`：`複製 Markdown`＋`以此版本建立草稿`（主要；`canEdit` 且狀態在 `APPLICABLE` 時）。
+  - 兩種動作列都與編輯時的 `.pm-actionbar` 相同（sticky，固定在畫面下方）：移除 `.pm-actionbar--viewer` 的 `position: static`；預覽不另設 `max-height` 捲動框，隨頁面捲動（規格 3.2、4.3）。
 
 - [ ] **Step 1：寫失敗測試**
   - `ConfigEditor.spec.ts`：System Prompt 顯示「這份會和 5 份已發布的問題分類一起送給模型，影響所有對話。」，點「查看問題分類 →」emit `go-instructions`；問題分類沒有這行；整個元件不含「只有一份」「送給模型的系統訊息」「（選填，最多 200 字）」；修改說明 input 的 placeholder 為「選填，例如：補充無權限時的回覆方式」。

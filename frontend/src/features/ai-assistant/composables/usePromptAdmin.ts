@@ -26,8 +26,8 @@ export interface PromptForm {
   changeNote: string
 }
 
-/** 'idle' until a check runs (3.8 validate, or a 422 from save / publish). */
-export type ValidationState = 'idle' | 'passed' | 'failed'
+/** 'idle' until a check runs (automatic 3.8 check, or a 422 from save / publish); 'checking' while it is in flight. */
+export type ValidationState = 'idle' | 'checking' | 'passed' | 'failed'
 
 export type ApplyResult =
   | ({ needsConfirm: true } & OverwritePendingDetail)
@@ -94,6 +94,7 @@ export function usePromptAdmin(configKey: Ref<string>) {
   }
 
   function resetChecks(): void {
+    checkSeq++ // a check started before this reset must not write its result
     state.errors = []
     state.validation = 'idle'
     state.checkedContent = ''
@@ -122,6 +123,7 @@ export function usePromptAdmin(configKey: Ref<string>) {
   }
 
   let loadSeq = 0
+  let checkSeq = 0
   let loadedKey = ''
 
   function clearSelected(): void {
@@ -158,6 +160,7 @@ export function usePromptAdmin(configKey: Ref<string>) {
       state.workingCopy = wc
       state.published = pub
       resetForm()
+      if (wc) void check(key)
     } catch {
       // toast already shown by apiClient
     } finally {
@@ -217,6 +220,7 @@ export function usePromptAdmin(configKey: Ref<string>) {
     if (e.code === CONFLICT) {
       state.conflict = true
     } else if (e.code === VALIDATION_FAILED) {
+      checkSeq++ // an in-flight check is older than this result
       state.errors = toIssues(e.details)
       state.validation = 'failed'
       state.checkedContent = state.form.content
@@ -224,7 +228,28 @@ export function usePromptAdmin(configKey: Ref<string>) {
   }
 
   /**
-   * PUT draft for `key`. `refresh: false` when the save is a step of publish / validate, which
+   * Automatic pre-publish check (3.8) of the server's working copy. Not part of run(): it never sets busy,
+   * and a result that arrives after a newer check, a reset or a key change is dropped.
+   */
+  async function check(key: string): Promise<void> {
+    if (!state.workingCopy || !onKey(key)) return
+    const seq = ++checkSeq
+    state.validation = 'checking'
+    try {
+      const report = await aiAssistantApi.validateDraft(key)
+      if (seq !== checkSeq || !onKey(key)) return
+      state.errors = report.errors
+      state.validation = report.valid ? 'passed' : 'failed'
+      state.checkedContent = state.workingCopy?.content ?? ''
+    } catch (e) {
+      if (seq !== checkSeq) return
+      handleWriteError(e, key)
+      if (state.validation === 'checking') state.validation = 'idle'
+    }
+  }
+
+  /**
+   * PUT draft for `key`. `refresh: false` when the save is a step of publish, which
    * refresh once at the end. Returns null on failure or when the user moved to another key meanwhile.
    */
   async function doSave(
@@ -246,16 +271,13 @@ export function usePromptAdmin(configKey: Ref<string>) {
       if (!onKey(key)) return null
       state.workingCopy = saved
       state.conflict = false
-      if (mode === 'KEEP_STATUS' && saved.status === 'SCHEDULED') {
-        // the server validated this content before keeping the schedule (02 section 3.6)
-        state.errors = []
-        state.validation = 'passed'
-        state.checkedContent = saved.content
-      }
       if (announce) {
         toast.show(mode === 'DRAFT' && wasScheduled ? '已存成草稿，排程已取消' : '已儲存', 'info')
       }
-      if (refresh) await refreshLists(key)
+      if (refresh) {
+        void check(key)
+        await refreshLists(key)
+      }
       return saved
     } catch (e) {
       handleWriteError(e, key)
@@ -302,13 +324,16 @@ export function usePromptAdmin(configKey: Ref<string>) {
         return result
       } catch (e) {
         if (!onKey(key)) return null
+        const invalid = e instanceof ApiError && e.code === VALIDATION_FAILED
         if (e instanceof ApiError && e.code === INPUT_INVALID) {
           if (isScheduleError(e)) state.scheduleError = SCHEDULE_ERROR
           else toast.show(e.message)
         } else {
           handleWriteError(e, key)
         }
-        await refreshLists(key) // the save step did change the version
+        // the save step did change the version and the content: re-check it (a 422 already carries its own result)
+        if (!invalid) void check(key)
+        await refreshLists(key)
         return null
       }
     })
@@ -325,30 +350,6 @@ export function usePromptAdmin(configKey: Ref<string>) {
         await reloadIfOn(key)
       } catch (e) {
         handleWriteError(e, key)
-      }
-    }).then(() => undefined)
-  }
-
-  /** 3.8 on the server's working copy; unsaved edits are saved (KEEP_STATUS) first so the check matches the screen. */
-  function validate(): Promise<void> {
-    return run(async () => {
-      const key = configKey.value
-      let saved = false
-      if (dirty.value) {
-        if (!(await doSave(key, 'KEEP_STATUS', { announce: true, refresh: false }))) return
-        saved = true
-      }
-      if (!onKey(key)) return
-      try {
-        const report = await aiAssistantApi.validateDraft(key)
-        if (!onKey(key)) return
-        state.errors = report.errors
-        state.validation = report.valid ? 'passed' : 'failed'
-        state.checkedContent = state.workingCopy?.content ?? state.form.content
-      } catch (e) {
-        handleWriteError(e, key)
-      } finally {
-        if (saved) await refreshLists(key)
       }
     }).then(() => undefined)
   }
@@ -464,7 +465,6 @@ export function usePromptAdmin(configKey: Ref<string>) {
     save,
     publish,
     discard,
-    validate,
     apply,
     confirmApply,
     cancelApply,

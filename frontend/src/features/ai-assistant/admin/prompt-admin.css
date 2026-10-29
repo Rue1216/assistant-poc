@@ -85,28 +85,6 @@
   font-weight: 700;
 }
 
-.pm-banner--info {
-  background: var(--green-50);
-  border-color: var(--green-100);
-  color: var(--green-800);
-}
-
-.pm-banner--info .pm-banner__icon {
-  background: var(--color-primary);
-  color: #fff;
-  font-style: italic;
-}
-
-.pm-banner--scheduled {
-  background: var(--amber-50);
-  border-color: var(--amber-200);
-  color: var(--amber-700);
-}
-
-.pm-banner--scheduled .pm-banner__icon {
-  background: var(--amber-100);
-}
-
 .pm-banner--conflict {
   align-items: center;
   background: var(--red-50);
@@ -197,10 +175,6 @@
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
   background: color-mix(in srgb, var(--color-surface) 94%, transparent);
   backdrop-filter: blur(8px);
-}
-
-.pm-actionbar--viewer {
-  position: static;
 }
 
 .pm-actionbar__buttons {

@@ -158,10 +158,18 @@ describe('PromptManagementPage', () => {
     toast.mockReset()
     HISTORY = structuredClone(BASE_HISTORY)
     api.listConfigs.mockResolvedValue(CONFIGS)
+    api.validateDraft.mockResolvedValue({ valid: true, errors: [] })
     api.listEvaluations.mockResolvedValue([])
     api.currentEvaluation.mockResolvedValue(null)
     api.listVersions.mockImplementation(async (key: string) => HISTORY[key])
     api.getVersion.mockImplementation(async (key: string, v: number) => full(key, HISTORY[key]!.find((h) => h.version === v)!))
+  })
+
+  it('shows the pre-publish check passed inside the action bar without pressing anything', async () => {
+    const w = await mountPage()
+    const bar = w.find('.pm-actionbar')
+    expect(bar.text()).toContain('✓ 發布前檢查通過')
+    expect(w.findAll('button').some((b) => b.text().includes('檢查'))).toBe(false)
   })
 
   it('opens the system prompt draft in the editor with the page header', async () => {
@@ -173,7 +181,7 @@ describe('PromptManagementPage', () => {
     expectNoVersionNumbers(w)
   })
 
-  it('shows the published version read-only with 建立草稿 when there is no working copy', async () => {
+  it('shows the published version read-only with 編輯 when there is no working copy', async () => {
     const w = await mountPage()
     await openInstructions(w, '顧客概況')
 
@@ -185,7 +193,7 @@ describe('PromptManagementPage', () => {
 
     api.createDraft.mockResolvedValue(full('instruction.customer-overview', item(9122, 'DRAFT', T.v3)))
     HISTORY['instruction.customer-overview'] = [item(9122, 'DRAFT', T.v3), item(9121, 'PUBLISHED', T.v1, { updatedBy: 'system' })]
-    await byText(w, '.pm-actionbar button', '建立草稿').trigger('click')
+    await byText(w, '.pm-actionbar button', '編輯').trigger('click')
     await flushPromises()
 
     expect(api.createDraft).toHaveBeenCalledWith('instruction.customer-overview')

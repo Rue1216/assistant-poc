@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, useId, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { isoToTaipeiDateTime, nextHourTaipei } from '../taipeiTime'
 import type { PublishMode, SaveMode } from '../types'
 import './prompt-admin.css'
@@ -17,96 +17,90 @@ const emit = defineEmits<{
   discard: []
 }>()
 
-const name = useId()
-const mode = ref<PublishMode>('IMMEDIATE')
+/** DRAFT only: the date and time row is opened by 預約… and closed by 取消 (a scheduled copy always shows it) */
+const scheduling = ref(false)
 const date = ref('')
 const time = ref('')
 
-// 02 section 3.0: a scheduled working copy defaults to 預約發布 with its current time
+// 02 section 3.0: a scheduled working copy starts with its current time, otherwise the next full hour
 watch(
   [() => props.status, () => props.scheduledAt],
   ([status, scheduledAt]) => {
-    const scheduled = status === 'SCHEDULED' && scheduledAt
-    mode.value = scheduled ? 'SCHEDULED' : 'IMMEDIATE'
-    const when = scheduled ? isoToTaipeiDateTime(scheduledAt) : nextHourTaipei()
+    scheduling.value = false
+    const when = status === 'SCHEDULED' && scheduledAt ? isoToTaipeiDateTime(scheduledAt) : nextHourTaipei()
     date.value = when.date
     time.value = when.time
   },
   { immediate: true },
 )
-
-const publishLabel = computed(() => {
-  if (mode.value === 'IMMEDIATE') return '立即發布'
-  return props.status === 'SCHEDULED' ? '更新預約' : '預約發布'
-})
-
-const discardBlocked = computed(() => props.status === 'SCHEDULED')
-
-function onDiscard() {
-  if (!discardBlocked.value) emit('discard')
-}
 </script>
 
 <template>
   <footer class="pm-actionbar">
-    <fieldset class="pm-publish">
-      <legend class="pm-publish__legend">發布方式</legend>
-      <label class="radio"><input v-model="mode" type="radio" :name="name" value="IMMEDIATE" /> 立即發布</label>
-      <label class="radio"><input v-model="mode" type="radio" :name="name" value="SCHEDULED" /> 預約發布</label>
-      <div v-if="mode === 'SCHEDULED'" class="pm-publish__when">
-        <input v-model="date" class="input" type="date" aria-label="預約日期" :aria-invalid="!!scheduleError" />
-        <input v-model="time" class="input" type="time" aria-label="預約時間" :aria-invalid="!!scheduleError" />
-        <span v-if="scheduleError" class="pm-publish__error" role="alert">{{ scheduleError }}</span>
-        <span v-else class="field__hint">至少 1 分鐘後、最多 90 天內</span>
-      </div>
-    </fieldset>
+    <div class="pm-actionbar__lead"><slot /></div>
     <div class="pm-actionbar__buttons">
-      <button
-        class="btn btn--ghost"
-        type="button"
-        :disabled="busy"
-        :aria-disabled="discardBlocked ? 'true' : undefined"
-        :title="discardBlocked ? '已排程的版本需先「存成草稿」才能捨棄' : undefined"
-        @click="onDiscard"
-      >
-        捨棄草稿
+      <button v-if="status === 'SCHEDULED'" class="btn btn--ghost" type="button" :disabled="busy" @click="emit('save', 'DRAFT')">
+        取消排程
       </button>
-      <button class="btn btn--secondary" type="button" :disabled="busy" @click="emit('save', 'DRAFT')">存成草稿</button>
+      <button v-else class="btn btn--ghost" type="button" :disabled="busy" @click="emit('discard')">捨棄草稿</button>
+
+      <!-- 已排程: 取消排程 [日期][時間] 儲存 …; 草稿預約中: 儲存 [日期][時間] 取消 預約發布 (spec 3.1) -->
+      <template v-if="status === 'SCHEDULED'">
+        <span class="pm-publish__when">
+          <input v-model="date" class="input" type="date" aria-label="預約日期" :aria-invalid="!!scheduleError" />
+          <input v-model="time" class="input" type="time" aria-label="預約時間" :aria-invalid="!!scheduleError" />
+          <span v-if="scheduleError" class="pm-publish__error" role="alert">{{ scheduleError }}</span>
+        </span>
+      </template>
+
       <button class="btn btn--secondary" type="button" :disabled="busy" @click="emit('save', 'KEEP_STATUS')">儲存</button>
-      <button
-        v-if="canPublish"
-        class="btn btn--primary"
-        type="button"
-        :disabled="busy"
-        @click="emit('publish', mode, date, time)"
-      >
-        {{ publishLabel }}
-      </button>
+
+      <template v-if="status === 'DRAFT' && scheduling">
+        <span class="pm-publish__when">
+          <input v-model="date" class="input" type="date" aria-label="預約日期" :aria-invalid="!!scheduleError" />
+          <input v-model="time" class="input" type="time" aria-label="預約時間" :aria-invalid="!!scheduleError" />
+          <span v-if="scheduleError" class="pm-publish__error" role="alert">{{ scheduleError }}</span>
+        </span>
+      </template>
+
+      <template v-if="canPublish">
+        <template v-if="status === 'SCHEDULED'">
+          <button class="btn btn--secondary" type="button" :disabled="busy" @click="emit('publish', 'IMMEDIATE', date, time)">
+            立即發布
+          </button>
+          <button class="btn btn--primary" type="button" :disabled="busy" @click="emit('publish', 'SCHEDULED', date, time)">
+            更新預約
+          </button>
+        </template>
+        <template v-else-if="scheduling">
+          <button class="btn btn--link" type="button" :disabled="busy" @click="scheduling = false">取消</button>
+          <button class="btn btn--primary" type="button" :disabled="busy" @click="emit('publish', 'SCHEDULED', date, time)">
+            預約發布
+          </button>
+        </template>
+        <template v-else>
+          <button class="btn btn--secondary" type="button" :disabled="busy" @click="scheduling = true">預約…</button>
+          <button class="btn btn--primary" type="button" :disabled="busy" @click="emit('publish', 'IMMEDIATE', date, time)">
+            立即發布
+          </button>
+        </template>
+      </template>
     </div>
   </footer>
 </template>
 
 <style scoped>
-.pm-publish {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 16px;
-  margin: 0;
-  padding: 0;
-  border: 0;
+.pm-actionbar__lead {
+  flex: 1 1 240px;
   min-width: 0;
 }
 
-.pm-publish__legend {
-  float: left;
-  padding: 0;
-  font-size: var(--text-sm);
-  font-weight: 600;
+.pm-actionbar__buttons {
+  align-items: center;
 }
 
 .pm-publish__when {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
@@ -125,5 +119,24 @@ function onDiscard() {
   font-size: var(--text-xs);
   font-weight: 600;
   color: var(--red-600);
+}
+
+.btn--link {
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.btn--link:hover:not(:disabled) {
+  color: var(--color-text);
+}
+
+.btn--link:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 </style>

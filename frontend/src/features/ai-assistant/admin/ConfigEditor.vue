@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import { computed, useId } from 'vue'
 import type { PromptAdmin } from '../composables/usePromptAdmin'
-import { formatTaipei } from '../taipeiTime'
 import type { ConfigType, PublishMode, SaveMode } from '../types'
 import MarkdownEditor from './MarkdownEditor.vue'
-import PromptAssemblyGuide from './PromptAssemblyGuide.vue'
 import PublishBar from './PublishBar.vue'
 import ValidationPanel from './ValidationPanel.vue'
 import './prompt-admin.css'
@@ -35,22 +33,6 @@ function onPublish(mode: PublishMode, date: string, time: string) {
 
 <template>
   <section class="pm-editor" aria-label="編輯內容">
-    <div v-if="configType === 'SYSTEM_PROMPT'" class="pm-banner pm-banner--info" role="note">
-      <span class="pm-banner__icon" aria-hidden="true">i</span>
-      <div>
-        <strong>System Prompt 只有一份，套用於所有角色與所有對話。</strong>
-        發布後立即影響每一次回答，請先確認預覽與發布前檢查。
-      </div>
-    </div>
-
-    <div v-if="scheduledAt" class="pm-banner pm-banner--scheduled" role="status">
-      <span class="pm-banner__icon" aria-hidden="true">⏱</span>
-      <div>
-        <strong>此版本預約於 {{ formatTaipei(scheduledAt) }} 自動發布。</strong>
-        按「儲存」會保留排程，並以你為預約者；按「存成草稿」會取消排程。
-      </div>
-    </div>
-
     <div v-if="state.conflict" class="pm-banner pm-banner--conflict" role="alert">
       <span class="pm-banner__icon" aria-hidden="true">!</span>
       <div>
@@ -63,11 +45,10 @@ function onPublish(mode: PublishMode, date: string, time: string) {
     </div>
 
     <div class="pm-editor__body">
-      <PromptAssemblyGuide
-        v-if="configType === 'SYSTEM_PROMPT'"
-        :instruction-count="publishedInstructionCount"
-        @go-instructions="emit('go-instructions')"
-      />
+      <p v-if="configType === 'SYSTEM_PROMPT'" class="pm-editor__hint">
+        這份會和 {{ publishedInstructionCount }} 份已發布的問題分類一起送給模型，影響所有對話。
+        <button class="btn btn--ghost btn--sm" type="button" @click="emit('go-instructions')">查看問題分類 →</button>
+      </p>
 
       <div class="pm-form-row">
         <div class="field">
@@ -81,12 +62,13 @@ function onPublish(mode: PublishMode, date: string, time: string) {
           />
         </div>
         <div class="field">
-          <label class="field__label" :for="`${id}-note`">修改說明 <span class="field__hint">（選填，最多 200 字）</span></label>
+          <label class="field__label" :for="`${id}-note`">修改說明</label>
           <input
             :id="`${id}-note`"
             v-model="state.form.changeNote"
             class="input"
             maxlength="200"
+            placeholder="選填，例如：補充無權限時的回覆方式"
             :readonly="!canEdit"
           />
         </div>
@@ -97,16 +79,6 @@ function onPublish(mode: PublishMode, date: string, time: string) {
         :config-type="configType"
         :readonly="!canEdit"
         :baseline="state.published?.content ?? null"
-      />
-
-      <ValidationPanel
-        :validation="state.validation"
-        :errors="state.errors"
-        :config-type="configType"
-        :checked-content="state.checkedContent"
-        :can-check="canEdit"
-        :busy="state.busy"
-        @check="admin.validate()"
       />
     </div>
 
@@ -120,13 +92,31 @@ function onPublish(mode: PublishMode, date: string, time: string) {
       @save="onSave"
       @publish="onPublish"
       @discard="emit('discard')"
-    />
+    >
+      <ValidationPanel
+        :validation="state.validation"
+        :errors="state.errors"
+        :config-type="configType"
+        :checked-content="state.checkedContent"
+        :dirty="admin.dirty.value"
+      />
+    </PublishBar>
   </section>
 </template>
 
 <style scoped>
 .pm-editor {
   min-width: 0;
+}
+
+.pm-editor__hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
 }
 
 .pm-form-row {

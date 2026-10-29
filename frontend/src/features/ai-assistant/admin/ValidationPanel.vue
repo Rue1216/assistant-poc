@@ -10,78 +10,57 @@ const props = defineProps<{
   configType: ConfigType
   /** The content the last check ran on. */
   checkedContent: string
-  canCheck: boolean
-  busy: boolean
+  /** The form differs from the saved working copy, so the shown result may be stale. */
+  dirty: boolean
 }>()
-defineEmits<{ check: [] }>()
 
 const passed = computed(() => passedRuleDescriptions(props.configType, props.checkedContent))
+const settled = computed(() => props.validation === 'passed' || props.validation === 'failed')
 </script>
 
 <template>
-  <section class="pm-validate" :class="{ 'is-fail': validation === 'failed' }" aria-label="發布前檢查">
-    <div class="pm-validate__head">
-      <span class="pm-validate__title">發布前檢查</span>
-      <span v-if="validation === 'passed'" class="pm-validate__summary pm-validate__summary--ok">全部通過</span>
-      <span v-else-if="validation === 'failed'" class="pm-validate__summary pm-validate__summary--fail">
-        {{ errors.length }} 項未通過
-      </span>
-      <span v-else class="pm-validate__summary pm-validate__summary--idle">尚未檢查</span>
-      <button
-        v-if="canCheck"
-        class="btn btn--ghost btn--sm"
-        type="button"
-        title="有未儲存的修改時，會先儲存再檢查"
-        :disabled="busy"
-        @click="$emit('check')"
-      >
-        重新檢查
-      </button>
-    </div>
+  <div v-if="validation === 'checking'" class="pm-validate pm-validate--checking" aria-live="polite">檢查中…</div>
+  <details
+    v-else-if="settled"
+    class="pm-validate"
+    :class="{ 'is-fail': validation === 'failed' }"
+    :open="validation === 'failed'"
+    aria-label="發布前檢查"
+  >
+    <summary class="pm-validate__summary" :class="validation === 'failed' ? 'pm-validate__summary--fail' : 'pm-validate__summary--ok'">
+      {{ validation === 'failed' ? `✕ ${errors.length} 項未通過` : '✓ 發布前檢查通過' }}<small v-if="dirty" class="pm-validate__stale">・儲存後重新檢查</small>
+    </summary>
     <ul v-if="validation === 'passed'" class="pm-validate__list pm-validate__list--ok">
       <li v-for="row in passed" :key="row" class="is-ok">{{ row }}</li>
     </ul>
-    <ul v-else-if="validation === 'failed'" class="pm-validate__list pm-validate__list--fail" role="alert">
+    <ul v-else class="pm-validate__list pm-validate__list--fail" role="alert">
       <li v-for="(e, i) in errors" :key="i" class="is-error"><code>{{ e.rule }}</code>{{ e.message }}</li>
     </ul>
-  </section>
+  </details>
 </template>
 
 <style scoped>
 .pm-validate {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--gray-25);
-  padding: 12px 16px;
-}
-
-.pm-validate.is-fail {
-  background: var(--red-50);
-  border-color: var(--red-200);
-}
-
-.pm-validate__head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.pm-validate__title {
-  font-weight: 600;
   font-size: var(--text-sm);
 }
 
+.pm-validate--checking {
+  color: var(--color-text-subtle);
+}
+
 .pm-validate__summary {
-  font-size: var(--text-xs);
+  display: inline;
+  cursor: pointer;
   font-weight: 600;
 }
 
 .pm-validate__summary--ok { color: var(--green-600); }
 .pm-validate__summary--fail { color: var(--red-600); }
-.pm-validate__summary--idle { color: var(--color-text-subtle); font-weight: 400; }
 
-.pm-validate__head .btn {
-  margin-left: auto;
+.pm-validate__stale {
+  margin-left: 4px;
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
 }
 
 .pm-validate__list {
@@ -89,9 +68,7 @@ const passed = computed(() => passedRuleDescriptions(props.configType, props.che
   padding: 0;
   margin-top: 8px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 6px 16px;
-  font-size: var(--text-sm);
+  gap: 6px;
 }
 
 .pm-validate__list li {
@@ -136,9 +113,5 @@ const passed = computed(() => passedRuleDescriptions(props.configType, props.che
   border-radius: 4px;
   background: var(--red-50);
   border: 1px solid var(--red-200);
-}
-
-.pm-validate__list--fail {
-  grid-template-columns: 1fr;
 }
 </style>

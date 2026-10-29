@@ -85,41 +85,36 @@ describe('ConfigEditor', () => {
   beforeEach(() => {
     for (const fn of Object.values(api)) fn.mockReset()
     api.listConfigs.mockResolvedValue([])
+    api.validateDraft.mockResolvedValue({ valid: true, errors: [] })
   })
 
-  it('shows discard, save-as-draft, save and publish buttons with publish mode options', async () => {
+  it('shows discard, save, schedule and publish buttons in the action bar', async () => {
     const { wrapper } = await mountEditor(version('SYSTEM_INSTRUCTION', 'DRAFT'))
-    expect(buttonTexts(wrapper)).toEqual(['捨棄草稿', '存成草稿', '儲存', '立即發布'])
-    const radios = wrapper.findAll('.pm-publish input[type="radio"]')
-    expect(wrapper.find('.pm-publish').text()).toContain('立即發布')
-    expect(wrapper.find('.pm-publish').text()).toContain('預約發布')
-    expect((radios[0]!.element as HTMLInputElement).checked).toBe(true)
+    expect(buttonTexts(wrapper)).toEqual(['捨棄草稿', '儲存', '預約…', '立即發布'])
     expect(wrapper.find('input[type="date"]').exists()).toBe(false)
 
-    await radios[1]!.setValue(true)
+    await button(wrapper, '預約…').trigger('click')
 
     expect(buttonTexts(wrapper).at(-1)).toBe('預約發布')
     expect(wrapper.find('input[type="date"]').exists()).toBe(true)
     expect(wrapper.find('input[type="time"]').exists()).toBe(true)
   })
 
-  it('defaults to scheduled mode with current date and time when working copy is scheduled; publish button reads 更新預約', async () => {
+  it('a scheduled working copy shows its current date and time with 取消排程 and 更新預約, and no 捨棄草稿', async () => {
     const { wrapper } = await mountEditor(
       version('SYSTEM_INSTRUCTION', 'SCHEDULED', { scheduledAt: '2026-10-24T01:00:00Z' }),
     )
-    const radios = wrapper.findAll('.pm-publish input[type="radio"]')
-    expect((radios[1]!.element as HTMLInputElement).checked).toBe(true)
     expect((wrapper.find('input[type="date"]').element as HTMLInputElement).value).toBe('2026-10-24')
     expect((wrapper.find('input[type="time"]').element as HTMLInputElement).value).toBe('09:00')
-    expect(buttonTexts(wrapper).at(-1)).toBe('更新預約')
-    expect(wrapper.text()).toContain('此版本預約於 2026/10/24 09:00 自動發布。')
+    expect(buttonTexts(wrapper)).toEqual(['取消排程', '儲存', '立即發布', '更新預約'])
+    expect(wrapper.text()).not.toContain('此版本預約於')
+  })
 
-    const discard = button(wrapper, '捨棄草稿')
-    expect(discard.attributes('aria-disabled')).toBe('true')
-    expect(discard.attributes('title')).toBe('已排程的版本需先「存成草稿」才能捨棄')
-    await discard.trigger('click')
-    expect(wrapper.emitted('discard')).toBeUndefined()
-    expect(api.discardDraft).not.toHaveBeenCalled()
+  it('shows the pre-publish check passed in the action bar without pressing anything', async () => {
+    const { wrapper } = await mountEditor(version('SYSTEM_INSTRUCTION', 'DRAFT'))
+    expect(api.validateDraft).toHaveBeenCalledWith('instruction.contact-prep')
+    expect(wrapper.find('.pm-actionbar').text()).toContain('✓ 發布前檢查通過')
+    expect(wrapper.findAll('button').some((b) => b.text().includes('檢查'))).toBe(false)
   })
 
   it('no longer has a title row or an 評測 button', async () => {
@@ -136,15 +131,33 @@ describe('ConfigEditor', () => {
     for (const line of SAFETY_RULE_LINES) expect(wrapper.text()).not.toContain(line)
   })
 
-  it('shows the System Prompt banner and the two-step assembly guide only for the system prompt', async () => {
+  it('shows a one-line hint with a link to the instructions only for the system prompt', async () => {
     const sp = (await mountEditor(version('SYSTEM_PROMPT', 'DRAFT'))).wrapper
-    expect(sp.text()).toContain('System Prompt 只有一份，套用於所有角色與所有對話。')
-    expect(sp.findAll('.pm-assembly__step')).toHaveLength(2)
-    expect(sp.find('.pm-assembly').text()).toContain('5 份已發布的 System Instructions')
+    expect(sp.text()).toContain('這份會和 5 份已發布的問題分類一起送給模型，影響所有對話。')
+    await sp.findAll('button').find((b) => b.text() === '查看問題分類 →')!.trigger('click')
+    expect(sp.emitted('go-instructions')).toHaveLength(1)
 
     const si = (await mountEditor(version('SYSTEM_INSTRUCTION', 'DRAFT'))).wrapper
-    expect(si.text()).not.toContain('System Prompt 只有一份')
-    expect(si.find('.pm-assembly').exists()).toBe(false)
+    expect(si.text()).not.toContain('一起送給模型')
+    expect(si.findAll('button').some((b) => b.text() === '查看問題分類 →')).toBe(false)
+  })
+
+  it('has no leftover banners, assembly guide or verbose labels', async () => {
+    for (const w of [
+      (await mountEditor(version('SYSTEM_PROMPT', 'DRAFT'))).wrapper,
+      (await mountEditor(version('SYSTEM_INSTRUCTION', 'SCHEDULED', { scheduledAt: '2026-10-24T09:00:00+08:00' }))).wrapper,
+    ]) {
+      for (const t of ['只有一份', '送給模型的系統訊息', '（選填，最多 200 字）']) expect(w.text()).not.toContain(t)
+      expect(w.find('.pm-assembly').exists()).toBe(false)
+    }
+  })
+
+  it('labels the change note 修改說明 with a placeholder and keeps maxlength', async () => {
+    const { wrapper } = await mountEditor(version('SYSTEM_INSTRUCTION', 'DRAFT'))
+    const note = wrapper.find('input[placeholder="選填，例如：補充無權限時的回覆方式"]')
+    expect(note.exists()).toBe(true)
+    expect(note.attributes('maxlength')).toBe('200')
+    expect(wrapper.find(`label[for="${note.attributes('id')}"]`).text()).toBe('修改說明')
   })
 
   it('publishes by saving the form first', async () => {
@@ -171,7 +184,7 @@ describe('ConfigEditor', () => {
     const { wrapper } = await mountEditor(
       version('SYSTEM_INSTRUCTION', 'SCHEDULED', { scheduledAt: '2026-10-24T09:00:00+08:00' }),
     )
-    expect(wrapper.find('.pm-validate__list').exists()).toBe(false)
+    expect(wrapper.find('.pm-validate__list--fail').exists()).toBe(false)
     api.saveDraft.mockRejectedValue(
       new ApiError(422, 'AI_CONFIG_VALIDATION_FAILED', 'x', 'r', [
         { rule: 'REQUIRED_SECTION', message: '缺少必要章節「## 適用問題」' },
@@ -180,18 +193,14 @@ describe('ConfigEditor', () => {
     await button(wrapper, '儲存').trigger('click')
     await flushPromises()
 
-    expect(wrapper.find('.pm-validate__summary').text()).toBe('1 項未通過')
+    expect(wrapper.find('.pm-validate summary').text()).toBe('✕ 1 項未通過')
     expect(wrapper.find('.pm-validate__list--fail').text()).toContain('REQUIRED_SECTION')
     expect(wrapper.find('.pm-validate__list--fail').text()).toContain('缺少必要章節「## 適用問題」')
   })
 
-  it('shows the passing rule list after a successful check', async () => {
+  it('shows the passing rule list after the automatic check', async () => {
     const { wrapper } = await mountEditor(version('SYSTEM_INSTRUCTION', 'DRAFT'))
-    api.validateDraft.mockResolvedValue({ valid: true, errors: [] })
-    await button(wrapper, '重新檢查').trigger('click')
-    await flushPromises()
-
-    expect(wrapper.find('.pm-validate__summary').text()).toBe('全部通過')
+    expect(wrapper.find('.pm-validate summary').text()).toBe('✓ 發布前檢查通過')
     const ok = wrapper.find('.pm-validate__list--ok').text()
     expect(ok).toContain('「適用問題」已填寫')
     expect(ok).toContain('範例問題 1 題')
@@ -233,16 +242,16 @@ describe('ConfigEditor', () => {
     )
     admin.state.scheduleError = '預約時間需在 1 分鐘後、90 天內'
     await flushPromises()
-    expect(wrapper.find('.pm-publish__when').text()).toContain('預約時間需在 1 分鐘後、90 天內')
+    expect(wrapper.find('.pm-actionbar').text()).toContain('預約時間需在 1 分鐘後、90 天內')
   })
 
   it('hides edit and publish actions without the permissions', async () => {
     const readOnly = (await mountEditor(version('SYSTEM_INSTRUCTION', 'DRAFT'), { canEdit: false, canPublish: false })).wrapper
     expect(readOnly.findAll('.pm-actionbar button')).toHaveLength(0)
     expect(readOnly.find('textarea').attributes('readonly')).toBeDefined()
-    expect(readOnly.findAll('button').some((b) => b.text() === '重新檢查')).toBe(false)
+    expect(readOnly.find('.pm-validate').exists()).toBe(false)
 
     const editOnly = (await mountEditor(version('SYSTEM_INSTRUCTION', 'DRAFT'), { canPublish: false })).wrapper
-    expect(buttonTexts(editOnly)).toEqual(['捨棄草稿', '存成草稿', '儲存'])
+    expect(buttonTexts(editOnly)).toEqual(['捨棄草稿', '儲存'])
   })
 })

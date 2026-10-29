@@ -1,5 +1,6 @@
 import { extractExampleQuestions } from '../markdown/exampleQuestions'
-import type { ConfigStatus, ConfigType } from '../types'
+import { formatTaipeiShort } from '../taipeiTime'
+import type { ConfigStatus, ConfigType, ConfigVersion, VersionHistoryItem } from '../types'
 
 /** Version history row labels (02 section 3.0.1). Versions are told apart by time, never by number. */
 export const STATUS_LABEL: Record<ConfigStatus, string> = {
@@ -68,4 +69,36 @@ export function passedRuleDescriptions(configType: ConfigType, content: string):
     `內容大小 ${formatKb(byteLength(content))}（上限 64 KB）`,
   )
   return rows
+}
+
+/** Version status as shown in lists and the version meta line. */
+export const LIST_STATUS: Record<ConfigStatus, string> = {
+  DRAFT: '草稿',
+  SCHEDULED: '已排程',
+  PUBLISHED: '目前生效',
+  ARCHIVED: '已封存',
+  DISCARDED: '已捨棄',
+}
+
+/** Required headings the content lacks, in REQUIRED_SECTIONS order. */
+export function missingSections(configType: ConfigType, content: string): string[] {
+  return REQUIRED_SECTIONS[configType].filter((heading) => !hasSection(content, heading))
+}
+
+/** One-line summary of a version: status, who/when, note, where it came from, and what replaced it. */
+export function versionMeta(v: ConfigVersion | VersionHistoryItem, versions: VersionHistoryItem[]): string {
+  const parts: string[] = [LIST_STATUS[v.status], `${formatTaipeiShort(v.updatedAt)} ${v.updatedBy} ${STATUS_VERB[v.status]}`]
+  if (v.changeNote) parts.push(v.changeNote)
+  if (v.basedOnVersion != null) {
+    const source = versions.find((x) => x.version === v.basedOnVersion)
+    parts.push(source ? `套用自 ${formatTaipeiShort(source.updatedAt)} 的版本` : '套用自先前的版本')
+  }
+  if (v.status === 'DISCARDED' && v.scheduledAt) parts.push(`原預約 ${formatTaipeiShort(v.scheduledAt)}`)
+  if (v.status === 'ARCHIVED') {
+    const next = versions
+      .filter((x) => x.version > v.version && (x.status === 'PUBLISHED' || x.status === 'ARCHIVED'))
+      .sort((a, b) => a.version - b.version)[0]
+    if (next) parts.push(`已被 ${formatTaipeiShort(next.updatedAt)} 的版本取代`)
+  }
+  return parts.join('・')
 }

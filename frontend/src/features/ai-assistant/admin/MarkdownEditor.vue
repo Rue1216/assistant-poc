@@ -4,7 +4,7 @@ import SafeMarkdown from '../markdown/SafeMarkdown'
 import { extractExampleQuestions } from '../markdown/exampleQuestions'
 import { addedLineIndices } from '../markdown/lineDiff'
 import type { ConfigType } from '../types'
-import { byteLength, formatKb, hasSection, MAX_CONTENT_BYTES, REQUIRED_SECTIONS } from './promptLabels'
+import { byteLength, formatKb, MAX_CONTENT_BYTES, missingSections } from './promptLabels'
 import './prompt-admin.css'
 
 const props = withDefaults(
@@ -23,10 +23,10 @@ const id = useId()
 const tab = ref<'edit' | 'preview'>('edit')
 
 const bytes = computed(() => byteLength(props.modelValue))
-const sections = computed(() =>
-  props.configType === 'SYSTEM_PROMPT'
-    ? REQUIRED_SECTIONS.SYSTEM_PROMPT.map((heading) => ({ heading, ok: hasSection(props.modelValue, heading) }))
-    : [],
+const missing = computed(() =>
+  missingSections(props.configType, props.modelValue)
+    .map((heading) => `「${heading}」`)
+    .join('、'),
 )
 const chips = computed(() =>
   props.configType === 'SYSTEM_INSTRUCTION' ? extractExampleQuestions(props.modelValue) : [],
@@ -77,6 +77,7 @@ function onInput(e: Event) {
           預覽
         </button>
       </div>
+      <span v-if="missing" class="pm-md__missing">缺少{{ missing }}</span>
       <span v-if="tab === 'edit'" class="pm-pane__count" :class="{ 'is-over': bytes > MAX_CONTENT_BYTES }">
         {{ formatKb(bytes) }} / 64 KB
       </span>
@@ -90,15 +91,6 @@ function onInput(e: Event) {
       role="tabpanel"
       :aria-labelledby="`${id}-tab-edit`"
     >
-      <div v-if="sections.length" class="pm-sections" aria-label="必要章節">
-        <span class="pm-sections__label">必要章節</span>
-        <span
-          v-for="s in sections"
-          :key="s.heading"
-          class="pm-sections__item"
-          :class="s.ok ? 'is-ok' : 'is-missing'"
-        >{{ s.heading }}</span>
-      </div>
       <label class="sr-only" :for="`${id}-content`">內容</label>
       <textarea
         :id="`${id}-content`"
@@ -275,53 +267,10 @@ function onInput(e: Event) {
   color: var(--color-text-subtle);
 }
 
-/* ---- 必要章節（System Prompt） ---- */
-
-.pm-sections {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border-bottom: 1px solid var(--color-border);
+.pm-md__missing {
+  margin-left: auto;
   font-size: var(--text-xs);
-}
-
-.pm-sections__label {
-  margin-right: 2px;
-  color: var(--color-text-muted);
-}
-
-.pm-sections__item {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 1px 8px;
-  border-radius: var(--radius-pill);
-  font-family: var(--font-mono);
-  font-size: 11px;
-}
-
-.pm-sections__item::before {
-  font-family: var(--font-sans);
-  font-weight: 700;
-}
-
-.pm-sections__item.is-ok {
-  background: var(--green-50);
-  color: var(--green-700);
-}
-
-.pm-sections__item.is-ok::before {
-  content: '✓';
-}
-
-.pm-sections__item.is-missing {
-  background: var(--red-50);
+  font-weight: 600;
   color: var(--red-700);
-}
-
-.pm-sections__item.is-missing::before {
-  content: '✕';
 }
 </style>

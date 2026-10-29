@@ -89,6 +89,7 @@ describe('usePromptAdmin', () => {
     toast.mockReset()
     api.listConfigs.mockResolvedValue([])
     api.feedbackStats.mockResolvedValue([])
+    api.validateDraft.mockResolvedValue({ valid: true, errors: [] })
   })
 
   it('loads feedback statistics keyed by version alongside the history', async () => {
@@ -194,6 +195,50 @@ describe('usePromptAdmin', () => {
     expect(toast).toHaveBeenCalledWith('AI_INPUT_INVALID')
   })
 
+  it('re-checks the saved content after a publish failed that is not a 422', async () => {
+    const admin = await setup()
+    expect(api.validateDraft).toHaveBeenCalledTimes(1)
+    admin.state.form.content = '## 適用問題\n新內容'
+    api.saveDraft.mockResolvedValue(full(2, 'DRAFT', { content: '## 適用問題\n新內容', docVersion: 7 }))
+    api.publish.mockRejectedValueOnce(apiError(400, 'AI_INPUT_INVALID', [{ field: 'scheduledAt' }]))
+
+    await admin.publish('SCHEDULED', '2026-10-21', '09:00')
+    await flushPromises()
+
+    expect(api.validateDraft).toHaveBeenCalledTimes(2)
+    expect(admin.state.checkedContent).toBe('## 適用問題\n新內容')
+  })
+
+  it('does not re-check after a 422 from publish and shows its errors', async () => {
+    const admin = await setup()
+    const details = [{ rule: 'NOT_EMPTY', message: '內容不可為空' }]
+    api.saveDraft.mockResolvedValue(full(2, 'DRAFT', { docVersion: 7 }))
+    api.publish.mockRejectedValueOnce(apiError(422, 'AI_CONFIG_VALIDATION_FAILED', details))
+
+    await admin.publish('IMMEDIATE')
+    await flushPromises()
+
+    expect(api.validateDraft).toHaveBeenCalledTimes(1)
+    expect(admin.state.validation).toBe('failed')
+    expect(admin.state.errors).toEqual(details)
+  })
+
+  it('a 422 from save wins over a check that is still in flight', async () => {
+    let resolveCheck!: (v: { valid: boolean; errors: [] }) => void
+    api.validateDraft.mockReturnValueOnce(new Promise((r) => (resolveCheck = r)))
+    const admin = await setup()
+    expect(admin.state.validation).toBe('checking')
+    const details = [{ rule: 'NOT_EMPTY', message: '內容不可為空' }]
+    api.saveDraft.mockRejectedValueOnce(apiError(422, 'AI_CONFIG_VALIDATION_FAILED', details))
+    await admin.save('KEEP_STATUS')
+
+    resolveCheck({ valid: true, errors: [] })
+    await flushPromises()
+
+    expect(admin.state.validation).toBe('failed')
+    expect(admin.state.errors).toEqual(details)
+  })
+
   it('requires a date and time for scheduled publishing without calling the API', async () => {
     const admin = await setup()
     await admin.publish('SCHEDULED', '', '')
@@ -286,38 +331,90 @@ describe('usePromptAdmin', () => {
     expect(admin.state.validation).toBe('failed')
   })
 
-  it('a successful save of a scheduled version replaces earlier 422 errors with a pass', async () => {
-    const admin = await setup(full(2, 'SCHEDULED', { scheduledAt: '2026-10-24T09:00:00+08:00' }))
-    api.saveDraft.mockRejectedValueOnce(apiError(422, 'AI_CONFIG_VALIDATION_FAILED', [{ rule: 'NOT_EMPTY', message: '內容不可為空' }]))
-    await admin.save('KEEP_STATUS')
-    expect(admin.state.validation).toBe('failed')
-
-    api.saveDraft.mockResolvedValueOnce(full(2, 'SCHEDULED', { scheduledAt: '2026-10-24T09:00:00+08:00', docVersion: 4 }))
-    await admin.save('KEEP_STATUS')
+  it('auto-checks after loading a config with a draft', async () => {
+    const admin = await setup()
+    expect(api.validateDraft).toHaveBeenCalledTimes(1)
+    expect(api.validateDraft).toHaveBeenCalledWith(KEY)
     expect(admin.state.validation).toBe('passed')
+    expect(admin.state.checkedContent).toBe('## 適用問題\n版本 2')
+  })
+
+  it('does not check without a working copy', async () => {
+    const admin = await setup(null)
+    expect(api.validateDraft).not.toHaveBeenCalled()
+    expect(admin.state.validation).toBe('idle')
+  })
+
+  it('auto-checks after a successful save, not after a failed one', async () => {
+    const admin = await setup()
+    expect(api.validateDraft).toHaveBeenCalledTimes(1)
+    api.saveDraft.mockResolvedValueOnce(full(2, 'DRAFT', { docVersion: 4 }))
+    await admin.save('KEEP_STATUS')
+    await flushPromises()
+    expect(api.validateDraft).toHaveBeenCalledTimes(2)
+
+    api.saveDraft.mockRejectedValueOnce(apiError(409, 'AI_CONFIG_CONFLICT'))
+    await admin.save('KEEP_STATUS')
+    await flushPromises()
+    expect(api.validateDraft).toHaveBeenCalledTimes(2)
+  })
+
+  it('publish does not auto-check after its save step', async () => {
+    const admin = await setup()
+    expect(api.validateDraft).toHaveBeenCalledTimes(1)
+    api.saveDraft.mockResolvedValue(full(2, 'DRAFT', { docVersion: 4 }))
+    api.publish.mockResolvedValue(full(2, 'PUBLISHED', { docVersion: 5 }))
+    serve(null) // after publishing there is no working copy any more
+
+    await admin.publish('IMMEDIATE')
+    await flushPromises()
+
+    expect(api.validateDraft).toHaveBeenCalledTimes(1)
+  })
+
+  it('drops a check that resolves after switching config', async () => {
+    let resolveCheck!: (v: { valid: boolean; errors: { rule: string; message: string }[] }) => void
+    api.validateDraft.mockReturnValueOnce(new Promise((r) => (resolveCheck = r)))
+    const key = ref(KEY)
+    serve(full(2, 'DRAFT'))
+    const admin = usePromptAdmin(key)
+    await flushPromises()
+    expect(admin.state.validation).toBe('checking')
+
+    key.value = 'instruction.other'
+    await flushPromises()
+    resolveCheck({ valid: false, errors: [{ rule: 'NOT_EMPTY', message: '內容不可為空' }] })
+    await flushPromises()
+
+    expect(admin.state.validation).not.toBe('failed')
     expect(admin.state.errors).toEqual([])
   })
 
-  it('validate saves unsaved edits first, then reports a pass', async () => {
+  it('checking does not set busy', async () => {
+    api.validateDraft.mockReturnValueOnce(new Promise(() => {}))
     const admin = await setup()
-    admin.state.form.content = '## 適用問題\n新內容'
-    api.saveDraft.mockResolvedValue(full(2, 'DRAFT', { content: '## 適用問題\n新內容', docVersion: 4 }))
-    api.validateDraft.mockResolvedValue({ valid: true, errors: [] })
-
-    await admin.validate()
-
-    expect(api.saveDraft.mock.invocationCallOrder[0]).toBeLessThan(api.validateDraft.mock.invocationCallOrder[0]!)
-    expect(admin.state.validation).toBe('passed')
-    expect(admin.state.checkedContent).toBe('## 適用問題\n新內容')
+    expect(admin.state.validation).toBe('checking')
+    expect(admin.state.busy).toBe(false)
   })
 
-  it('validate without edits does not save', async () => {
+  it('a 409 from the check shows the conflict banner and returns to idle', async () => {
+    api.validateDraft.mockRejectedValueOnce(apiError(409, 'AI_CONFIG_CONFLICT'))
     const admin = await setup()
-    api.validateDraft.mockResolvedValue({ valid: false, errors: [{ rule: 'NOT_EMPTY', message: '內容不可為空' }] })
-    await admin.validate()
-    expect(api.saveDraft).not.toHaveBeenCalled()
+    expect(admin.state.conflict).toBe(true)
+    expect(admin.state.validation).toBe('idle')
+  })
+
+  it('a failed check keeps its errors, and a later save re-checks a scheduled version', async () => {
+    api.validateDraft.mockResolvedValueOnce({ valid: false, errors: [{ rule: 'NOT_EMPTY', message: '內容不可為空' }] })
+    const admin = await setup(full(2, 'SCHEDULED', { scheduledAt: '2026-10-24T09:00:00+08:00' }))
     expect(admin.state.validation).toBe('failed')
     expect(admin.state.errors).toHaveLength(1)
+
+    api.saveDraft.mockResolvedValueOnce(full(2, 'SCHEDULED', { scheduledAt: '2026-10-24T09:00:00+08:00', docVersion: 4 }))
+    await admin.save('KEEP_STATUS')
+    await flushPromises()
+    expect(admin.state.validation).toBe('passed')
+    expect(admin.state.errors).toEqual([])
   })
 
   it('conflict 409 offers reload', async () => {
@@ -411,7 +508,8 @@ describe('usePromptAdmin', () => {
     expect(api.publish).not.toHaveBeenCalled()
     expect(admin.state.workingCopy).toEqual(wcB) // B untouched
     expect(admin.state.form.content).toBe('B 的內容')
-    expect(admin.state.validation).toBe('idle')
+    expect(admin.state.validation).toBe('passed') // B's own automatic check, not a result of A's save
+    expect(api.validateDraft.mock.calls.filter(([k]) => k === keyA)).toHaveLength(1) // only the initial load check
     expect(api.listVersions).not.toHaveBeenCalledWith(keyA, expect.anything())
     expect(api.listVersions).toHaveBeenLastCalledWith(keyB)
   })
