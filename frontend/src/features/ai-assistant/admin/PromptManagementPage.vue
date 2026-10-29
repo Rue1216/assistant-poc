@@ -9,6 +9,7 @@ import { DiffTooLargeError, type DiffLine } from '../markdown/lineDiff'
 import { formatTaipei, formatTaipeiShort } from '../taipeiTime'
 import type { ConfigType, ConfigVersion, OverwritePendingDetail, VersionHistoryItem } from '../types'
 import ConfigEditor from './ConfigEditor.vue'
+import ConfigHeader, { type PageTab } from './ConfigHeader.vue'
 import ConfigList from './ConfigList.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import EvaluationView from './EvaluationView.vue'
@@ -19,9 +20,22 @@ import VersionHistory from './VersionHistory.vue'
 import VersionViewer from './VersionViewer.vue'
 import './prompt-admin.css'
 
-type View =
-  | { kind: 'main' }
-  | { kind: 'evaluation' }
+const auth = useAuthStore()
+const canEdit = computed(() => auth.hasPermission('AI_CONFIG_EDIT'))
+// R31: publishing saves the form first (PUT draft needs AI_CONFIG_EDIT), so it needs EDIT as well as PUBLISH
+const canPublish = computed(() => canEdit.value && auth.hasPermission('AI_CONFIG_PUBLISH'))
+
+const configType = ref<ConfigType>('SYSTEM_PROMPT')
+const tab = ref<PageTab>('content')
+const selected = reactive<Record<ConfigType, string>>({ SYSTEM_PROMPT: '', SYSTEM_INSTRUCTION: '' })
+const selectedKey = computed(() => selected[configType.value])
+
+const admin = usePromptAdmin(selectedKey)
+const state = admin.state
+
+/** Temporary right-hand pane of the 版本 tab (replaced by VersionsTab later). */
+const versionPane = ref<
+  | null
   | { kind: 'version'; version: ConfigVersion }
   | {
       kind: 'diff'
@@ -30,24 +44,15 @@ type View =
       nameDiff: DiffLine[]
       contentDiff: DiffLine[]
     }
-
-const auth = useAuthStore()
-const canEdit = computed(() => auth.hasPermission('AI_CONFIG_EDIT'))
-// R31: publishing saves the form first (PUT draft needs AI_CONFIG_EDIT), so it needs EDIT as well as PUBLISH
-const canPublish = computed(() => canEdit.value && auth.hasPermission('AI_CONFIG_PUBLISH'))
-
-const tab = ref<ConfigType>('SYSTEM_PROMPT')
-const selected = reactive<Record<ConfigType, string>>({ SYSTEM_PROMPT: '', SYSTEM_INSTRUCTION: '' })
-const selectedKey = computed(() => selected[tab.value])
-
-const admin = usePromptAdmin(selectedKey)
-const state = admin.state
-
-const view = ref<View>({ kind: 'main' })
+>(null)
 let viewSeq = 0
-function showMain() {
+function resetVersionPane() {
   viewSeq++
-  view.value = { kind: 'main' }
+  versionPane.value = null
+}
+function showContent() {
+  resetVersionPane()
+  tab.value = 'content'
 }
 
 const toast = useToast()
@@ -124,7 +129,7 @@ watch(
   },
 )
 
-watch(selectedKey, showMain)
+watch(selectedKey, showContent)
 
 const selectedSummary = computed(() => state.configs.find((c) => c.configKey === selectedKey.value) ?? null)
 const publishedInstructionCount = computed(
@@ -141,32 +146,29 @@ const mainPane = computed<'editor' | 'published' | 'none'>(() => {
 
 const nameOfKey = (key: string) => state.configs.find((c) => c.configKey === key)?.name ?? key
 
-const backLabel = computed(() => (state.workingCopy ? '返回編輯' : '返回目前生效的版本'))
-
 const activeVersions = computed(() => {
-  const v = view.value
-  if (v.kind === 'version') return [v.version.version]
-  if (v.kind === 'diff') return [v.before.version, v.after.version]
+  const v = versionPane.value
+  if (v?.kind === 'version') return [v.version.version]
+  if (v?.kind === 'diff') return [v.before.version, v.after.version]
   const current = state.workingCopy ?? state.published
   return current ? [current.version] : []
 })
 
 function selectConfig(key: string) {
-  if (key !== selectedKey.value) guarded(() => (selected[tab.value] = key))
+  if (key !== selectedKey.value) guarded(() => (selected[configType.value] = key))
 }
 
-function selectTab(next: ConfigType) {
-  if (next !== tab.value) guarded(() => (tab.value = next))
+function selectConfigType(next: ConfigType) {
+  if (next !== configType.value) guarded(() => (configType.value = next))
 }
 
 async function onView(version: number) {
   const item = itemOf(version)
-  if (!item || item.status === 'DRAFT' || item.status === 'SCHEDULED') return showMain()
-  if (!state.workingCopy && item.status === 'PUBLISHED') return showMain()
+  if (!item || item.status === 'DRAFT' || item.status === 'SCHEDULED') return showContent()
   const seq = ++viewSeq
   try {
     const loaded = await admin.loadVersion(version)
-    if (seq === viewSeq) view.value = { kind: 'version', version: loaded }
+    if (seq === viewSeq) versionPane.value = { kind: 'version', version: loaded }
   } catch (e) {
     surface(e)
   }
@@ -179,7 +181,7 @@ async function onCompare(before: number, after: number) {
   const seq = ++viewSeq
   try {
     const diff = await admin.compare(before, after)
-    if (seq === viewSeq) view.value = { kind: 'diff', before: a, after: b, ...diff }
+    if (seq === viewSeq) versionPane.value = { kind: 'diff', before: a, after: b, ...diff }
   } catch (e) {
     surface(e)
   }
@@ -197,13 +199,13 @@ async function applyVersion(version: number) {
     if (source) pendingApply.value = { source, detail: result }
     return
   }
-  showMain()
+  showContent()
 }
 
 async function onConfirmApply() {
   const draft = await admin.confirmApply()
   pendingApply.value = null
-  if (draft) showMain()
+  if (draft) showContent()
 }
 
 function onCancelApply() {
@@ -212,7 +214,7 @@ function onCancelApply() {
 }
 
 async function onCreateDraft() {
-  if (await admin.createDraft()) showMain()
+  if (await admin.createDraft()) showContent()
 }
 
 function onReload() {
@@ -228,7 +230,7 @@ function openNewDialog() {
 }
 
 async function reloadNow() {
-  showMain()
+  showContent()
   await admin.reload()
 }
 
@@ -236,7 +238,7 @@ async function onCreateInstruction(keySuffix: string, name: string) {
   const created = await admin.createInstruction(keySuffix, name)
   if (!created) return
   newDialogOpen.value = false
-  tab.value = 'SYSTEM_INSTRUCTION'
+  configType.value = 'SYSTEM_INSTRUCTION'
   selected.SYSTEM_INSTRUCTION = created.configKey
 }
 </script>
@@ -250,11 +252,11 @@ async function onCreateInstruction(keySuffix: string, name: string) {
         </nav>
         <h1 class="pm-pagehead__title">Prompt 管理</h1>
         <p class="pm-pagehead__desc">
-          管理小幫手的 System Prompt 與問題分類（System Instructions）。發布後立即套用於所有 360 頁面的對話。
+          管理小幫手的 System Prompt 與問題分類，發布後立即套用於所有對話。
         </p>
       </div>
       <button
-        v-if="tab === 'SYSTEM_INSTRUCTION' && canEdit"
+        v-if="configType === 'SYSTEM_INSTRUCTION' && canEdit"
         class="btn btn--primary"
         type="button"
         @click="openNewDialog"
@@ -265,91 +267,100 @@ async function onCreateInstruction(keySuffix: string, name: string) {
 
     <div class="pm-layout">
       <ConfigList
-        :tab="tab"
+        :tab="configType"
         :configs="state.configs"
         :selected-key="selectedKey"
-        @update:tab="selectTab"
+        @update:tab="selectConfigType"
         @select="selectConfig"
-      >
-        <template #history>
-          <VersionHistory
-            v-if="state.versions.length"
-            :key="selectedKey"
+      />
+
+      <section v-if="state.workingCopy || state.published" class="pm-main card">
+        <ConfigHeader
+          v-model:tab="tab"
+          :name="(state.workingCopy ?? state.published)!.name"
+          :config-key="selectedKey"
+          :working-copy="state.workingCopy"
+          :published="state.published"
+          verdict-mark=""
+        />
+
+        <template v-if="tab === 'content'">
+          <ConfigEditor
+            v-if="mainPane === 'editor'"
+            :key="`${selectedKey}:${state.workingCopy!.version}`"
+            :admin="admin"
+            :config-type="configType"
+            :published-instruction-count="publishedInstructionCount"
+            :can-edit="canEdit"
+            :can-publish="canPublish"
+            @go-instructions="selectConfigType('SYSTEM_INSTRUCTION')"
+            @discard="onDiscard"
+            @reload="onReload"
+          />
+          <VersionViewer
+            v-else
+            :version="state.published!"
             :versions="state.versions"
-            :active-versions="activeVersions"
+            :working-copy="null"
             :can-edit="canEdit"
             :busy="state.busy"
-            :feedback="state.feedback"
-            :config-type="tab"
-            @view="onView"
-            @compare="onCompare"
+            :conflict="state.conflict"
             @apply="onApply"
+            @create-draft="onCreateDraft"
+            @reload="onReload"
           />
         </template>
-      </ConfigList>
 
-      <VersionViewer
-        v-if="view.kind === 'version'"
-        :version="view.version"
-        :versions="state.versions"
-        :working-copy="state.workingCopy"
-        :can-edit="canEdit"
-        :busy="state.busy"
-        :conflict="state.conflict"
-        :back-label="backLabel"
-        @back="showMain"
-        @apply="onApply"
-        @create-draft="onCreateDraft"
-        @reload="onReload"
-      />
-      <VersionDiff
-        v-else-if="view.kind === 'diff'"
-        :config-key="selectedKey"
-        :name="selectedSummary?.name ?? ''"
-        :before="view.before"
-        :after="view.after"
-        :name-diff="view.nameDiff"
-        :content-diff="view.contentDiff"
-        :back-label="state.workingCopy ? '返回編輯' : '返回'"
-        @back="showMain"
-      />
-      <EvaluationView
-        v-else-if="view.kind === 'evaluation'"
-        :config-key="selectedKey"
-        :name="selectedSummary?.name ?? ''"
-        :working-copy="state.workingCopy"
-        :dirty="admin.dirty.value"
-        :can-edit="canEdit"
-        :back-label="backLabel"
-        :name-of="nameOfKey"
-        @back="showMain"
-      />
-      <ConfigEditor
-        v-else-if="mainPane === 'editor'"
-        :key="`${selectedKey}:${state.workingCopy!.version}`"
-        :admin="admin"
-        :config-type="tab"
-        :published-instruction-count="publishedInstructionCount"
-        :can-edit="canEdit"
-        :can-publish="canPublish"
-        @go-instructions="selectTab('SYSTEM_INSTRUCTION')"
-        @discard="onDiscard"
-        @reload="onReload"
-        @evaluate="view = { kind: 'evaluation' }"
-      />
-      <VersionViewer
-        v-else-if="mainPane === 'published'"
-        :version="state.published!"
-        :versions="state.versions"
-        :working-copy="null"
-        :can-edit="canEdit"
-        :busy="state.busy"
-        :conflict="state.conflict"
-        :back-label="null"
-        @apply="onApply"
-        @create-draft="onCreateDraft"
-        @reload="onReload"
-      />
+        <div v-else-if="tab === 'versions'" class="pm-versions-tab">
+          <div class="pm-versions-tab__list">
+            <VersionHistory
+              v-if="state.versions.length"
+              :key="selectedKey"
+              :versions="state.versions"
+              :active-versions="activeVersions"
+              :can-edit="canEdit"
+              :busy="state.busy"
+              :feedback="state.feedback"
+              :config-type="configType"
+              @view="onView"
+              @compare="onCompare"
+              @apply="onApply"
+            />
+          </div>
+          <VersionViewer
+            v-if="versionPane?.kind === 'version'"
+            :version="versionPane.version"
+            :versions="state.versions"
+            :working-copy="state.workingCopy"
+            :can-edit="canEdit"
+            :busy="state.busy"
+            :conflict="state.conflict"
+            @apply="onApply"
+            @create-draft="onCreateDraft"
+            @reload="onReload"
+          />
+          <VersionDiff
+            v-else-if="versionPane?.kind === 'diff'"
+            :config-key="selectedKey"
+            :name="selectedSummary?.name ?? ''"
+            :before="versionPane.before"
+            :after="versionPane.after"
+            :name-diff="versionPane.nameDiff"
+            :content-diff="versionPane.contentDiff"
+          />
+          <section v-else class="pm-empty">請從左側選擇一個版本</section>
+        </div>
+
+        <EvaluationView
+          v-else
+          :config-key="selectedKey"
+          :name="selectedSummary?.name ?? ''"
+          :working-copy="state.workingCopy"
+          :dirty="admin.dirty.value"
+          :can-edit="canEdit"
+          :name-of="nameOfKey"
+        />
+      </section>
       <section v-else class="pm-empty card">
         {{ state.loading || !state.configsLoaded ? '載入中…' : '請從左側選擇一個設定' }}
       </section>
@@ -437,9 +448,31 @@ async function onCreateInstruction(keySuffix: string, name: string) {
 
 .pm-layout {
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr);
+  grid-template-columns: 240px minmax(0, 1fr);
   gap: var(--space-5);
   align-items: start;
+}
+
+.pm-main {
+  min-width: 0;
+}
+
+.pm-versions-tab {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  align-items: start;
+}
+
+.pm-versions-tab__list {
+  padding: var(--space-3);
+  border-right: 1px solid var(--color-border);
+}
+
+/* the history was built to sit under a list row; here it stands alone */
+.pm-versions-tab__list :deep(.pm-item__history-btn) {
+  position: static;
+  margin: var(--space-2);
+  width: fit-content;
 }
 
 .pm-empty {
@@ -453,8 +486,13 @@ async function onCreateInstruction(keySuffix: string, name: string) {
     flex-direction: column;
     align-items: stretch;
   }
-  .pm-layout {
+  .pm-layout,
+  .pm-versions-tab {
     grid-template-columns: 1fr;
+  }
+  .pm-versions-tab__list {
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border);
   }
 }
 </style>

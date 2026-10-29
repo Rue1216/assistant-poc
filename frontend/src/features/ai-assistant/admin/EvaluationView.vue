@@ -18,11 +18,9 @@ const props = defineProps<{
   /** Unsaved edits in the form */
   dirty: boolean
   canEdit: boolean
-  backLabel: string
   /** Display name of another key, for "who is evaluating what" */
   nameOf?: (configKey: string) => string
 }>()
-const emit = defineEmits<{ back: [] }>()
 
 const evaluation = usePromptEvaluation(toRef(props, 'configKey'))
 const state = evaluation.state
@@ -90,11 +88,10 @@ const progress = computed(() => state.current)
 </script>
 
 <template>
-  <section class="pm-eval card" aria-labelledby="ev-title">
+  <section class="pm-eval" aria-labelledby="ev-title">
     <header class="pm-editor__head">
       <div class="pm-editor__title-row">
         <h2 id="ev-title" class="pm-editor__title">評測：{{ name }}</h2>
-        <button class="btn btn--secondary btn--sm" type="button" @click="emit('back')">{{ backLabel }}</button>
       </div>
     </header>
 

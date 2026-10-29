@@ -26,7 +26,6 @@ const baseProps = {
   workingCopy: wc as ConfigVersion | null,
   dirty: false,
   canEdit: true,
-  backLabel: '返回編輯',
   nameOf: undefined as ((k: string) => string) | undefined,
 }
 
@@ -149,9 +148,8 @@ describe('EvaluationView', () => {
     expect(api.getEvaluation).toHaveBeenLastCalledWith('b')
   })
 
-  it('emits back', async () => {
+  it('has no back button', async () => {
     const w = await mountView()
-    await w.findAll('button').find((b) => b.text() === '返回編輯')!.trigger('click')
-    expect(w.emitted('back')).toHaveLength(1)
+    expect(w.text()).not.toContain('返回')
   })
 })

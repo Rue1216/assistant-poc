@@ -5,11 +5,10 @@ import type { ConfigSummary, ConfigType } from '../types'
 
 const props = defineProps<{ configs: ConfigSummary[]; tab: ConfigType; selectedKey: string }>()
 const emit = defineEmits<{ 'update:tab': [tab: ConfigType]; select: [configKey: string] }>()
-defineSlots<{ history(): unknown }>()
 
 const TABS: { type: ConfigType; label: string }[] = [
   { type: 'SYSTEM_PROMPT', label: 'System Prompt' },
-  { type: 'SYSTEM_INSTRUCTION', label: 'System Instructions' },
+  { type: 'SYSTEM_INSTRUCTION', label: '問題分類' },
 ]
 
 const search = ref('')
@@ -41,7 +40,7 @@ const items = computed(() => {
         :aria-selected="tab === t.type"
         @click="emit('update:tab', t.type)"
       >
-        {{ t.label }} <span class="pm-tabs__count">{{ counts[t.type] }}</span>
+        {{ t.label }} <span>{{ counts[t.type] }}</span>
       </button>
     </div>
 
@@ -60,14 +59,7 @@ const items = computed(() => {
               </span>
               <span v-else-if="c.workingCopy" class="badge badge--draft">草稿</span>
             </span>
-            <code class="pm-item__key">{{ c.configKey }}</code>
-            <span class="pm-item__meta">
-              <span v-if="c.published" class="pm-item__published">已發布 {{ formatTaipeiShort(c.published.updatedAt) }}</span>
-              <span v-else>尚未發布</span>
-              <span>{{ (c.workingCopy ?? c.published)?.updatedBy }}</span>
-            </span>
           </button>
-          <slot v-if="c.configKey === selectedKey" name="history" />
         </div>
       </li>
       <li v-if="!items.length" class="pm-list__empty">{{ search ? '沒有符合的設定' : '尚無設定' }}</li>
@@ -108,25 +100,10 @@ const items = computed(() => {
   transition: background var(--duration-fast), color var(--duration-fast);
 }
 
-.pm-tabs__count {
-  min-width: 18px;
-  padding: 0 5px;
-  border-radius: var(--radius-pill);
-  background: var(--gray-100);
-  font-size: 11px;
-  line-height: 18px;
-  text-align: center;
-}
-
 .pm-tabs__tab[aria-selected='true'] {
   background: var(--color-surface);
   color: var(--green-700);
   box-shadow: var(--shadow-sm);
-}
-
-.pm-tabs__tab[aria-selected='true'] .pm-tabs__count {
-  background: var(--green-100);
-  color: var(--green-700);
 }
 
 .pm-search {
@@ -174,17 +151,7 @@ const items = computed(() => {
 
 .pm-item[aria-current='true'] {
   background: var(--color-primary-subtle);
-}
-
-.pm-item[aria-current='true']::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 10px;
-  bottom: 10px;
-  width: 3px;
-  border-radius: 2px;
-  background: var(--color-primary);
+  box-shadow: inset 3px 0 0 var(--color-primary);
 }
 
 .pm-item__row {
@@ -197,41 +164,6 @@ const items = computed(() => {
 .pm-item__name {
   font-weight: 600;
   color: var(--color-text-strong);
-}
-
-.pm-item__key {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pm-item__meta {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
-  margin-top: 2px;
-  padding-right: 40px; /* 版本歷程按鈕的位置 */
-  font-size: var(--text-xs);
-  color: var(--color-text-subtle);
-}
-
-/* 清單 meta 文字不換行（右側留給版本歷程按鈕） */
-.pm-item__meta > span {
-  white-space: nowrap;
-}
-
-.pm-item__meta > span:last-child {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.pm-item__published {
-  color: var(--green-600);
-  font-weight: 600;
 }
 
 @media (max-width: 1100px) {

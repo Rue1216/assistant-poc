@@ -14,10 +14,8 @@ const props = defineProps<{
   canEdit: boolean
   busy: boolean
   conflict: boolean
-  /** null: this is the default pane, nothing to go back to */
-  backLabel: string | null
 }>()
-defineEmits<{ back: []; apply: [version: number]; 'create-draft': []; reload: [] }>()
+defineEmits<{ apply: [version: number]; 'create-draft': []; reload: [] }>()
 
 const id = useId()
 const toast = useToast()
@@ -28,24 +26,10 @@ const time = computed(() => formatTaipei(v.value.updatedAt))
 const offerCreateDraft = computed(() => !props.workingCopy && v.value.status === 'PUBLISHED')
 const canApply = computed(() => props.canEdit && !offerCreateDraft.value && APPLICABLE.includes(v.value.status))
 
-const supersededBy = computed(() =>
-  props.versions
-    .filter((x) => x.version > v.value.version && (x.status === 'PUBLISHED' || x.status === 'ARCHIVED'))
-    .sort((a, b) => a.version - b.version)[0],
-)
-
 const appliedFrom = computed(() => {
   if (v.value.basedOnVersion == null) return '—'
   const source = props.versions.find((x) => x.version === v.value.basedOnVersion)
   return source ? `${formatTaipei(source.updatedAt)} 的版本` : '先前的版本'
-})
-
-const workingNote = computed(() => {
-  const wc = props.workingCopy
-  if (!wc) return '目前沒有編輯中的版本。'
-  return wc.status === 'SCHEDULED' && wc.scheduledAt
-    ? `編輯中的版本預約於 ${formatTaipeiShort(wc.scheduledAt)} 發布。`
-    : `編輯中的是 ${formatTaipeiShort(wc.updatedAt)} 儲存的草稿。`
 })
 
 const footerNote = computed(() => {
@@ -70,7 +54,7 @@ async function copyMarkdown() {
 </script>
 
 <template>
-  <section class="pm-viewer card" :aria-labelledby="`${id}-title`">
+  <section class="pm-viewer" :aria-labelledby="`${id}-title`">
     <header class="pm-editor__head">
       <div class="pm-editor__title-row">
         <h2 :id="`${id}-title`" class="pm-editor__title">{{ v.name }}</h2>
@@ -89,37 +73,6 @@ async function copyMarkdown() {
       <span class="pm-banner__icon" aria-hidden="true">!</span>
       <div><strong>內容已被他人更新。</strong>請重新載入後再操作。</div>
       <button class="btn btn--secondary btn--sm" type="button" @click="$emit('reload')">重新載入</button>
-    </div>
-
-    <div class="pm-banner pm-banner--readonly" role="status">
-      <span class="pm-banner__icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg>
-      </span>
-      <div v-if="v.status === 'PUBLISHED'">
-        <strong>正在檢視 {{ time }} 發布的版本（目前生效），內容唯讀。</strong>{{ workingNote }}
-      </div>
-      <div v-else-if="v.status === 'ARCHIVED'">
-        <strong>正在檢視 {{ time }} 發布的版本（已封存），內容唯讀。</strong>
-        <template v-if="supersededBy">它已被 {{ formatTaipei(supersededBy.updatedAt) }} 發布的版本取代。</template>
-      </div>
-      <div v-else-if="v.status === 'DISCARDED'">
-        <strong>正在檢視 {{ time }} 捨棄的版本，內容唯讀。</strong>
-        <template v-if="v.scheduledAt">它原本預約於 {{ formatTaipeiShort(v.scheduledAt) }} 發布，排程已取消，沒有上線過。</template>
-        <template v-else>它沒有上線過，內容保留在版本歷程中。</template>
-      </div>
-      <div v-else>
-        <strong>正在檢視 {{ time }} 儲存的版本，內容唯讀。</strong>
-      </div>
-      <button v-if="backLabel" class="btn btn--secondary btn--sm" type="button" @click="$emit('back')">{{ backLabel }}</button>
-      <button
-        v-else-if="offerCreateDraft && canEdit"
-        class="btn btn--secondary btn--sm"
-        type="button"
-        :disabled="busy"
-        @click="$emit('create-draft')"
-      >
-        建立草稿
-      </button>
     </div>
 
     <div class="pm-editor__body">
@@ -152,7 +105,6 @@ async function copyMarkdown() {
     <footer class="pm-actionbar pm-actionbar--viewer">
       <p class="pm-actionbar__note">{{ footerNote }}</p>
       <div class="pm-actionbar__buttons">
-        <button v-if="backLabel" class="btn btn--secondary" type="button" @click="$emit('back')">{{ backLabel }}</button>
         <button
           v-if="offerCreateDraft && canEdit"
           class="btn btn--primary"

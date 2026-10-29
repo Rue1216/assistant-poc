@@ -18,7 +18,7 @@ const props = defineProps<{
   canPublish: boolean
 }>()
 /** discard and reload may throw away unsaved edits, so the page confirms them first (R29) */
-const emit = defineEmits<{ 'go-instructions': []; discard: []; reload: []; evaluate: [] }>()
+const emit = defineEmits<{ 'go-instructions': []; discard: []; reload: [] }>()
 
 const id = useId()
 const state = computed(() => props.admin.state)
@@ -34,24 +34,7 @@ function onPublish(mode: PublishMode, date: string, time: string) {
 </script>
 
 <template>
-  <section class="pm-editor card" :aria-labelledby="`${id}-title`">
-    <header class="pm-editor__head">
-      <div class="pm-editor__title-row">
-        <h2 :id="`${id}-title`" class="pm-editor__title">{{ wc.name }}</h2>
-        <span v-if="scheduledAt" class="badge badge--scheduled">已排程 {{ formatTaipei(scheduledAt) }}</span>
-        <span v-else class="badge badge--draft">草稿</span>
-        <button class="btn btn--secondary btn--sm pm-editor__evaluate" type="button" @click="emit('evaluate')">評測</button>
-      </div>
-      <div class="pm-editor__meta">
-        <code>{{ wc.configKey }}</code>
-        <span class="pm-dot" aria-hidden="true"></span>
-        <span v-if="state.published">目前生效：<strong>{{ formatTaipei(state.published.updatedAt) }}</strong> 發布的版本</span>
-        <span v-else>尚未發布</span>
-        <span class="pm-dot" aria-hidden="true"></span>
-        <span>最後儲存：{{ wc.updatedBy }} · {{ formatTaipei(wc.updatedAt) }}</span>
-      </div>
-    </header>
-
+  <section class="pm-editor" aria-label="編輯內容">
     <div v-if="configType === 'SYSTEM_PROMPT'" class="pm-banner pm-banner--info" role="note">
       <span class="pm-banner__icon" aria-hidden="true">i</span>
       <div>
@@ -144,10 +127,6 @@ function onPublish(mode: PublishMode, date: string, time: string) {
 <style scoped>
 .pm-editor {
   min-width: 0;
-}
-
-.pm-editor__evaluate {
-  margin-left: auto;
 }
 
 .pm-form-row {

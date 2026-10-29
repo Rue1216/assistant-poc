@@ -16,9 +16,7 @@ const props = defineProps<{
   after: VersionHistoryItem
   nameDiff: DiffLine[]
   contentDiff: DiffLine[]
-  backLabel: string
 }>()
-defineEmits<{ back: [] }>()
 
 const id = useId()
 const nameRows = computed(() => diffRows(props.nameDiff))
@@ -34,7 +32,7 @@ function sideText(v: VersionHistoryItem): string {
 </script>
 
 <template>
-  <section class="pm-viewer card" :aria-labelledby="`${id}-title`">
+  <section class="pm-viewer" :aria-labelledby="`${id}-title`">
     <header class="pm-editor__head">
       <div class="pm-editor__title-row">
         <h2 :id="`${id}-title`" class="pm-editor__title">{{ name }}</h2>
@@ -44,14 +42,6 @@ function sideText(v: VersionHistoryItem): string {
         <code>{{ configKey }}</code>
       </div>
     </header>
-
-    <div class="pm-banner pm-banner--readonly" role="status">
-      <span class="pm-banner__icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg>
-      </span>
-      <div><strong>正在比較兩個版本，內容唯讀。</strong>較舊的版本在左，以「−」標示；較新的版本在右，以「+」標示。</div>
-      <button class="btn btn--secondary btn--sm" type="button" @click="$emit('back')">{{ backLabel }}</button>
-    </div>
 
     <div class="pm-editor__body">
       <div class="pm-compare">
@@ -109,13 +99,6 @@ function sideText(v: VersionHistoryItem): string {
         </div>
       </div>
     </div>
-
-    <footer class="pm-actionbar pm-actionbar--viewer">
-      <p class="pm-actionbar__note">要改用某個版本的內容，請在版本歷程對它按「套用」。</p>
-      <div class="pm-actionbar__buttons">
-        <button class="btn btn--secondary" type="button" @click="$emit('back')">{{ backLabel }}</button>
-      </div>
-    </footer>
   </section>
 </template>
 

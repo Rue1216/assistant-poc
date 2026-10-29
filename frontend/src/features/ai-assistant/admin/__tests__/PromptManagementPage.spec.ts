@@ -131,9 +131,16 @@ const byText = (w: VueWrapper, selector: string, text: string) => w.findAll(sele
 const textarea = (w: VueWrapper) => w.find('textarea').element as HTMLTextAreaElement
 
 async function openInstructions(w: VueWrapper, name: string) {
-  await byText(w, '[role="tab"]', 'System Instructions').trigger('click')
+  await byText(w, '[role="tab"]', '問題分類').trigger('click')
   await flushPromises()
   await byText(w, '.pm-item__main', name).trigger('click')
+  await flushPromises()
+}
+
+/** The 內容／版本／評測 tabs under the header (not the System Prompt / 問題分類 tabs in the sidebar). */
+const pageTab = (w: VueWrapper, label: string) => w.findAll('.pm-pagetabs [role="tab"]').find((t) => t.text().startsWith(label))!
+async function openTab(w: VueWrapper, label: string) {
+  await pageTab(w, label).trigger('click')
   await flushPromises()
 }
 
@@ -160,7 +167,7 @@ describe('PromptManagementPage', () => {
   it('opens the system prompt draft in the editor with the page header', async () => {
     const w = await mountPage()
     expect(w.find('.breadcrumb').text()).toBe('系統管理/Prompt 管理')
-    expect(w.find('.pm-editor__title').text()).toBe('主要系統提示')
+    expect(w.find('.pm-confighead .pm-editor__title').text()).toBe('主要系統提示')
     expect(w.find('textarea').exists()).toBe(true)
     expect(w.text()).not.toContain('新增問題分類') // instruction tab only
     expectNoVersionNumbers(w)
@@ -171,7 +178,8 @@ describe('PromptManagementPage', () => {
     await openInstructions(w, '顧客概況')
 
     expect(w.find('textarea').exists()).toBe(false)
-    expect(w.find('.pm-viewer').text()).toContain('正在檢視 2026/10/19 08:00 發布的版本（目前生效），內容唯讀。')
+    expect(w.find('.pm-confighead').text()).toContain('instruction.customer-overview・目前生效：10/19 08:00（system 發布）')
+    expect(w.text()).not.toContain('正在檢視')
     expect(w.find('.pm-viewer .md').text()).toBe('內容：PUBLISHED')
     expectNoVersionNumbers(w)
 
@@ -189,6 +197,7 @@ describe('PromptManagementPage', () => {
     await openInstructions(w, '聯繫準備')
     await byText(w, '[role="tab"]', '預覽').trigger('click')
     expect(w.find('textarea').exists()).toBe(false)
+    await openTab(w, '版本')
     api.applyVersion.mockRejectedValueOnce(
       new ApiError(409, 'AI_CONFIG_OVERWRITE_PENDING', 'x', 'r', [
         { status: 'SCHEDULED', scheduledAt: T.sched, updatedAt: T.v3, docVersion: 7 },
@@ -218,14 +227,17 @@ describe('PromptManagementPage', () => {
       confirmOverwrite: true,
     })
     expect(w.find('[role="dialog"]').exists()).toBe(false)
-    expect(w.find('.pm-editor__head .badge').text()).toBe('草稿')
-    expect(w.find('textarea').exists()).toBe(true) // back on the 編輯 tab
+    expect(w.find('.pm-confighead .badge').text()).toBe('草稿')
+    expect(pageTab(w, '內容').attributes('aria-selected')).toBe('true')
+    expect(textarea(w).value).toBe('內容：DRAFT') // the applied version is the new draft
+    await openTab(w, '版本')
     expect(w.find('.pm-ver__from').text()).toBe('套用自 10/19 08:00 的版本')
     expectNoVersionNumbers(w)
   })
 
   it('uses the draft wording when the working copy is a draft', async () => {
     const w = await mountPage()
+    await openTab(w, '版本')
     api.applyVersion.mockRejectedValueOnce(
       new ApiError(409, 'AI_CONFIG_OVERWRITE_PENDING', 'x', 'r', [
         { status: 'DRAFT', scheduledAt: null, updatedAt: T.v2, docVersion: 5 },
@@ -244,11 +256,12 @@ describe('PromptManagementPage', () => {
   it('opens a version read-only and compares two checked versions without showing version numbers', async () => {
     const w = await mountPage()
     await openInstructions(w, '聯繫準備')
+    await openTab(w, '版本')
 
     await byText(w, '.pm-ver', '已封存').find('.pm-ver__main').trigger('click')
     await flushPromises()
-    expect(w.find('.pm-viewer').text()).toContain('正在檢視 2026/10/19 08:00 發布的版本（已封存），內容唯讀。')
-    expect(w.find('.pm-viewer').text()).toContain('它已被 2026/10/19 09:30 發布的版本取代。')
+    expect(w.find('.pm-viewer .md').text()).toBe('內容：ARCHIVED')
+    expect(w.text()).not.toContain('正在檢視')
     expectNoVersionNumbers(w)
 
     const checks = w.findAll('.pm-ver__check')
@@ -269,6 +282,7 @@ describe('PromptManagementPage', () => {
   it('says so when two versions are too long to compare line by line', async () => {
     const w = await mountPage()
     await openInstructions(w, '聯繫準備')
+    await openTab(w, '版本')
     const lines = (p: string) => Array.from({ length: 2001 }, (_, i) => p + i).join('\n')
     api.getVersion.mockImplementation(async (key: string, v: number) =>
       full(key, HISTORY[key]!.find((h) => h.version === v)!, lines(v === 9111 ? 'a' : 'b')),
@@ -279,7 +293,7 @@ describe('PromptManagementPage', () => {
     await w.find('.pm-versions__compare').trigger('click')
     await flushPromises()
     expect(toast).toHaveBeenCalledWith('內容過長，無法逐行比較')
-    expect(w.find('.pm-editor').exists()).toBe(true) // stays on the editor
+    expect(w.find('.pm-versions-tab .pm-viewer').exists()).toBe(false) // no diff pane opened
   })
 
   it('asks before switching config with unsaved edits; cancel keeps them, confirm switches', async () => {
@@ -296,7 +310,7 @@ describe('PromptManagementPage', () => {
     await byText(w, '[role="dialog"] button', '取消').trigger('click')
     expect(dialog().exists()).toBe(false)
     expect(textarea(w).value).toBe('我的未儲存內容')
-    expect(w.find('.pm-editor__title').text()).toBe('聯繫準備')
+    expect(w.find('.pm-confighead .pm-editor__title').text()).toBe('聯繫準備')
 
     // switching the SP / SI tab is guarded the same way
     await byText(w, '[role="tab"]', 'System Prompt').trigger('click')
@@ -311,23 +325,103 @@ describe('PromptManagementPage', () => {
     expect(w.find('.pm-viewer').text()).toContain('顧客概況')
   })
 
-  it('opens the evaluation view from the editor and returns to it with unsaved edits intact', async () => {
+  it('opens the evaluation tab and returns to 內容 with unsaved edits intact', async () => {
     const w = await mountPage()
     await openInstructions(w, '聯繫準備')
     await w.find('textarea').setValue('我的未儲存內容')
 
-    await w.findAll('button').find((b) => b.text() === '評測')!.trigger('click')
-    await flushPromises()
+    await openTab(w, '評測')
     expect(w.find('textarea').exists()).toBe(false)
     expect(w.text()).toContain('評測：聯繫準備')
     expect(w.text()).toContain('請先儲存，評測使用已儲存的內容')
     expect(api.listEvaluations).toHaveBeenCalledWith('instruction.contact-prep')
+    expect(w.text()).not.toContain('返回')
 
-    await byText(w, 'button', '返回編輯').trigger('click')
-    await flushPromises()
-    expect(w.find('.pm-editor__title').text()).toBe('聯繫準備')
+    await openTab(w, '內容')
     expect(textarea(w).value).toBe('我的未儲存內容')
     expect(w.find('[role="dialog"]').exists()).toBe(false)
+  })
+
+  it('shows the header meta and the three tabs', async () => {
+    const w = await mountPage()
+    expect(w.find('.pm-confighead').text()).toContain('system.main・目前生效：10/19 08:00（EEE22222 發布）')
+    expect(w.findAll('.pm-pagetabs [role="tab"]').map((t) => t.text())).toEqual(['內容', '版本', '評測'])
+    expect(pageTab(w, '內容').attributes('aria-selected')).toBe('true')
+  })
+
+  it('puts the header, the tabs and the active tab body in one main card', async () => {
+    const w = await mountPage()
+    for (const label of ['內容', '版本', '評測']) {
+      await openTab(w, label)
+      const main = w.findAll('.pm-main.card')
+      expect(main).toHaveLength(1)
+      expect(main[0]!.find('.pm-confighead').exists()).toBe(true)
+      expect(main[0]!.find('.pm-pagetabs').exists()).toBe(true)
+      expect(main[0]!.find('.pm-editor, .pm-versions-tab, .pm-eval').exists()).toBe(true)
+      expect(main[0]!.find('.card').exists()).toBe(false)
+    }
+  })
+
+  it('lists configs by name and status only', async () => {
+    const w = await mountPage()
+    const side = w.find('.pm-sidebar').text()
+    expect(side).not.toContain('system.main')
+    expect(side).not.toContain('instruction.contact-prep')
+    expect(side).not.toContain('已發布')
+    expect(side).toContain('問題分類')
+    expect(side).not.toContain('System Instructions')
+    await byText(w, '[role="tab"]', '問題分類').trigger('click')
+    expect(byText(w, '.pm-item__main', '聯繫準備').text()).toContain('已排程 10/24 09:00')
+  })
+
+  it('switching config returns to the 內容 tab', async () => {
+    const w = await mountPage()
+    await byText(w, '[role="tab"]', '問題分類').trigger('click')
+    await flushPromises()
+    await openTab(w, '版本')
+    expect(pageTab(w, '版本').attributes('aria-selected')).toBe('true')
+    await byText(w, '.pm-item__main', '顧客概況').trigger('click')
+    await flushPromises()
+    expect(pageTab(w, '內容').attributes('aria-selected')).toBe('true')
+  })
+
+  it('switching tabs keeps unsaved edits without asking', async () => {
+    const w = await mountPage()
+    await w.find('input.input').setValue('改過的名稱')
+    await openTab(w, '版本')
+    await openTab(w, '內容')
+    expect((w.find('input.input').element as HTMLInputElement).value).toBe('改過的名稱')
+    expect(w.find('[role="dialog"]').exists()).toBe(false)
+  })
+
+  it('cancelling the discard dialog keeps the config and the tab', async () => {
+    const w = await mountPage()
+    await w.find('textarea').setValue('我的未儲存內容')
+    await openTab(w, '版本')
+    await byText(w, '[role="tab"]', '問題分類').trigger('click')
+    await byText(w, '[role="dialog"] button', '取消').trigger('click')
+    await flushPromises()
+    expect(w.find('[role="dialog"]').exists()).toBe(false)
+    expect(w.find('.pm-confighead .pm-editor__title').text()).toBe('主要系統提示')
+    expect(pageTab(w, '版本').attributes('aria-selected')).toBe('true')
+  })
+
+  it('clicking the draft row in 版本 opens 內容', async () => {
+    const w = await mountPage()
+    await openTab(w, '版本')
+    await byText(w, '.pm-ver', '草稿').find('.pm-ver__main').trigger('click')
+    await flushPromises()
+    expect(pageTab(w, '內容').attributes('aria-selected')).toBe('true')
+    expect(w.find('textarea').exists()).toBe(true)
+  })
+
+  it('has no back buttons or viewing banners anywhere', async () => {
+    const w = await mountPage()
+    await openTab(w, '版本')
+    await byText(w, '.pm-ver', '已發布').find('.pm-ver__main').trigger('click')
+    await flushPromises()
+    expect(w.text()).not.toContain('返回')
+    expect(w.text()).not.toContain('正在檢視')
   })
 
   it('switches config without asking when there are no unsaved edits', async () => {
@@ -488,7 +582,7 @@ describe('PromptManagementPage', () => {
 
   it('filters the list by name or key', async () => {
     const w = await mountPage()
-    await byText(w, '[role="tab"]', 'System Instructions').trigger('click')
+    await byText(w, '[role="tab"]', '問題分類').trigger('click')
     const search = w.find('.pm-search input')
     await search.setValue('overview')
     expect(w.findAll('.pm-item__name').map((n) => n.text())).toEqual(['顧客概況'])
@@ -498,7 +592,7 @@ describe('PromptManagementPage', () => {
 
   it('creates a question category after checking the key format', async () => {
     const w = await mountPage()
-    await byText(w, '[role="tab"]', 'System Instructions').trigger('click')
+    await byText(w, '[role="tab"]', '問題分類').trigger('click')
     await byText(w, 'button', '新增問題分類').trigger('click')
     const dialog = () => w.find('[role="dialog"]')
     const [keyInput, nameInput] = dialog().findAll('input')

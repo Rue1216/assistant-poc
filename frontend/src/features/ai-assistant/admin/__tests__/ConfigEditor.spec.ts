@@ -101,8 +101,6 @@ describe('ConfigEditor', () => {
     expect(buttonTexts(wrapper).at(-1)).toBe('預約發布')
     expect(wrapper.find('input[type="date"]').exists()).toBe(true)
     expect(wrapper.find('input[type="time"]').exists()).toBe(true)
-    expect(wrapper.find('.pm-editor__title').text()).toBe('聯繫準備')
-    expect(wrapper.find('.pm-editor__head .badge').text()).toBe('草稿')
   })
 
   it('defaults to scheduled mode with current date and time when working copy is scheduled; publish button reads 更新預約', async () => {
@@ -114,7 +112,6 @@ describe('ConfigEditor', () => {
     expect((wrapper.find('input[type="date"]').element as HTMLInputElement).value).toBe('2026-10-24')
     expect((wrapper.find('input[type="time"]').element as HTMLInputElement).value).toBe('09:00')
     expect(buttonTexts(wrapper).at(-1)).toBe('更新預約')
-    expect(wrapper.find('.pm-editor__head .badge').text()).toBe('已排程 2026/10/24 09:00')
     expect(wrapper.text()).toContain('此版本預約於 2026/10/24 09:00 自動發布。')
 
     const discard = button(wrapper, '捨棄草稿')
@@ -125,10 +122,10 @@ describe('ConfigEditor', () => {
     expect(api.discardDraft).not.toHaveBeenCalled()
   })
 
-  it('has an 評測 button that emits evaluate', async () => {
+  it('no longer has a title row or an 評測 button', async () => {
     const { wrapper } = await mountEditor(version('SYSTEM_INSTRUCTION', 'DRAFT'))
-    await button(wrapper, '評測').trigger('click')
-    expect(wrapper.emitted('evaluate')).toHaveLength(1)
+    expect(wrapper.find('.pm-editor__head').exists()).toBe(false)
+    expect(wrapper.findAll('button').some((b) => b.text() === '評測')).toBe(false)
   })
 
   it('does not render any platform safety rules', async () => {
