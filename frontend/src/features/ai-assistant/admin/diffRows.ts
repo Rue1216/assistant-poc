@@ -1,23 +1,49 @@
-import type { DiffLine } from '../markdown/lineDiff'
+import { inlineSegments, type DiffLine, type Segment } from '../markdown/lineDiff'
 
 export type DiffRow =
-  | { kind: DiffLine['kind']; text: string; oldNo: number | null; newNo: number | null }
+  | { kind: DiffLine['kind']; text: string; oldNo: number | null; newNo: number | null; segments?: Segment[] }
   | { kind: 'gap'; count: number }
 
 const CONTEXT = 2
 /** Unchanged text up to this many lines is shown in full when nothing changed. */
 const SHORT = 3
 
+type NumberedRow = Extract<DiffRow, { kind: DiffLine['kind'] }>
+
+/** In each run of changes (removed first, then added) the k-th removed line pairs with the k-th added line. */
+function pairChangedLines(rows: NumberedRow[]): void {
+  let i = 0
+  while (i < rows.length) {
+    if (rows[i]!.kind === 'same') {
+      i++
+      continue
+    }
+    const removed: NumberedRow[] = []
+    const added: NumberedRow[] = []
+    for (; i < rows.length && rows[i]!.kind !== 'same'; i++) {
+      const row = rows[i]!
+      ;(row.kind === 'removed' ? removed : added).push(row)
+    }
+    for (let k = 0; k < Math.min(removed.length, added.length); k++) {
+      const seg = inlineSegments(removed[k]!.text, added[k]!.text)
+      removed[k]!.segments = seg.before
+      added[k]!.segments = seg.after
+    }
+  }
+}
+
 /** Numbers each line (old / new side) and folds unchanged runs into "⋯ N 行未變更" gaps. */
 export function diffRows(lines: DiffLine[]): DiffRow[] {
   let oldNo = 0
   let newNo = 0
-  const numbered = lines.map((l) => ({
+  const numbered: NumberedRow[] = lines.map((l) => ({
     kind: l.kind,
     text: l.text,
     oldNo: l.kind === 'added' ? null : ++oldNo,
     newNo: l.kind === 'removed' ? null : ++newNo,
   }))
+
+  pairChangedLines(numbered)
 
   if (numbered.every((r) => r.kind === 'same')) {
     return numbered.length <= SHORT ? numbered : numbered.length ? [{ kind: 'gap', count: numbered.length }] : []

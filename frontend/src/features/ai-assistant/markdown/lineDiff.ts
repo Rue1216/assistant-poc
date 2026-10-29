@@ -1,5 +1,7 @@
 export type DiffLine = { kind: 'same' | 'added' | 'removed'; text: string }
 
+export type Segment = { text: string; changed: boolean }
+
 /** Upper bound of LCS table cells (changed lines before x after); about 16 MB and well under a second. */
 export const MAX_DIFF_CELLS = 4_000_000
 
@@ -86,4 +88,29 @@ export function addedLineIndices(before: string, after: string): Set<number> {
     index++
   }
   return added
+}
+
+/**
+ * Marks the differing middle of two lines: the common prefix and suffix (compared by code point,
+ * the suffix never overlaps the prefix) stay unchanged, everything between is `changed`.
+ * Empty segments are omitted.
+ */
+export function inlineSegments(before: string, after: string): { before: Segment[]; after: Segment[] } {
+  const a = Array.from(before)
+  const b = Array.from(after)
+  let start = 0
+  while (start < a.length && start < b.length && a[start] === b[start]) start++
+  let endA = a.length
+  let endB = b.length
+  while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) {
+    endA--
+    endB--
+  }
+  const build = (chars: string[], end: number): Segment[] =>
+    [
+      { text: chars.slice(0, start).join(''), changed: false },
+      { text: chars.slice(start, end).join(''), changed: true },
+      { text: chars.slice(end).join(''), changed: false },
+    ].filter((seg) => seg.text !== '')
+  return { before: build(a, endA), after: build(b, endB) }
 }

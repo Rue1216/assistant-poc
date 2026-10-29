@@ -8,8 +8,8 @@ describe('diffRows', () => {
   it('numbers old and new lines', () => {
     expect(diffRows(diffLines('a\nb', 'a\nc'))).toEqual([
       { kind: 'same', text: 'a', oldNo: 1, newNo: 1 },
-      { kind: 'removed', text: 'b', oldNo: 2, newNo: null },
-      { kind: 'added', text: 'c', oldNo: null, newNo: 2 },
+      { kind: 'removed', text: 'b', oldNo: 2, newNo: null, segments: [{ text: 'b', changed: true }] },
+      { kind: 'added', text: 'c', oldNo: null, newNo: 2, segments: [{ text: 'c', changed: true }] },
     ])
   })
 
@@ -38,5 +38,28 @@ describe('diffRows', () => {
 
   it('counts added and removed lines', () => {
     expect(diffStats(diffLines('a\nb\nc', 'a\nx\ny\nc'))).toEqual({ added: 2, removed: 1 })
+  })
+
+  it('pairs the k-th removed with the k-th added line and leaves the rest unpaired', () => {
+    const rows = diffRows([
+      { kind: 'same', text: 'x' },
+      { kind: 'removed', text: 'ab' },
+      { kind: 'removed', text: 'zz' },
+      { kind: 'added', text: 'ac' },
+      { kind: 'same', text: 'y' },
+    ])
+    expect(rows.map((r) => (r.kind === 'gap' ? null : r.segments))).toEqual([
+      undefined,
+      [
+        { text: 'a', changed: false },
+        { text: 'b', changed: true },
+      ],
+      undefined,
+      [
+        { text: 'a', changed: false },
+        { text: 'c', changed: true },
+      ],
+      undefined,
+    ])
   })
 })

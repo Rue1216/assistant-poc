@@ -2,23 +2,6 @@ import { extractExampleQuestions } from '../markdown/exampleQuestions'
 import { formatTaipeiShort } from '../taipeiTime'
 import type { ConfigStatus, ConfigType, ConfigVersion, VersionHistoryItem } from '../types'
 
-/** Version history row labels (02 section 3.0.1). Versions are told apart by time, never by number. */
-export const STATUS_LABEL: Record<ConfigStatus, string> = {
-  DRAFT: '草稿・編輯中',
-  SCHEDULED: '已排程',
-  PUBLISHED: '已發布・目前生效',
-  ARCHIVED: '已封存',
-  DISCARDED: '已捨棄',
-}
-
-export const STATUS_SHORT: Record<ConfigStatus, string> = {
-  DRAFT: '草稿',
-  SCHEDULED: '已排程',
-  PUBLISHED: '已發布',
-  ARCHIVED: '已封存',
-  DISCARDED: '已捨棄',
-}
-
 export const STATUS_BADGE: Record<ConfigStatus, string> = {
   DRAFT: 'badge--draft',
   SCHEDULED: 'badge--scheduled',

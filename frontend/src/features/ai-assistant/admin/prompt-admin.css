@@ -250,31 +250,6 @@
   color: var(--color-text-muted);
 }
 
-.dialog__summary {
-  margin: var(--space-4) 0 0;
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
-  background: var(--gray-25);
-  border: 1px solid var(--color-border);
-  font-size: var(--text-sm);
-}
-
-.dialog__summary div {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: 3px 0;
-}
-
-.dialog__summary dt {
-  color: var(--color-text-muted);
-}
-
-.dialog__summary dd {
-  margin: 0;
-  font-weight: 600;
-}
-
 .dialog__fields {
   display: flex;
   flex-direction: column;

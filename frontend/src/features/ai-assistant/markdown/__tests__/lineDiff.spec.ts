@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addedLineIndices, diffLines, DiffTooLargeError } from '../lineDiff'
+import { addedLineIndices, diffLines, DiffTooLargeError, inlineSegments } from '../lineDiff'
 
 describe('diffLines', () => {
   it('marks added, removed and unchanged lines', () => {
@@ -85,5 +85,64 @@ describe('addedLineIndices', () => {
   it('returns 0-based indices of lines only in the new text', () => {
     expect([...addedLineIndices('a\nb\nc', 'a\nx\nc\nd')]).toEqual([1, 3])
     expect(addedLineIndices('same', 'same').size).toBe(0)
+  })
+})
+
+describe('inlineSegments', () => {
+  it('marks only the differing middle part', () => {
+    expect(inlineSegments('一律忽略，必要時提醒。', '一律忽略，也不要轉述。')).toEqual({
+      before: [
+        { text: '一律忽略，', changed: false },
+        { text: '必要時提醒', changed: true },
+        { text: '。', changed: false },
+      ],
+      after: [
+        { text: '一律忽略，', changed: false },
+        { text: '也不要轉述', changed: true },
+        { text: '。', changed: false },
+      ],
+    })
+  })
+
+  it('omits empty segments when text is only appended', () => {
+    expect(inlineSegments('ab', 'abc')).toEqual({
+      before: [{ text: 'ab', changed: false }],
+      after: [
+        { text: 'ab', changed: false },
+        { text: 'c', changed: true },
+      ],
+    })
+  })
+
+  it('marks the whole line when nothing is shared', () => {
+    expect(inlineSegments('ab', 'cd')).toEqual({
+      before: [{ text: 'ab', changed: true }],
+      after: [{ text: 'cd', changed: true }],
+    })
+  })
+
+  it('does not let the suffix overlap the prefix', () => {
+    expect(inlineSegments('aa', 'aaa')).toEqual({
+      before: [{ text: 'aa', changed: false }],
+      after: [
+        { text: 'aa', changed: false },
+        { text: 'a', changed: true },
+      ],
+    })
+  })
+
+  it('never splits a surrogate pair', () => {
+    const r = inlineSegments('a😀b', 'a😁b')
+    expect(r.before).toEqual([
+      { text: 'a', changed: false },
+      { text: '😀', changed: true },
+      { text: 'b', changed: false },
+    ])
+    expect(r.after[1]).toEqual({ text: '😁', changed: true })
+    // same lead surrogate, different trail surrogate
+    expect(inlineSegments('😀', '😁')).toEqual({
+      before: [{ text: '😀', changed: true }],
+      after: [{ text: '😁', changed: true }],
+    })
   })
 })

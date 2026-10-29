@@ -3,13 +3,19 @@ export type PageTab = 'content' | 'versions' | 'evaluation'
 </script>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { formatTaipeiShort } from '../taipeiTime'
-import type { ConfigVersion } from '../types'
+import type { ConfigSummary, ConfigVersion } from '../types'
+import ConfigPicker from './ConfigPicker.vue'
 import './prompt-admin.css'
 
 const props = defineProps<{
+  /** the current config's name, kept as the page's (visually hidden) heading */
   name: string
+  configs: ConfigSummary[]
+  loading: boolean
+  /** false while the selected config's versions are loading: no status badge or meta line yet */
+  ready: boolean
   configKey: string
   workingCopy: ConfigVersion | null
   published: ConfigVersion | null
@@ -17,7 +23,10 @@ const props = defineProps<{
   /** appended to the 評測 tab label; empty shows nothing */
   verdictMark: string
 }>()
-const emit = defineEmits<{ 'update:tab': [tab: PageTab] }>()
+const emit = defineEmits<{ 'update:tab': [tab: PageTab]; select: [configKey: string] }>()
+
+const picker = ref<InstanceType<typeof ConfigPicker> | null>(null)
+defineExpose({ openPicker: () => picker.value?.open() })
 
 const TABS: { key: PageTab; label: string }[] = [
   { key: 'content', label: '內容' },
@@ -46,10 +55,17 @@ const meta = computed(() => {
   <div>
     <header class="pm-confighead">
       <div class="pm-editor__title-row">
-        <h2 class="pm-editor__title">{{ name }}</h2>
-        <span class="badge" :class="status.badge">{{ status.text }}</span>
+        <h2 class="sr-only">{{ name }}</h2>
+        <ConfigPicker
+          ref="picker"
+          :configs="configs"
+          :selected-key="configKey"
+          :loading="loading"
+          @select="emit('select', $event)"
+        />
+        <span v-if="ready" class="badge" :class="status.badge">{{ status.text }}</span>
       </div>
-      <p class="pm-confighead__meta">
+      <p v-if="ready" class="pm-confighead__meta">
         <code>{{ configKey }}</code>{{ meta }}
       </p>
     </header>
@@ -71,6 +87,7 @@ const meta = computed(() => {
 
 <style scoped>
 .pm-confighead {
+  position: relative; /* the picker panel spans the card below 1100px */
   padding: var(--space-5) var(--space-6) var(--space-4);
   border-bottom: 1px solid var(--color-border);
 }

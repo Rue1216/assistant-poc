@@ -93,7 +93,7 @@ const CONFIGS: ConfigSummary[] = [
   { configKey: 'instruction.customer-overview', configType: 'SYSTEM_INSTRUCTION', name: '顧客概況', published: { version: 9121, status: 'PUBLISHED', scheduledAt: null, updatedBy: 'system', updatedAt: T.v1 }, workingCopy: null },
 ]
 
-async function mountPage() {
+async function mountPage(attachTo?: HTMLElement) {
   const pinia = createPinia()
   setActivePinia(pinia)
   useAuthStore().user = {
@@ -111,7 +111,7 @@ async function mountPage() {
     ],
   })
   await router.push('/prompt')
-  const wrapper = mount({ render: () => h(RouterView) }, { global: { plugins: [pinia, router] } })
+  const wrapper = mount({ render: () => h(RouterView) }, { global: { plugins: [pinia, router] }, attachTo })
   mounted.push(wrapper)
   await flushPromises()
   return wrapper
@@ -130,17 +130,34 @@ let router: Router
 const byText = (w: VueWrapper, selector: string, text: string) => w.findAll(selector).find((e) => e.text().includes(text))!
 const textarea = (w: VueWrapper) => w.find('textarea').element as HTMLTextAreaElement
 
-async function openInstructions(w: VueWrapper, name: string) {
-  await byText(w, '[role="tab"]', '問題分類').trigger('click')
-  await flushPromises()
-  await byText(w, '.pm-item__main', name).trigger('click')
+/** The config picker button in the page header (it shows the current config's name). */
+const pickerButton = (w: VueWrapper) => w.find('.pm-confighead button[aria-haspopup="listbox"]')
+const input = (w: VueWrapper) => w.find('input[role="combobox"]')
+const pickerOptions = (w: VueWrapper) => w.findAll('[role="option"]')
+async function openPicker(w: VueWrapper) {
+  await pickerButton(w).trigger('click')
   await flushPromises()
 }
+/** Opens the picker and picks a config by name, like a user would. */
+async function pickConfig(w: VueWrapper, name: string) {
+  await openPicker(w)
+  await byText(w, '[role="option"]', name).trigger('click')
+  await flushPromises()
+}
+const openInstructions = pickConfig
 
-/** The 內容／版本／評測 tabs under the header (not the System Prompt / 問題分類 tabs in the sidebar). */
+/** The 內容／版本／評測 tabs under the header. */
 const pageTab = (w: VueWrapper, label: string) => w.findAll('.pm-pagetabs [role="tab"]').find((t) => t.text().startsWith(label))!
 async function openTab(w: VueWrapper, label: string) {
   await pageTab(w, label).trigger('click')
+  await flushPromises()
+}
+
+/** In the 版本 tab: opens the row with that text, then presses 以此版本建立草稿 and waits. */
+async function applyFromRow(w: VueWrapper, rowText: string) {
+  await byText(w, '.pm-ver', rowText).find('.pm-ver__main').trigger('click')
+  await flushPromises()
+  await byText(w, '.pm-actionbar button', '以此版本建立草稿').trigger('click')
   await flushPromises()
 }
 
@@ -175,9 +192,9 @@ describe('PromptManagementPage', () => {
   it('opens the system prompt draft in the editor with the page header', async () => {
     const w = await mountPage()
     expect(w.find('.breadcrumb').text()).toBe('系統管理/Prompt 管理')
-    expect(w.find('.pm-confighead .pm-editor__title').text()).toBe('主要系統提示')
+    expect(w.find('.pm-confighead h2').text()).toBe('主要系統提示')
+    expect(pickerButton(w).text()).toContain('主要系統提示')
     expect(w.find('textarea').exists()).toBe(true)
-    expect(w.text()).not.toContain('新增問題分類') // instruction tab only
     expectNoVersionNumbers(w)
   })
 
@@ -212,14 +229,16 @@ describe('PromptManagementPage', () => {
       ]),
     )
 
-    await byText(w, '.pm-ver', '已封存').find('.pm-ver__apply').trigger('click')
-    await flushPromises()
+    await applyFromRow(w, '已封存')
 
     const dialog = w.find('[role="dialog"]')
-    expect(dialog.find('.dialog__title').text()).toBe('套用 2026/10/19 08:00 的版本？')
+    expect(dialog.find('.dialog__title').text()).toBe('以 10/19 08:00 的版本建立草稿？')
     expect(dialog.find('.dialog__text').text()).toBe(
-      '目前有一份預約於 2026/10/24 09:00 發布的版本，套用後排程會取消，該版本會被標為已捨棄（仍可在版本歷程中找回）。確定要套用嗎？',
+      '目前預約於 10/24 09:00 發布的版本會取消排程並改為已捨棄，可在版本列表找回。',
     )
+    expect(dialog.text()).not.toContain('套用後')
+    expect(dialog.find('.dialog__summary').exists()).toBe(false)
+    expect(dialog.find('.dialog__actions').text()).toContain('建立草稿')
     expectNoVersionNumbers(w)
 
     HISTORY['instruction.contact-prep'] = [
@@ -227,7 +246,7 @@ describe('PromptManagementPage', () => {
       ...HISTORY['instruction.contact-prep']!.slice(1),
     ]
     api.applyVersion.mockResolvedValueOnce(full('instruction.contact-prep', HISTORY['instruction.contact-prep']![0]!))
-    await byText(w, '[role="dialog"] button', '確定套用').trigger('click')
+    await byText(w, '[role="dialog"] button', '建立草稿').trigger('click')
     await flushPromises()
 
     expect(api.applyVersion).toHaveBeenLastCalledWith('instruction.contact-prep', 9111, {
@@ -239,8 +258,27 @@ describe('PromptManagementPage', () => {
     expect(pageTab(w, '內容').attributes('aria-selected')).toBe('true')
     expect(textarea(w).value).toBe('內容：DRAFT') // the applied version is the new draft
     await openTab(w, '版本')
-    expect(w.find('.pm-ver__from').text()).toBe('套用自 10/19 08:00 的版本')
     expectNoVersionNumbers(w)
+  })
+
+  it('reloads from the conflict banner of the 版本 tab after a 409 on apply', async () => {
+    const w = await mountPage()
+    await openInstructions(w, '聯繫準備')
+    await openTab(w, '版本')
+    api.applyVersion.mockRejectedValueOnce(
+      new ApiError(409, 'AI_CONFIG_OVERWRITE_PENDING', 'x', 'r', [
+        { status: 'SCHEDULED', scheduledAt: T.sched, updatedAt: T.v3, docVersion: 7 },
+      ]),
+    )
+    await applyFromRow(w, '已封存')
+    api.applyVersion.mockRejectedValueOnce(new ApiError(409, 'AI_CONFIG_CONFLICT', 'x'))
+    await byText(w, '[role="dialog"] button', '建立草稿').trigger('click')
+    await flushPromises()
+    await openTab(w, '版本')
+    const calls = api.listVersions.mock.calls.length
+    await w.find('.pm-versions-tab .pm-banner--conflict button').trigger('click')
+    await flushPromises()
+    expect(api.listVersions.mock.calls.length).toBeGreaterThan(calls)
   })
 
   it('uses the draft wording when the working copy is a draft', async () => {
@@ -251,11 +289,10 @@ describe('PromptManagementPage', () => {
         { status: 'DRAFT', scheduledAt: null, updatedAt: T.v2, docVersion: 5 },
       ]),
     )
-    await byText(w, '.pm-ver', '已發布').find('.pm-ver__apply').trigger('click')
-    await flushPromises()
-    expect(w.find('.dialog__text').text()).toBe(
-      '目前有一份 2026/10/19 09:30 儲存的草稿，套用後它會被標為已捨棄（仍可在版本歷程中找回）。確定要套用嗎？',
-    )
+    await applyFromRow(w, '目前生效')
+    expect(w.find('.dialog__title').text()).toBe('以 10/19 08:00 的版本建立草稿？')
+    expect(w.find('.dialog__text').text()).toBe('目前 10/19 09:30 儲存的草稿會改為已捨棄，可在版本列表找回。')
+    expect(w.find('[role="dialog"]').text()).not.toContain('套用後')
     await byText(w, '[role="dialog"] button', '取消').trigger('click')
     expect(w.find('[role="dialog"]').exists()).toBe(false)
     expect(api.applyVersion).toHaveBeenCalledTimes(1)
@@ -272,14 +309,14 @@ describe('PromptManagementPage', () => {
     expect(w.text()).not.toContain('正在檢視')
     expectNoVersionNumbers(w)
 
-    const checks = w.findAll('.pm-ver__check')
-    await checks[1]!.setValue(true)
+    const checks = w.findAll('.pm-ver__check') // the default diff checked the scheduled and published rows
+    await checks[0]!.setValue(false)
     await checks[2]!.setValue(true)
     await w.find('.pm-versions__compare').trigger('click')
     await flushPromises()
 
-    const diff = w.find('.pm-viewer')
-    expect(diff.text()).toContain('版本比較')
+    const diff = w.find('.pm-diff')
+    expect(diff.text()).toContain('名稱相同')
     expect(diff.find('.pm-dl--del').text()).toContain('內容：ARCHIVED')
     expect(diff.find('.pm-dl--add').text()).toContain('內容：PUBLISHED')
     expect(api.getVersion).toHaveBeenCalledWith('instruction.contact-prep', 9111)
@@ -296,12 +333,13 @@ describe('PromptManagementPage', () => {
       full(key, HISTORY[key]!.find((h) => h.version === v)!, lines(v === 9111 ? 'a' : 'b')),
     )
     const checks = w.findAll('.pm-ver__check')
-    await checks[1]!.setValue(true)
+    await checks[0]!.setValue(false)
     await checks[2]!.setValue(true)
     await w.find('.pm-versions__compare').trigger('click')
     await flushPromises()
     expect(toast).toHaveBeenCalledWith('內容過長，無法逐行比較')
-    expect(w.find('.pm-versions-tab .pm-viewer').exists()).toBe(false) // no diff pane opened
+    expect(w.find('.pm-versions-tab .pm-diff').exists()).toBe(false) // no diff pane opened
+    expect(w.find('.pm-versions-tab .pm-viewer').exists()).toBe(true) // the live version instead
   })
 
   it('asks before switching config with unsaved edits; cancel keeps them, confirm switches', async () => {
@@ -309,8 +347,7 @@ describe('PromptManagementPage', () => {
     await openInstructions(w, '聯繫準備')
     await w.find('textarea').setValue('我的未儲存內容')
 
-    await byText(w, '.pm-item__main', '顧客概況').trigger('click')
-    await flushPromises()
+    await pickConfig(w, '顧客概況')
     const dialog = () => w.find('[role="dialog"]')
     expect(dialog().text()).toContain('有尚未儲存的修改，確定要放棄嗎？')
     expect(api.listVersions).not.toHaveBeenCalledWith('instruction.customer-overview')
@@ -318,15 +355,16 @@ describe('PromptManagementPage', () => {
     await byText(w, '[role="dialog"] button', '取消').trigger('click')
     expect(dialog().exists()).toBe(false)
     expect(textarea(w).value).toBe('我的未儲存內容')
-    expect(w.find('.pm-confighead .pm-editor__title').text()).toBe('聯繫準備')
+    expect(w.find('.pm-confighead h2').text()).toBe('聯繫準備')
+    expect(w.find('[role="option"]').exists()).toBe(false) // the panel closed
 
-    // switching the SP / SI tab is guarded the same way
-    await byText(w, '[role="tab"]', 'System Prompt').trigger('click')
+    // picking the system prompt is guarded the same way
+    await pickConfig(w, '主要系統提示')
     expect(dialog().text()).toContain('有尚未儲存的修改，確定要放棄嗎？')
     await byText(w, '[role="dialog"] button', '取消').trigger('click')
     expect(textarea(w).value).toBe('我的未儲存內容')
 
-    await byText(w, '.pm-item__main', '顧客概況').trigger('click')
+    await pickConfig(w, '顧客概況')
     await byText(w, '[role="dialog"] button', '放棄修改').trigger('click')
     await flushPromises()
     expect(api.listVersions).toHaveBeenCalledWith('instruction.customer-overview')
@@ -370,27 +408,94 @@ describe('PromptManagementPage', () => {
     }
   })
 
-  it('lists configs by name and status only', async () => {
+  it('the picker lists configs and selecting one switches config', async () => {
     const w = await mountPage()
-    const side = w.find('.pm-sidebar').text()
-    expect(side).not.toContain('system.main')
-    expect(side).not.toContain('instruction.contact-prep')
-    expect(side).not.toContain('已發布')
-    expect(side).toContain('問題分類')
-    expect(side).not.toContain('System Instructions')
-    await byText(w, '[role="tab"]', '問題分類').trigger('click')
-    expect(byText(w, '.pm-item__main', '聯繫準備').text()).toContain('已排程 10/24 09:00')
+    expect(w.find('.pm-sidebar').exists()).toBe(false)
+    expect(w.find('.pm-layout').exists()).toBe(false)
+
+    await openPicker(w)
+    const panel = w.find('[role="listbox"]').text()
+    expect(panel).toContain('System Prompt')
+    expect(panel).toContain('問題分類 2')
+    expect(panel).not.toContain('System Instructions')
+    expect(panel).not.toContain('system.main') // names and status only
+    expect(panel).not.toContain('已發布')
+    expect(byText(w, '[role="option"]', '聯繫準備').text()).toContain('已排程 10/24 09:00')
+    expect(pickerOptions(w).find((o) => o.attributes('aria-selected') === 'true')!.text()).toContain('主要系統提示')
+
+    await byText(w, '[role="option"]', '聯繫準備').trigger('click')
+    await flushPromises()
+    expect(w.find('.pm-confighead h2').text()).toBe('聯繫準備')
+    expect(pickerButton(w).text()).toContain('聯繫準備')
+    expect(pageTab(w, '內容').attributes('aria-selected')).toBe('true')
+    expect(w.find('[role="option"]').exists()).toBe(false)
+  })
+
+  it('selects the first system prompt when the list loads, else the first question category', async () => {
+    api.listConfigs.mockResolvedValue([CONFIGS[2]!, CONFIGS[1]!, CONFIGS[0]!])
+    expect(pickerButton(await mountPage()).text()).toContain('主要系統提示')
+
+    api.listConfigs.mockResolvedValue([CONFIGS[2]!, CONFIGS[1]!])
+    expect(pickerButton(await mountPage()).text()).toContain('顧客概況')
+  })
+
+  it('keeps the picker above the empty card when there are no configs', async () => {
+    api.listConfigs.mockResolvedValue([])
+    const w = await mountPage()
+    expect(w.find('.pm-confighead').exists()).toBe(false)
+    expect(w.find('button[aria-haspopup="listbox"]').text()).toContain('請選擇設定')
+    expect(w.find('.pm-empty').text()).toContain('請從上方選單選擇一個設定')
+  })
+
+  it('keeps the header and picker mounted and focused while switching config', async () => {
+    const w = await mountPage(document.body)
+    const before = pickerButton(w).element
+    const metaBefore = w.find('.pm-confighead__meta').exists()
+    expect(metaBefore).toBe(true)
+
+    let release!: (v: VersionHistoryItem[]) => void
+    api.listVersions.mockImplementation((key: string) =>
+      key === 'instruction.customer-overview' ? new Promise<VersionHistoryItem[]>((r) => (release = r)) : Promise.resolve(HISTORY[key]!),
+    )
+    await openPicker(w)
+    await input(w).trigger('keydown', { key: 'ArrowDown' })
+    await input(w).trigger('keydown', { key: 'ArrowDown' })
+    await input(w).trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+
+    // still loading: same header, same button, the new name, no badge or meta, 載入中… in the body
+    expect(pickerButton(w).element).toBe(before)
+    expect(document.activeElement).toBe(before)
+    expect(pickerButton(w).text()).toContain('顧客概況')
+    expect(w.find('.pm-confighead h2').text()).toBe('顧客概況')
+    expect(w.find('.pm-confighead .badge').exists()).toBe(false)
+    expect(w.find('.pm-confighead__meta').exists()).toBe(false)
+    expect(w.find('.pm-main').text()).toContain('載入中…')
+    expect(w.find('.pm-emptypick').exists()).toBe(false)
+
+    release(HISTORY['instruction.customer-overview']!)
+    await flushPromises()
+    expect(pickerButton(w).element).toBe(before)
+    expect(document.activeElement).toBe(before)
+    expect(w.find('.pm-confighead .badge').text()).toBe('目前生效')
+    expect(w.find('.pm-confighead__meta').text()).toContain('instruction.customer-overview')
   })
 
   it('switching config returns to the 內容 tab', async () => {
     const w = await mountPage()
-    await byText(w, '[role="tab"]', '問題分類').trigger('click')
-    await flushPromises()
+    await pickConfig(w, '顧客概況')
     await openTab(w, '版本')
     expect(pageTab(w, '版本').attributes('aria-selected')).toBe('true')
-    await byText(w, '.pm-item__main', '顧客概況').trigger('click')
-    await flushPromises()
+    await pickConfig(w, '聯繫準備')
     expect(pageTab(w, '內容').attributes('aria-selected')).toBe('true')
+  })
+
+  it('查看問題分類 opens the picker', async () => {
+    const w = await mountPage()
+    expect(w.find('[role="listbox"]').exists()).toBe(false)
+    await byText(w, 'button', '查看問題分類').trigger('click')
+    expect(pickerButton(w).attributes('aria-expanded')).toBe('true')
+    expect(w.find('[role="listbox"]').exists()).toBe(true)
   })
 
   it('switching tabs keeps unsaved edits without asking', async () => {
@@ -406,12 +511,25 @@ describe('PromptManagementPage', () => {
     const w = await mountPage()
     await w.find('textarea').setValue('我的未儲存內容')
     await openTab(w, '版本')
-    await byText(w, '[role="tab"]', '問題分類').trigger('click')
+    await pickConfig(w, '聯繫準備')
     await byText(w, '[role="dialog"] button', '取消').trigger('click')
     await flushPromises()
     expect(w.find('[role="dialog"]').exists()).toBe(false)
-    expect(w.find('.pm-confighead .pm-editor__title').text()).toBe('主要系統提示')
+    expect(w.find('.pm-confighead h2').text()).toBe('主要系統提示')
     expect(pageTab(w, '版本').attributes('aria-selected')).toBe('true')
+  })
+
+  it('opens the 版本 tab on the published vs draft diff, or on the live version without a draft', async () => {
+    const w = await mountPage()
+    await openTab(w, '版本')
+    expect(w.find('.pm-versions-tab .pm-diff').exists()).toBe(true)
+    expect(w.findAll('.pm-ver__check').filter((c) => (c.element as HTMLInputElement).checked)).toHaveLength(2)
+
+    await pickConfig(w, '顧客概況')
+    await openTab(w, '版本')
+    expect(w.find('.pm-versions-tab .pm-diff').exists()).toBe(false)
+    expect(w.find('.pm-versions-tab .pm-viewer .md').text()).toBe('內容：PUBLISHED')
+    expectNoVersionNumbers(w)
   })
 
   it('clicking the draft row in 版本 opens 內容', async () => {
@@ -426,7 +544,7 @@ describe('PromptManagementPage', () => {
   it('has no back buttons or viewing banners anywhere', async () => {
     const w = await mountPage()
     await openTab(w, '版本')
-    await byText(w, '.pm-ver', '已發布').find('.pm-ver__main').trigger('click')
+    await byText(w, '.pm-ver', '目前生效').find('.pm-ver__main').trigger('click')
     await flushPromises()
     expect(w.text()).not.toContain('返回')
     expect(w.text()).not.toContain('正在檢視')
@@ -588,19 +706,36 @@ describe('PromptManagementPage', () => {
     })
   })
 
-  it('filters the list by name or key', async () => {
+  it('new instruction button is always shown and selects the new config', async () => {
     const w = await mountPage()
-    await byText(w, '[role="tab"]', '問題分類').trigger('click')
-    const search = w.find('.pm-search input')
-    await search.setValue('overview')
-    expect(w.findAll('.pm-item__name').map((n) => n.text())).toEqual(['顧客概況'])
-    await search.setValue('聯繫')
-    expect(w.findAll('.pm-item__name').map((n) => n.text())).toEqual(['聯繫準備'])
+    expect(w.find('.pm-confighead h2').text()).toBe('主要系統提示') // a system prompt is selected
+    await byText(w, 'button', '新增問題分類').trigger('click')
+    const dialog = () => w.find('[role="dialog"]')
+    const [keyInput, nameInput] = dialog().findAll('input')
+    await keyInput!.setValue('phone-opening')
+    await nameInput!.setValue('電話開場白')
+
+    const created = full('instruction.phone-opening', item(9131, 'DRAFT', T.v3))
+    created.name = '電話開場白'
+    HISTORY['instruction.phone-opening'] = [item(9131, 'DRAFT', T.v3)]
+    api.createConfig.mockResolvedValue(created)
+    api.listConfigs.mockResolvedValue([
+      ...CONFIGS,
+      { configKey: 'instruction.phone-opening', configType: 'SYSTEM_INSTRUCTION', name: '電話開場白', published: null, workingCopy: { version: 9131, status: 'DRAFT', scheduledAt: null, updatedBy: 'EEE22222', updatedAt: T.v3 } },
+    ])
+    api.getVersion.mockImplementation(async (key: string, v: number) =>
+      key === 'instruction.phone-opening' ? created : full(key, HISTORY[key]!.find((h) => h.version === v)!),
+    )
+    await dialog().find('form').trigger('submit')
+    await flushPromises()
+
+    expect(dialog().exists()).toBe(false)
+    expect(w.find('.pm-confighead h2').text()).toBe('電話開場白')
+    expect(pickerButton(w).text()).toContain('電話開場白')
   })
 
   it('creates a question category after checking the key format', async () => {
     const w = await mountPage()
-    await byText(w, '[role="tab"]', '問題分類').trigger('click')
     await byText(w, 'button', '新增問題分類').trigger('click')
     const dialog = () => w.find('[role="dialog"]')
     const [keyInput, nameInput] = dialog().findAll('input')
