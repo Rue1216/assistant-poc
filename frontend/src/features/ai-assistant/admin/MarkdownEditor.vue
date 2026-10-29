@@ -128,7 +128,7 @@ function onInput(e: Event) {
         <div v-if="chips.length" class="pm-chips-preview__list">
           <span v-for="(q, i) in chips" :key="i" class="chip">{{ q }}</span>
         </div>
-        <span v-else class="pm-chips-preview__empty">「## 範例問題」下尚無條列的問題</span>
+        <span v-else class="pm-chips-preview__empty">沒有範例問題，對話視窗不會顯示這個分類</span>
       </div>
     </div>
   </div>

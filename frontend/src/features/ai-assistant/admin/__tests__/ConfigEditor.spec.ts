@@ -174,7 +174,7 @@ describe('ConfigEditor', () => {
     expect(wrapper.find('.pm-validate__list').exists()).toBe(false)
     api.saveDraft.mockRejectedValue(
       new ApiError(422, 'AI_CONFIG_VALIDATION_FAILED', 'x', 'r', [
-        { rule: 'REQUIRED_SECTION', message: '缺少必要章節「## 回答套版」' },
+        { rule: 'REQUIRED_SECTION', message: '缺少必要章節「## 適用問題」' },
       ]),
     )
     await button(wrapper, '儲存').trigger('click')
@@ -182,7 +182,7 @@ describe('ConfigEditor', () => {
 
     expect(wrapper.find('.pm-validate__summary').text()).toBe('1 項未通過')
     expect(wrapper.find('.pm-validate__list--fail').text()).toContain('REQUIRED_SECTION')
-    expect(wrapper.find('.pm-validate__list--fail').text()).toContain('缺少必要章節「## 回答套版」')
+    expect(wrapper.find('.pm-validate__list--fail').text()).toContain('缺少必要章節「## 適用問題」')
   })
 
   it('shows the passing rule list after a successful check', async () => {
@@ -193,8 +193,11 @@ describe('ConfigEditor', () => {
 
     expect(wrapper.find('.pm-validate__summary').text()).toBe('全部通過')
     const ok = wrapper.find('.pm-validate__list--ok').text()
-    expect(ok).toContain('必要章節：適用問題、回答套版、範例問題、注意事項')
+    expect(ok).toContain('「適用問題」已填寫')
     expect(ok).toContain('範例問題 1 題')
+    expect(ok).toContain('最多 5 題')
+    expect(ok).not.toContain('必要章節：')
+    expect(ok).not.toContain('越權指令')
     expect(wrapper.find('.pm-validate__list--fail').exists()).toBe(false)
   })
 

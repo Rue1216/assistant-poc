@@ -26,8 +26,9 @@ public record AiAssistantProperties(Llm llm, Limits limits, Config config, Marke
                          int rateLimitPerMinute) {
     }
 
+    /** {@code allowedUrlHosts}: hosts a prompt may link to; empty means no URL is allowed. */
     public record Config(Duration scheduleCheckInterval, Duration scheduleMinLead,
-                         Duration scheduleMaxLead) {
+                         Duration scheduleMaxLead, List<String> allowedUrlHosts) {
     }
 
     public record Market(Twse twse) {

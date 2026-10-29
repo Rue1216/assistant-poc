@@ -1,13 +1,17 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { SuggestionCategory } from '../types'
 
-defineProps<{ categories: SuggestionCategory[] }>()
+const props = defineProps<{ categories: SuggestionCategory[] }>()
 defineEmits<{ ask: [question: string, categoryKey: string] }>()
+
+/** Categories without example questions are not shown. */
+const visible = computed(() => props.categories.filter((c) => c.questions.length > 0))
 </script>
 
 <template>
-  <div v-if="categories.length" class="ai-quick-groups">
-    <div v-for="(c, i) in categories" :key="c.configKey" class="ai-quick-group">
+  <div v-if="visible.length" class="ai-quick-groups">
+    <div v-for="(c, i) in visible" :key="c.configKey" class="ai-quick-group">
       <h4 class="ai-quick-group__title">
         <span class="ai-cat" :class="`ai-cat--${(i % 5) + 1}`" aria-hidden="true"></span>{{ c.name }}
       </h4>

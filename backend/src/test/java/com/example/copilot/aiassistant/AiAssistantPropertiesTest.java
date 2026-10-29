@@ -18,6 +18,7 @@ class AiAssistantPropertiesTest extends IntegrationTestBase {
         assertThat(props.limits().requestTimeout()).isEqualTo(Duration.ofSeconds(60));
         assertThat(props.market().twse().maxResponseBytes()).isEqualTo(2_097_152);
         assertThat(props.config().scheduleMaxLead()).isEqualTo(Duration.ofDays(90));
+        assertThat(props.config().allowedUrlHosts()).isEmpty();
     }
 
     @Test

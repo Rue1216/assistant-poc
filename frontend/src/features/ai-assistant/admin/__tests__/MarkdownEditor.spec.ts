@@ -54,14 +54,19 @@ describe('MarkdownEditor', () => {
     expect(wrapper.findAll('.pm-chips-preview .chip').map((c) => c.text())).toEqual(['問題一', '問題二'])
   })
 
-  it('has no chips preview for the system prompt, but lists its required sections while editing', async () => {
+  it('has no chips preview and no required-section list for the system prompt', async () => {
     const wrapper = mountEditor('## 角色\n\n## 回答格式', 'SYSTEM_PROMPT')
-    const items = wrapper.findAll('.pm-sections__item')
-    expect(items.map((i) => i.text())).toEqual(['## 角色', '## 安全規則', '## 回答格式'])
-    expect(items.map((i) => i.classes('is-ok'))).toEqual([true, false, true])
+    expect(wrapper.text()).not.toContain('必要章節')
+    expect(wrapper.find('.pm-sections').exists()).toBe(false)
 
     await tab(wrapper, '預覽').trigger('click')
     expect(wrapper.find('.pm-chips-preview').exists()).toBe(false)
+  })
+
+  it('explains that a category without example questions is not shown in the chat window', async () => {
+    const wrapper = mountEditor('## 適用問題\n內容')
+    await tab(wrapper, '預覽').trigger('click')
+    expect(wrapper.find('.pm-chips-preview').text()).toContain('沒有範例問題，對話視窗不會顯示這個分類')
   })
 
   it('marks lines that differ from the published version in the preview, with the legend', async () => {

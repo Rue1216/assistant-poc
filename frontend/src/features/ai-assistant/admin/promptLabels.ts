@@ -41,8 +41,8 @@ export const MAX_CONTENT_BYTES = 65_536
 
 /** Headings the pre-publish validation requires (backend ConfigValidator). */
 export const REQUIRED_SECTIONS: Record<ConfigType, string[]> = {
-  SYSTEM_PROMPT: ['## 角色', '## 安全規則', '## 回答格式'],
-  SYSTEM_INSTRUCTION: ['## 適用問題', '## 回答套版', '## 範例問題', '## 注意事項'],
+  SYSTEM_PROMPT: [],
+  SYSTEM_INSTRUCTION: ['## 適用問題'],
 }
 
 export function hasSection(content: string, heading: string): boolean {
@@ -59,14 +59,12 @@ export function formatKb(bytes: number): string {
 
 /** The passing list of the pre-publish check, describing the rules the content passed. */
 export function passedRuleDescriptions(configType: ConfigType, content: string): string[] {
-  const sections = REQUIRED_SECTIONS[configType].map((h) => h.replace(/^## /, '')).join('、')
-  const rows = [`必要章節：${sections}`]
+  const rows: string[] = []
   if (configType === 'SYSTEM_INSTRUCTION') {
-    rows.push(`範例問題 ${extractExampleQuestions(content).length} 題（1–5 題，每題 40 字內）`)
+    rows.push('「適用問題」已填寫', `範例問題 ${extractExampleQuestions(content).length} 題（最多 5 題，每題 40 字內）`)
   }
   rows.push(
-    '未偵測到 API key、密碼、網址、身分證號、手機或顧客編號',
-    '未偵測到越權指令（例如「忽略以上規則」）',
+    '未偵測到 API key、密碼、未允許的網址、IP、身分證號、手機或顧客編號',
     `內容大小 ${formatKb(byteLength(content))}（上限 64 KB）`,
   )
   return rows

@@ -31,6 +31,7 @@ ai-assistant:
     schedule-check-interval: 30s     # 預約發布的檢查頻率
     schedule-min-lead: 1m            # 預約時間至少在 1 分鐘後
     schedule-max-lead: 90d           # 預約時間最多在 90 天內
+    allowed-url-hosts: []            # prompt 內允許出現的網址 host；空白＝不允許任何網址
   audit:
     store-tool-results: false         # true 時稽核文件才保存工具回傳資料（含顧客資料），預設關閉
   eval:

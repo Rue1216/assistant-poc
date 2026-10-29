@@ -17,10 +17,12 @@ public class SuggestionService {
         this.parser = parser;
     }
 
-    /** One category per published instruction; not filtered by access level (02 section 2.2). */
+    /** One category per published instruction; not filtered by access level (02 section 2.2).
+     *  Categories without example questions are not listed. */
     public List<SuggestionCategory> suggestions() {
         return cache.current().instructions().stream()
                 .map(c -> new SuggestionCategory(c.getConfigKey(), c.getName(), parser.parse(c.getContent())))
+                .filter(c -> !c.questions().isEmpty())
                 .toList();
     }
 }
