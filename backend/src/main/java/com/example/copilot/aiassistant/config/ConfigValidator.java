@@ -30,7 +30,8 @@ public class ConfigValidator {
             List.of("sk-[A-Za-z0-9_-]{16,}", "Bearer\\s+[A-Za-z0-9._-]{16,}");
     public static final String PASSWORD_REGEX = "(password|passwd|密碼)\\s*[:：=]";
 
-    private static final Pattern URL_HOST = Pattern.compile("(?i)https?://([^\\s/:?#]+)");
+    /** Hostname characters only, so Markdown ")" or CJK punctuation after the host is not part of it. */
+    private static final Pattern URL_HOST = Pattern.compile("(?i)https?://([a-z0-9.-]*)");
 
     private record Forbidden(String label, Predicate<String> matches) {
         static Forbidden regex(String label, String... regexes) {
@@ -66,11 +67,20 @@ public class ConfigValidator {
     private boolean hasDisallowedUrl(String line) {
         Matcher m = URL_HOST.matcher(line);
         while (m.find()) {
-            if (!allowedUrlHosts.contains(m.group(1).toLowerCase(Locale.ROOT))) {
+            if (!isAllowedHost(line, m)) {
                 return true;
             }
         }
         return false;
+    }
+
+    /** Exact (case-insensitive) allowlist match; trailing dots are ignored and "host@" (userinfo) never passes. */
+    private boolean isAllowedHost(String line, Matcher m) {
+        if (m.end() < line.length() && line.charAt(m.end()) == '@') {
+            return false;
+        }
+        String host = m.group(1).replaceAll("\\.+$", "").toLowerCase(Locale.ROOT);
+        return !host.isEmpty() && allowedUrlHosts.contains(host);
     }
 
     /** Validates the content and also keeps forbidden content (spec 04 section 2.5) out of the display name. */

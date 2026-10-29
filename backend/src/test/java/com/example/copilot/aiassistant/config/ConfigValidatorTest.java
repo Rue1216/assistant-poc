@@ -101,7 +101,8 @@ class ConfigValidatorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = { "## 適用問題\n\n  \n## 回答套版\n套版\n", "## 適用問題\n## 回答套版\n套版\n", "## 適用問題" })
+    @ValueSource(strings = { "## 適用問題\n\n  \n## 回答套版\n套版\n", "## 適用問題\n## 回答套版\n套版\n", "## 適用問題",
+            "## 適用問題  \n\n  \n" })
     void blankScopeIsRejected(String content) {
         List<ValidationError> errors = validator.validate(ConfigType.SYSTEM_INSTRUCTION, content);
         assertThat(errors).hasSize(1);
@@ -161,19 +162,38 @@ class ConfigValidatorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = { "https://docs.example.com/a", "HTTPS://DOCS.EXAMPLE.COM", "見 http://docs.example.com?x=1" })
+    @ValueSource(strings = { "https://docs.example.com/a", "HTTPS://DOCS.EXAMPLE.COM", "見 http://docs.example.com?x=1",
+            "[說明](https://docs.example.com)", "請見 https://docs.example.com。", "https://docs.example.com:8080/x",
+            "https://docs.example.com." })
     void urlAllowlistAcceptsAllowedHost(String ok) {
         assertThat(allowingWithLine3(ok)).isEmpty();
     }
 
     @ParameterizedTest
     @ValueSource(strings = { "https://docs.example.com.evil.com", "https://evil.com/docs.example.com",
-            "https://docs.example.com@evil.com", "http://docs.example.com/a https://evil.com" })
+            "https://docs.example.com@evil.com", "http://docs.example.com/a https://evil.com", "https://@evil.com" })
     void urlAllowlistMatchesExactHostOnly(String bad) {
         List<ValidationError> errors = allowingWithLine3(bad);
         assertThat(errors).hasSize(1);
         assertThat(errors.get(0).rule()).isEqualTo("FORBIDDEN_CONTENT");
         assertThat(errors.get(0).message()).isEqualTo("第 3 行疑似包含未允許的網址，請移除");
+    }
+
+    @Test
+    void nullAllowlistAllowsNoUrl() {
+        ConfigValidator noList = new ConfigValidator(new ExampleQuestionParser(), (List<String>) null);
+        List<ValidationError> errors = noList.validate(ConfigType.SYSTEM_PROMPT, "見 https://docs.example.com\n");
+        assertThat(errors).hasSize(1);
+        assertThat(errors.get(0).message()).isEqualTo("第 1 行疑似包含未允許的網址，請移除");
+    }
+
+    @Test
+    void urlInNameIsReportedWithField() {
+        List<ValidationError> errors = allowing.validate(ConfigType.SYSTEM_INSTRUCTION, "見 https://evil.com",
+                instruction());
+        assertThat(errors).hasSize(1);
+        assertThat(errors.get(0).rule()).isEqualTo("FORBIDDEN_CONTENT");
+        assertThat(errors.get(0).message()).isEqualTo("名稱疑似包含未允許的網址，請移除");
     }
 
     @Test

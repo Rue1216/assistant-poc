@@ -121,6 +121,11 @@ describe('inlineSegments', () => {
     })
   })
 
+  it('handles an empty line on either side', () => {
+    expect(inlineSegments('', 'x')).toEqual({ before: [], after: [{ text: 'x', changed: true }] })
+    expect(inlineSegments('x', '')).toEqual({ before: [{ text: 'x', changed: true }], after: [] })
+  })
+
   it('does not let the suffix overlap the prefix', () => {
     expect(inlineSegments('aa', 'aaa')).toEqual({
       before: [{ text: 'aa', changed: false }],

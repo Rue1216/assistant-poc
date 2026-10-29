@@ -143,6 +143,7 @@ function onCompare() {
           @mouseleave="tipOpen = false"
           @focus="tipOpen = true"
           @blur="tipOpen = false"
+          @keydown.esc="tipOpen = false"
         >
           比較勾選的兩版
         </button>

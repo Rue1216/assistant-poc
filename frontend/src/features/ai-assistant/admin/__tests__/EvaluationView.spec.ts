@@ -159,6 +159,30 @@ describe('EvaluationView', () => {
       expect(buttonTexts(w)).toEqual(['重新評測'])
     })
 
+    it('5. a failed run of an older save of the draft falls through to the not-evaluated state', async () => {
+      const failed = { status: 'FAILED' as const, errorCode: 'AI_EVAL_TIMEOUT', summary: null, candidateDocVersion: 3 }
+      api.listEvaluations.mockResolvedValue([runSummary(failed)])
+      api.getEvaluation.mockResolvedValue(run(failed))
+      const w = await mountView({ workingCopy: { ...wc, docVersion: 4 } })
+      expect(title(w)).toBe('這份草稿還沒評測')
+    })
+
+    it('5. a failed run of an older save after a completed one falls through to the modified state', async () => {
+      const failed = { runId: 'r2', status: 'FAILED' as const, errorCode: 'AI_EVAL_TIMEOUT', summary: null, candidateDocVersion: 3 }
+      api.listEvaluations.mockResolvedValue([runSummary(failed), runSummary({ candidateDocVersion: 3 })])
+      api.getEvaluation.mockResolvedValue(run(failed))
+      const w = await mountView({ workingCopy: { ...wc, docVersion: 4 } })
+      expect(title(w)).toBe('評測後內容已修改，結果可能不準')
+    })
+
+    it('5. a failed run of another version of the draft does not count', async () => {
+      const failed = { status: 'FAILED' as const, errorCode: 'AI_EVAL_TIMEOUT', summary: null, candidateVersion: 5 }
+      api.listEvaluations.mockResolvedValue([runSummary(failed)])
+      api.getEvaluation.mockResolvedValue(run(failed))
+      const w = await mountView()
+      expect(title(w)).toBe('這份草稿還沒評測')
+    })
+
     it('6. an unevaluated draft says how many cases will be compared', async () => {
       const w = await mountView({}, (e) => {
         e.state.cases = { datasetHash: 'h', cases: dataset(17) }

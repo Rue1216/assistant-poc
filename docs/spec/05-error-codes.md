@@ -56,8 +56,8 @@
 
 ```json
 [
-  { "rule": "REQUIRED_SECTION", "message": "缺少必要章節：## 安全規則" },
-  { "rule": "FORBIDDEN_CONTENT", "message": "第 12 行疑似包含網址" }
+  { "rule": "REQUIRED_SECTION", "message": "缺少必要章節「## 適用問題」" },
+  { "rule": "FORBIDDEN_CONTENT", "message": "第 12 行疑似包含IP 位址，請移除" }
 ]
 ```
 
@@ -110,7 +110,7 @@
 | 401 | Toast 後導向登入頁 |
 | 404 `AI_CUSTOMER_NOT_FOUND` | 對話視窗內顯示「查無此顧客或您沒有查看權限」，停用輸入框 |
 | 管理 API 409 衝突 | Toast，提供「重新載入」按鈕 |
-| 管理 API 409 `AI_CONFIG_OVERWRITE_PENDING` | 不跳 Toast，改跳確認視窗（草稿：會被標為已捨棄；已排程：排程取消並標為已捨棄；兩者都說明仍可在版本歷程找回）；確認後帶 `confirmOverwrite: true` 與 `details[0].docVersion` 重送 |
+| 管理 API 409 `AI_CONFIG_OVERWRITE_PENDING` | 不跳 Toast，改跳確認視窗（草稿：會被標為已捨棄；已排程：排程取消並標為已捨棄；兩者都說明可在版本列表找回）；確認後帶 `confirmOverwrite: true` 與 `details[0].docVersion` 重送 |
 | 管理 API 400（預約時間） | 在預約時間欄位下方顯示「預約時間需在 1 分鐘後、90 天內」 |
 | 管理 API 422 驗證失敗 | 在編輯器下方列出每條 `details` |
 | 使用者按輸入框的「停止回答」 | 不視為錯誤，訊息標示「已取消」，不跳 Toast |

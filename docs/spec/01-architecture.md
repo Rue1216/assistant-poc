@@ -287,10 +287,11 @@ frontend/src/
 │  │                MessageList、WelcomeCard、QuickQuestions、UserMessage、AssistantMessage
 │  │                （內含 AnswerBlocks、CitationList、FeedbackButtons）、PendingMessage、
 │  │                ErrorMessage、ChatComposer
-│  ├─ admin/        PromptManagementPage、ConfigList、ConfigEditor、PromptAssemblyGuide（兩步：
-│  │                System Prompt、問題分類；不顯示平台安全規則）、MarkdownEditor（編輯 / 預覽分頁）、
-│  │                ValidationPanel、PublishBar、VersionHistory（比較、檢視、套用）、VersionDiff、
-│  │                VersionViewer、ConfirmDialog、NewInstructionDialog、EvaluationView、EvaluationSummary、
+│  ├─ admin/        PromptManagementPage（內容／版本／評測三個分頁）、ConfigPicker（標題列的設定選單）、
+│  │                ConfigHeader、ConfigEditor（不顯示平台安全規則）、MarkdownEditor（編輯 / 預覽分頁）、
+│  │                ValidationPanel（自動執行的發布前檢查）、PublishBar、VersionsTab（VersionList、
+│  │                VersionDiff、VersionViewer；比較、檢視、以此版本建立草稿）、
+│  │                ConfirmDialog、NewInstructionDialog、EvaluationView、EvaluationVerdict、EvaluationSummary、
 │  │                EvaluationCaseList、EvaluationHistory、EvaluationCasesDialog、evaluationFormat.ts
 │  ├─ markdown/     parser.ts、SafeMarkdown.ts、lineDiff.ts（逐行差異，自行實作）
 │  ├─ api/          aiAssistantApi.ts
@@ -350,6 +351,7 @@ ai-assistant:
     schedule-check-interval: 30s     # 預約發布的檢查頻率
     schedule-min-lead: 1m            # 預約時間至少在 1 分鐘後
     schedule-max-lead: 90d           # 預約時間最多在 90 天內
+    allowed-url-hosts: []            # prompt 內允許出現的網址 host；空白＝不允許任何網址
   audit:
     store-tool-results: false         # true 時稽核文件才保存工具回傳資料（含顧客資料），預設關閉；開啟前需 M36 法遵同意
   eval:

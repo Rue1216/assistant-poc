@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import EvaluationCaseList from '../EvaluationCaseList.vue'
 import type { EvalCaseRecord } from '../../types'
@@ -131,6 +131,23 @@ describe('EvaluationCaseList', () => {
     expect(text).not.toContain('全部通過')
   })
 
+  it('lists identical reasons each time without a duplicate key warning, also when they reorder', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const judged = (...texts: string[]) =>
+        result({ passed: false, judge: { refused: false, rubric: texts.map((text) => ({ text, met: false })), comment: null, error: null, tokens: 1 } })
+      const w = await mountList([rec('Q1', result(), judged('列出待辦', '列出待辦', '說明風險'))])
+      await expand(w, 'Q1')
+      // a reorder makes Vue match the items by key
+      await w.setProps({ cases: [rec('Q1', result(), judged('說明風險', '列出待辦', '列出待辦'))] })
+      const items = w.findAll('.ev-col')[1]!.findAll('.ev-col__fails li').map((li) => li.text())
+      expect(items).toEqual(['評分要點未達成：說明風險', '評分要點未達成：列出待辦', '評分要點未達成：列出待辦'])
+      expect(warn).not.toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
   it('says 全部通過 without ticks or 評審：無 when everything passed', async () => {
     const w = await mountList([rec('Q1', result(), result())])
     await expand(w, 'Q1')
@@ -211,14 +228,7 @@ describe('EvaluationCaseList', () => {
     it('shows no route line when the category is right', async () => {
       const w = await mountList([routed({ routeSource: 'ROUTER', instructionKey: KEY, routeOk: true })])
       await expand(w, 'R1')
-      expect(w.find('.ev-col__route').exists()).toBe(false)
       expect(w.text()).not.toContain('路由')
-    })
-
-    it('shows no route line when the result has no routing info', async () => {
-      const w = await mountList([rec('R1', result(), result())])
-      await expand(w, 'R1')
-      expect(w.find('.ev-col__route').exists()).toBe(false)
     })
 
     it('puts 分類不符 first, with the expected and the actual name', async () => {
@@ -250,7 +260,8 @@ describe('EvaluationCaseList', () => {
     it('says the route failed and all categories were loaded on FALLBACK', async () => {
       const w = await mountList([routed({ routeSource: 'FALLBACK', instructionKey: null, routeOk: false })])
       await expand(w, 'R1')
-      expect(w.findAll('.ev-col')[0]!.text()).toContain('實際 路由失敗，載入全部')
+      const items = w.findAll('.ev-col')[0]!.findAll('.ev-col__fails li').map((li) => li.text())
+      expect(items[0]).toBe('分類不符：預期 接觸前準備，實際 無（路由失敗，已載入全部）')
     })
 
     it('writes 預期 無 when the expected category is none', async () => {

@@ -458,6 +458,46 @@ describe('PromptManagementPage', () => {
     expect(pageTab(w, '內容').attributes('aria-selected')).toBe('true')
   })
 
+  it('wires each page tab to the tab panel and gives only the selected tab a tab stop', async () => {
+    const w = await mountPage()
+    for (const label of ['內容', '版本', '評測']) {
+      await openTab(w, label)
+      const panel = w.find('.pm-main [role="tabpanel"]')
+      expect(panel.exists()).toBe(true)
+      const tabs = w.findAll('.pm-pagetabs [role="tab"]')
+      for (const t of tabs) {
+        expect(t.attributes('id')).toBeTruthy()
+        expect(t.attributes('aria-controls')).toBe(panel.attributes('id'))
+        expect(t.attributes('tabindex')).toBe(t.attributes('aria-selected') === 'true' ? '0' : '-1')
+      }
+      expect(panel.attributes('aria-labelledby')).toBe(pageTab(w, label).attributes('id'))
+    }
+  })
+
+  it('moves between page tabs with the arrow, Home and End keys', async () => {
+    const w = await mountPage(document.body)
+    const selected = () => w.find('.pm-pagetabs [role="tab"][aria-selected="true"]')
+    const press = async (key: string) => {
+      await selected().trigger('keydown', { key })
+      await flushPromises()
+    }
+
+    await press('ArrowRight')
+    expect(selected().text()).toBe('版本')
+    expect(document.activeElement).toBe(selected().element)
+    await press('ArrowRight')
+    await press('ArrowRight')
+    expect(selected().text()).toBe('內容') // wraps around
+    await press('ArrowLeft')
+    expect(selected().text().startsWith('評測')).toBe(true)
+    await press('Home')
+    expect(selected().text()).toBe('內容')
+    await press('End')
+    expect(selected().text().startsWith('評測')).toBe(true)
+    expect(document.activeElement).toBe(selected().element)
+    expect(w.find('.pm-eval').exists()).toBe(true)
+  })
+
   it('puts the header, the tabs and the active tab body in one main card', async () => {
     const w = await mountPage()
     for (const label of ['內容', '版本', '評測']) {
@@ -508,6 +548,13 @@ describe('PromptManagementPage', () => {
     expect(w.find('.pm-confighead').exists()).toBe(false)
     expect(w.find('button[aria-haspopup="listbox"]').text()).toContain('請選擇設定')
     expect(w.find('.pm-empty').text()).toContain('請從上方選單選擇一個設定')
+  })
+
+  it('says the config could not be loaded when loading its versions fails', async () => {
+    api.listVersions.mockRejectedValue(new ApiError(503, 'AI_LLM_UNAVAILABLE', 'down', 'req', []))
+    const w = await mountPage()
+    expect(w.find('.pm-main .pm-empty').text()).toBe('無法載入這個設定，請重新整理後再試')
+    expect(w.text()).not.toContain('請從上方選單選擇一個設定')
   })
 
   it('keeps the header and picker mounted and focused while switching config', async () => {
@@ -568,6 +615,17 @@ describe('PromptManagementPage', () => {
     await openTab(w, '內容')
     expect((w.find('input.input').element as HTMLInputElement).value).toBe('改過的名稱')
     expect(w.find('[role="dialog"]').exists()).toBe(false)
+  })
+
+  it('returns focus to the picker button after cancelling the discard dialog', async () => {
+    const w = await mountPage(document.body)
+    await w.find('textarea').setValue('我的未儲存內容')
+    await pickConfig(w, '聯繫準備')
+    expect(document.activeElement).toBe(byText(w, '[role="dialog"] button', '放棄修改').element)
+    await byText(w, '[role="dialog"] button', '取消').trigger('click')
+    await flushPromises()
+    expect(w.find('[role="dialog"]').exists()).toBe(false)
+    expect(document.activeElement).toBe(pickerButton(w).element)
   })
 
   it('cancelling the discard dialog keeps the config and the tab', async () => {

@@ -182,7 +182,7 @@ export function usePromptEvaluation(configKey: Ref<string>) {
     state.history = []
     state.current = null
     state.starting = false
-    void refresh()
+    void refresh().catch(() => {}) // already toasted by apiClient
   })
 
   onScopeDispose(stopPolling)

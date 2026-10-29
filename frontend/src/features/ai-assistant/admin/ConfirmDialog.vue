@@ -10,13 +10,21 @@ const emit = defineEmits<{ confirm: []; cancel: [] }>()
 
 const id = useId()
 const confirmButton = ref<HTMLButtonElement | null>(null)
+/** Where focus was when the dialog opened; it goes back there on close if that element is still on the page. */
+let restoreTo: HTMLElement | null = null
 
 watch(
   () => props.open,
   async (open) => {
-    if (!open) return
     await nextTick()
-    confirmButton.value?.focus()
+    if (open) {
+      // read after the tick, so focus moves made by whatever opened the dialog have landed
+      restoreTo = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      confirmButton.value?.focus()
+    } else {
+      if (restoreTo?.isConnected) restoreTo.focus()
+      restoreTo = null
+    }
   },
 )
 

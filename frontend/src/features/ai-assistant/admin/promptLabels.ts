@@ -2,14 +2,6 @@ import { extractExampleQuestions } from '../markdown/exampleQuestions'
 import { formatTaipeiShort } from '../taipeiTime'
 import type { ConfigStatus, ConfigType, ConfigVersion, VersionHistoryItem } from '../types'
 
-export const STATUS_BADGE: Record<ConfigStatus, string> = {
-  DRAFT: 'badge--draft',
-  SCHEDULED: 'badge--scheduled',
-  PUBLISHED: 'badge--published',
-  ARCHIVED: 'badge--archived',
-  DISCARDED: 'badge--discarded',
-}
-
 /** What the `updatedBy` user last did to a version in this status. */
 export const STATUS_VERB: Record<ConfigStatus, string> = {
   DRAFT: '儲存',

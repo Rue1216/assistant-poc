@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, useId, watch } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { useAuthStore } from '../../../platform-mock/useAuthStore'
 import { usePromptAdmin } from '../composables/usePromptAdmin'
@@ -7,7 +7,7 @@ import { usePromptEvaluation } from '../composables/usePromptEvaluation'
 import { formatTaipeiShort } from '../taipeiTime'
 import type { ConfigType, OverwritePendingDetail, VersionHistoryItem } from '../types'
 import ConfigEditor from './ConfigEditor.vue'
-import ConfigHeader, { type PageTab } from './ConfigHeader.vue'
+import ConfigHeader, { pageTabId, pageTabPanelId, type PageTab } from './ConfigHeader.vue'
 import ConfigPicker from './ConfigPicker.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import EvaluationView from './EvaluationView.vue'
@@ -23,18 +23,15 @@ const canEdit = computed(() => auth.hasPermission('AI_CONFIG_EDIT'))
 const canPublish = computed(() => canEdit.value && auth.hasPermission('AI_CONFIG_PUBLISH'))
 
 const tab = ref<PageTab>('content')
+const tabIdPrefix = useId()
 const selectedKey = ref('')
 
 const admin = usePromptAdmin(selectedKey)
 const state = admin.state
 
 // Owned by the page, not by the 評測 tab: progress and the tab mark outlive tab switches.
+// The composable loads on every key change, including the first key picked once the config list has loaded.
 const evaluation = usePromptEvaluation(selectedKey)
-// The composable refreshes when the key changes; the key is only known once the config list has loaded,
-// so this covers a key that is already there at mount.
-onMounted(() => {
-  if (selectedKey.value) void evaluation.refresh().catch(() => {})
-})
 const mark = computed(() =>
   verdictMark(evaluation.state.history, evaluation.state.current, selectedKey.value, state.workingCopy),
 )
@@ -234,62 +231,65 @@ async function onCreateInstruction(keySuffix: string, name: string) {
         :working-copy="state.workingCopy"
         :published="state.published"
         :verdict-mark="mark"
+        :id-prefix="tabIdPrefix"
         @select="selectConfig"
       />
 
-      <section v-if="!state.workingCopy && !state.published" class="pm-empty">
-        {{ state.loading ? '載入中…' : '請從上方選單選擇一個設定' }}
-      </section>
+      <div :id="pageTabPanelId(tabIdPrefix)" role="tabpanel" :aria-labelledby="pageTabId(tabIdPrefix, tab)">
+        <section v-if="!state.workingCopy && !state.published" class="pm-empty">
+          <!-- a config always has a version (creating one makes a draft): none after loading means the load failed -->
+          {{ state.loading ? '載入中…' : '無法載入這個設定，請重新整理後再試' }}
+        </section>
 
-      <template v-else-if="tab === 'content'">
-        <ConfigEditor
-          v-if="mainPane === 'editor'"
-          :key="`${selectedKey}:${state.workingCopy!.version}`"
+        <template v-else-if="tab === 'content'">
+          <ConfigEditor
+            v-if="mainPane === 'editor'"
+            :key="`${selectedKey}:${state.workingCopy!.version}`"
+            :admin="admin"
+            :config-type="configType"
+            :published-instruction-count="publishedInstructionCount"
+            :can-edit="canEdit"
+            :can-publish="canPublish"
+            @go-instructions="header?.openPicker()"
+            @discard="onDiscard"
+            @reload="onReload"
+          />
+          <VersionViewer
+            v-else
+            :version="state.published!"
+            :versions="state.versions"
+            action="edit"
+            :can-edit="canEdit"
+            :busy="state.busy"
+            :conflict="state.conflict"
+            @edit="onCreateDraft"
+            @reload="onReload"
+          />
+        </template>
+
+        <VersionsTab
+          v-else-if="tab === 'versions'"
           :admin="admin"
           :config-type="configType"
-          :published-instruction-count="publishedInstructionCount"
           :can-edit="canEdit"
-          :can-publish="canPublish"
-          @go-instructions="header?.openPicker()"
-          @discard="onDiscard"
+          @open-content="showContent"
+          @apply="onApply"
           @reload="onReload"
         />
-        <VersionViewer
+
+        <EvaluationView
           v-else
-          :version="state.published!"
-          :versions="state.versions"
-          action="edit"
+          :evaluation="evaluation"
+          :config-key="selectedKey"
+          :name="selectedSummary?.name ?? ''"
+          :working-copy="state.workingCopy"
+          :dirty="admin.dirty.value"
           :can-edit="canEdit"
           :busy="state.busy"
-          :conflict="state.conflict"
-          @apply="onApply"
-          @edit="onCreateDraft"
-          @reload="onReload"
+          :name-of="nameOfKey"
+          @save-and-run="onSaveAndRun"
         />
-      </template>
-
-      <VersionsTab
-        v-else-if="tab === 'versions'"
-        :admin="admin"
-        :config-type="configType"
-        :can-edit="canEdit"
-        @open-content="showContent"
-        @apply="onApply"
-        @reload="onReload"
-      />
-
-      <EvaluationView
-        v-else
-        :evaluation="evaluation"
-        :config-key="selectedKey"
-        :name="selectedSummary?.name ?? ''"
-        :working-copy="state.workingCopy"
-        :dirty="admin.dirty.value"
-        :can-edit="canEdit"
-        :busy="state.busy"
-        :name-of="nameOfKey"
-        @save-and-run="onSaveAndRun"
-      />
+      </div>
     </section>
     <template v-else>
       <div class="pm-emptypick">

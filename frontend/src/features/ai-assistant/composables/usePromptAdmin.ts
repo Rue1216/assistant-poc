@@ -346,7 +346,7 @@ export function usePromptAdmin(configKey: Ref<string>) {
       if (!wc || wc.configKey !== key) return
       try {
         await aiAssistantApi.discardDraft(key, wc.docVersion)
-        toast.show('已捨棄草稿，內容保留在版本歷程中', 'info')
+        toast.show('已捨棄草稿，可在版本分頁找回', 'info')
         await reloadIfOn(key)
       } catch (e) {
         handleWriteError(e, key)
@@ -355,7 +355,7 @@ export function usePromptAdmin(configKey: Ref<string>) {
   }
 
   async function afterApply(key: string): Promise<void> {
-    toast.show('已套用為新草稿，發布後才會生效', 'info')
+    toast.show('已建立草稿，發布後才會生效', 'info')
     await reloadIfOn(key)
   }
 

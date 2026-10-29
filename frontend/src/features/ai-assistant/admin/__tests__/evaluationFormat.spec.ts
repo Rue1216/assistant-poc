@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CaseResult, ConfigVersion, EvalCaseRecord, EvalRunSummary } from '../../types'
-import { caseChanged, caseErrorMessage, changeText, formatRate, metricRows, overallVerdict, rateDirection, tokenChange, tokenDirection, tokenRow, verdictMark, verdictSubtitle, versionState } from '../evaluationFormat'
+import { caseChanged, caseErrorMessage, changeText, formatRate, metricRows, overallVerdict, rateDirection, tokenDirection, tokenRow, verdictMark, verdictSubtitle, versionState } from '../evaluationFormat'
 import { runSummary, summary } from './evalFixtures'
 
 function result(extra: Partial<CaseResult> = {}): CaseResult {
@@ -50,12 +50,6 @@ describe('evaluationFormat', () => {
     expect(tokenDirection(7000, 7400)).toBe('worse')
     expect(tokenDirection(7000, 6000)).toBe('better')
     expect(tokenDirection(0, 100)).toBe('same')
-  })
-
-  it('formats the token change', () => {
-    expect(tokenChange(7420, 7610)).toBe('+2.6%')
-    expect(tokenChange(7000, 6783)).toBe('-3.1%')
-    expect(tokenChange(0, 5)).toBe('—')
   })
 
   it('detects a changed case', () => {
@@ -132,6 +126,14 @@ describe('evaluationFormat', () => {
     expect(verdictSubtitle(sum())).toBe('各項指標持平')
     expect(verdictSubtitle(sum({ avgTotalTokens: 3000 }))).toBe('各項指標持平；平均 Token 少 14%')
     expect(verdictSubtitle(sum({ correct: 14, toolsOk: 13 }))).toBe('正確率 65% → 82%；工具選擇正確率 94% → 76%；其他指標持平')
+  })
+
+  it('does not count metrics without data as 持平', () => {
+    const noData = { routeCases: 0, routeOk: 0, expectedRefusals: 0, refusedExpected: 0, normalCases: 0, refusedNormal: 0 }
+    const changed = summary({ ...flat, ...noData }, { ...flat, ...noData, correct: 14, toolsOk: 13 })
+    expect(verdictSubtitle(changed)).toBe('正確率 65% → 82%；工具選擇正確率 94% → 76%')
+    const empty = { ...flat, ...noData, total: 0, correct: 0, toolsOk: 0 }
+    expect(verdictSubtitle(summary(empty, empty))).toBe('各項指標持平')
   })
 })
 

@@ -45,7 +45,7 @@ watch(
       <button v-else class="btn btn--ghost" type="button" :disabled="busy" @click="emit('discard')">捨棄草稿</button>
 
       <!-- 已排程: 取消排程 [日期][時間] 儲存 …; 草稿預約中: 儲存 [日期][時間] 取消 預約發布 (spec 3.1) -->
-      <template v-if="status === 'SCHEDULED'">
+      <template v-if="status === 'SCHEDULED' && canPublish">
         <span class="pm-publish__when">
           <input v-model="date" class="input" type="date" aria-label="預約日期" :aria-invalid="!!scheduleError" />
           <input v-model="time" class="input" type="time" aria-label="預約時間" :aria-invalid="!!scheduleError" />
@@ -55,7 +55,7 @@ watch(
 
       <button class="btn btn--secondary" type="button" :disabled="busy" @click="emit('save', 'KEEP_STATUS')">儲存</button>
 
-      <template v-if="status === 'DRAFT' && scheduling">
+      <template v-if="status === 'DRAFT' && scheduling && canPublish">
         <span class="pm-publish__when">
           <input v-model="date" class="input" type="date" aria-label="預約日期" :aria-invalid="!!scheduleError" />
           <input v-model="time" class="input" type="time" aria-label="預約時間" :aria-invalid="!!scheduleError" />

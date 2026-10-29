@@ -80,18 +80,13 @@ export function verdictSubtitle(s: EvalSummary): string {
     .filter((r) => r.direction !== 'same')
     .map((r) => `${r.label} ${formatRate(r.base, r.d)} → ${formatRate(r.cand, r.d)}`)
   if (parts.length === 0) parts.push('各項指標持平')
-  else if (rows.some((r) => r.direction === 'same')) parts.push('其他指標持平')
+  // a metric without data (d === 0) is not 持平, it just has nothing to compare
+  else if (rows.some((r) => r.direction === 'same' && r.d > 0)) parts.push('其他指標持平')
   const t = tokenRow(s)
   if (t.direction !== 'same' && t.percent !== null) {
     parts.push(t.percent > 0 ? `平均 Token 多 ${t.percent}%` : `平均 Token 少 ${Math.abs(t.percent)}%`)
   }
   return parts.join('；')
-}
-
-export function tokenChange(base: number, cand: number): string {
-  if (base === 0) return '—'
-  const pct = ((cand - base) / base) * 100
-  return (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%'
 }
 
 /** Only cases with both results can show a difference; a different route counts as one too. */

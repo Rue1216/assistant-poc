@@ -92,4 +92,11 @@ async function copyMarkdown() {
   font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
+
+@media (max-width: 1100px) {
+  .pm-viewer__meta {
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+}
 </style>

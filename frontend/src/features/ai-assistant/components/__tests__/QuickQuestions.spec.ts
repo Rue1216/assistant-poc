@@ -16,6 +16,11 @@ describe('QuickQuestions', () => {
     expect(wrapper.findAll('button')).toHaveLength(2)
   })
 
+  it('numbers the colour swatches after skipping empty categories', () => {
+    const wrapper = mount(QuickQuestions, { props: { categories: [B, A] } })
+    expect(wrapper.find('.ai-cat').classes()).toContain('ai-cat--1')
+  })
+
   it('renders nothing when no category has questions', () => {
     const wrapper = mount(QuickQuestions, { props: { categories: [B] } })
     expect(wrapper.find('.ai-quick-groups').exists()).toBe(false)

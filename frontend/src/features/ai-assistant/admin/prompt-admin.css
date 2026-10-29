@@ -1,16 +1,17 @@
 /* ==========================================================================
-   Prompt 管理頁：多個元件共用的區塊（from prototype/styles/prompt-management.css）
-   ConfigEditor、VersionViewer、VersionDiff 共用卡片頭、橫幅、面板與動作列；
-   ConfirmDialog、NewInstructionDialog 共用對話框。只在 PromptManagementPage 匯入一次。
+   Prompt 管理頁：多個元件共用的全域規則（from prototype/styles/prompt-management.css）
+   - 標題列：ConfigHeader 與其中的 ConfigPicker（.pm-editor__title-row／__title）
+   - 內容區、衝突橫幅：ConfigEditor、VersionViewer、EvaluationView（.pm-editor__body、.pm-banner）
+   - 編輯面板與預覽：MarkdownEditor、VersionViewer（.pm-pane、.pm-preview）
+   - 動作列：PublishBar、VersionViewer（.pm-actionbar）
+   - 對話框：ConfirmDialog、NewInstructionDialog、EvaluationCasesDialog（.dialog）
+   匯入者（各自 import，Vite 只載入一次）：ConfigEditor、ConfigHeader、ConfirmDialog、
+   EvaluationCasesDialog、EvaluationView、MarkdownEditor、NewInstructionDialog、
+   PromptManagementPage、PublishBar、VersionDiff、VersionsTab、VersionViewer。
    各元件專屬的規則放在元件自己的 <style scoped>。
    ========================================================================== */
 
 /* ---- 卡片頭 ---- */
-
-.pm-editor__head {
-  padding: var(--space-5) var(--space-6) var(--space-4);
-  border-bottom: 1px solid var(--color-border);
-}
 
 .pm-editor__title-row {
   display: flex;
@@ -23,31 +24,6 @@
   font-size: var(--text-xl);
   font-weight: 700;
   color: var(--color-text-strong);
-}
-
-.pm-editor__meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 10px;
-  margin-top: 6px;
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-}
-
-.pm-editor__meta code {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--gray-50);
-}
-
-.pm-dot {
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: var(--gray-300);
 }
 
 .pm-editor__body {
@@ -97,19 +73,6 @@
   color: #fff;
 }
 
-.pm-banner--readonly {
-  align-items: center;
-  background: var(--gray-50);
-  border-color: var(--color-border-strong);
-  color: var(--gray-700);
-}
-
-.pm-banner--readonly .pm-banner__icon {
-  background: var(--color-surface);
-  color: var(--gray-600);
-  box-shadow: inset 0 0 0 1px var(--color-border-strong);
-}
-
 /* ---- 面板 ---- */
 
 .pm-pane {
@@ -128,10 +91,6 @@
   box-shadow: 0 0 0 3px var(--color-focus-ring);
 }
 
-.pm-pane--auto {
-  height: auto;
-}
-
 .pm-pane__head {
   display: flex;
   align-items: center;
@@ -139,11 +98,6 @@
   padding: 8px 14px;
   border-bottom: 1px solid var(--color-border);
   background: var(--gray-25);
-}
-
-.pm-pane__title {
-  font-size: var(--text-sm);
-  font-weight: 600;
 }
 
 .pm-pane__count {
@@ -275,11 +229,10 @@
 /* ---- Responsive ---- */
 
 @media (max-width: 1280px) {
-  .pm-pane:not(.pm-pane--auto) { height: 420px; }
+  .pm-pane { height: 420px; }
 }
 
 @media (max-width: 1100px) {
-  .pm-editor__head,
   .pm-editor__body,
   .pm-actionbar {
     padding-left: var(--space-4);

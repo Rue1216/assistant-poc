@@ -103,6 +103,12 @@ describe('PublishBar', () => {
     expect(texts(s)).toEqual(['取消排程', '儲存'])
   })
 
+  it('without canPublish a scheduled copy shows no date or time inputs', () => {
+    const s = mountBar({ canPublish: false, status: 'SCHEDULED', scheduledAt: '2026-10-24T01:00:00Z' })
+    expect(s.find('input[type="date"]').exists()).toBe(false)
+    expect(s.find('input[type="time"]').exists()).toBe(false)
+  })
+
   it('shows the range hint only with a scheduleError', async () => {
     const w = mountBar({ status: 'SCHEDULED', scheduledAt: '2026-10-24T01:00:00Z' })
     expect(w.text()).not.toContain('90 天')

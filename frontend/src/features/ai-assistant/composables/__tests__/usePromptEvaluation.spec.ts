@@ -19,6 +19,11 @@ import { POLL_MS, usePromptEvaluation } from '../usePromptEvaluation'
 
 const KEY = 'instruction.contact-prep'
 
+interface NodeProcessEvents {
+  on(event: 'unhandledRejection', listener: (reason: unknown) => void): void
+  off(event: 'unhandledRejection', listener: (reason: unknown) => void): void
+}
+
 function summary(runId: string, status: EvalStatus = 'COMPLETED', completed = 16): EvalRunSummary {
   return {
     runId, status, errorCode: null, triggeredBy: 'EEE22222', startedAt: 's', finishedAt: status === 'RUNNING' ? null : 'f',
@@ -255,6 +260,25 @@ describe('usePromptEvaluation', () => {
     await vi.advanceTimersByTimeAsync(POLL_MS * 3)
     expect(api.getEvaluation).not.toHaveBeenCalled()
     expect(api.listEvaluations).toHaveBeenLastCalledWith('instruction.other')
+  })
+
+  it('a failed load after a key change does not leave an unhandled rejection', async () => {
+    vi.useRealTimers() // the rejection is reported after a real macrotask
+    const unhandled = vi.fn()
+    // Vitest runs in Node; the app's tsconfig has no Node types, so name only what is used here
+    const proc = (globalThis as unknown as { process: NodeProcessEvents }).process
+    proc.on('unhandledRejection', unhandled)
+    try {
+      const key = ref(KEY)
+      const { state } = usePromptEvaluation(key)
+      api.listEvaluations.mockRejectedValue(new ApiError(503, 'AI_LLM_UNAVAILABLE', 'down', 'req', []))
+      key.value = 'instruction.other'
+      await new Promise((r) => setTimeout(r, 0))
+      expect(unhandled).not.toHaveBeenCalled()
+      expect(state.history).toEqual([])
+    } finally {
+      proc.off('unhandledRejection', unhandled)
+    }
   })
 
   it('open loads one run and loadCases loads the dataset once', async () => {

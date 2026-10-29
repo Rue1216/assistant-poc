@@ -70,6 +70,13 @@ interface Card {
   button?: { label: string; action: Action; primary?: boolean; disabled?: boolean }
 }
 
+/** The run on screen failed on the saved content as it is now; an older failure does not count. */
+const failedOnSavedContent = computed(() => {
+  const r = run.value
+  const wc = props.workingCopy
+  return !!r && !!wc && r.status === 'FAILED' && r.candidateVersion === wc.version && r.candidateDocVersion === wc.docVersion
+})
+
 /** First matching state wins (design 5.1). */
 const card = computed<Card>(() => {
   const cur = state.current
@@ -106,7 +113,7 @@ const card = computed<Card>(() => {
       button: { label: '儲存並評測', action: 'save-and-run', disabled: props.busy },
     }
   }
-  if (run.value?.status === 'FAILED') {
+  if (failedOnSavedContent.value) {
     return {
       tone: 'neutral',
       title: '這次評測沒有完成，已完成的題目仍列在下方',

@@ -255,6 +255,7 @@ describe('usePromptAdmin', () => {
 
     expect(api.applyVersion).toHaveBeenCalledWith(KEY, 1, { workingCopyDocVersion: null })
     expect(result).toEqual({ needsConfirm: false, draft })
+    expect(toast).toHaveBeenCalledWith('已建立草稿，發布後才會生效', 'info')
   })
 
   it('apply over scheduled asks for confirmation then resends with flag and docVersion', async () => {
@@ -343,6 +344,28 @@ describe('usePromptAdmin', () => {
     const admin = await setup(null)
     expect(api.validateDraft).not.toHaveBeenCalled()
     expect(admin.state.validation).toBe('idle')
+  })
+
+  it('keeps the later check when an earlier check of the same key resolves last', async () => {
+    type Report = { valid: boolean; errors: { rule: string; message: string }[] }
+    let resolveFirst!: (v: Report) => void
+    let resolveSecond!: (v: Report) => void
+    api.validateDraft
+      .mockReturnValueOnce(new Promise((r) => (resolveFirst = r)))
+      .mockReturnValueOnce(new Promise((r) => (resolveSecond = r)))
+    const admin = await setup()
+    api.saveDraft.mockResolvedValueOnce(full(2, 'DRAFT', { docVersion: 4 }))
+    await admin.save('KEEP_STATUS')
+    await flushPromises()
+    expect(api.validateDraft).toHaveBeenCalledTimes(2)
+
+    resolveSecond({ valid: true, errors: [] })
+    await flushPromises()
+    resolveFirst({ valid: false, errors: [{ rule: 'NOT_EMPTY', message: '內容不可為空' }] })
+    await flushPromises()
+
+    expect(admin.state.validation).toBe('passed')
+    expect(admin.state.errors).toEqual([])
   })
 
   it('auto-checks after a successful save, not after a failed one', async () => {
@@ -443,6 +466,7 @@ describe('usePromptAdmin', () => {
     await admin.discard()
     expect(api.discardDraft).toHaveBeenCalledWith(KEY, 3)
     expect(admin.state.workingCopy).toBeNull()
+    expect(toast).toHaveBeenCalledWith('已捨棄草稿，可在版本分頁找回', 'info')
   })
 
   it('ignores a second write while one is in flight', async () => {

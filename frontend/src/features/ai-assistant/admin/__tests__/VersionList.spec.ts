@@ -139,6 +139,16 @@ describe('VersionList', () => {
       expect(compareButton(w).attributes('aria-describedby')).toBeUndefined()
       w.unmount()
     })
+
+    it('hides the tooltip on Escape while the compare button has focus', async () => {
+      const w = mountList({ checked: [9135] }, document.body)
+      const tip = w.find('[role="tooltip"]')
+      await compareButton(w).trigger('focus')
+      expect(tip.isVisible()).toBe(true)
+      await compareButton(w).trigger('keydown', { key: 'Escape' })
+      expect(tip.isVisible()).toBe(false)
+      w.unmount()
+    })
   })
 
   it('hides discarded rows until "顯示已捨棄" is toggled', async () => {

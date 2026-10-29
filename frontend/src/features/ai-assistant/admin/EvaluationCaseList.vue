@@ -36,7 +36,7 @@ const STATUS_LABEL = { running: '執行中', better: '變好', worse: '變差' }
 const categoryName = (key: string | null | undefined) => (key && key !== 'none' ? props.nameOf(key) : '無')
 
 function routeText(r: CaseResult): string {
-  if (r.routeSource === 'FALLBACK') return '路由失敗，載入全部'
+  if (r.routeSource === 'FALLBACK') return '無（路由失敗，已載入全部）'
   return categoryName(r.instructionKey)
 }
 
@@ -115,7 +115,7 @@ function reasons(r: CaseResult, c: EvalCaseRecord): string[] {
               </p>
               <div v-else class="md"><SafeMarkdown :source="side.r.answer ?? ''" /></div>
               <ul v-if="reasons(side.r, c).length" class="ev-col__fails">
-                <li v-for="f in reasons(side.r, c)" :key="f">{{ f }}</li>
+                <li v-for="(f, i) in reasons(side.r, c)" :key="i">{{ f }}</li>
               </ul>
               <p v-else-if="side.r.outcome !== 'FAILED'" class="ev-col__ok">全部通過</p>
             </template>
@@ -125,7 +125,6 @@ function reasons(r: CaseResult, c: EvalCaseRecord): string[] {
     </div>
   </div>
 </template>
-
 
 <style scoped>
 .ev-cases__head {

@@ -123,12 +123,12 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_CONFIG", {
 ```mermaid
 stateDiagram-v2
   [*] --> DRAFT: 建立草稿 / 套用
-  DRAFT --> DRAFT: 儲存 / 存成草稿
+  DRAFT --> DRAFT: 儲存
   DRAFT --> DISCARDED: 捨棄草稿，或被套用取代
   DRAFT --> PUBLISHED: 立即發布
   DRAFT --> SCHEDULED: 預約發布
   SCHEDULED --> SCHEDULED: 儲存（保留排程）/ 修改預約時間
-  SCHEDULED --> DRAFT: 存成草稿（取消排程）
+  SCHEDULED --> DRAFT: 取消排程（saveMode = DRAFT）
   SCHEDULED --> DISCARDED: 被套用取代（排程取消）
   SCHEDULED --> PUBLISHED: 立即發布，或到期由排程器自動發布
   PUBLISHED --> ARCHIVED: 有新版本生效
@@ -145,13 +145,13 @@ stateDiagram-v2
 | 建立草稿 | — | 已有 `DRAFT` 或 `SCHEDULED` → 409。否則複製目前已發布版本的 `name`、`content`，新增 `version = 最大值 + 1`、`status = DRAFT` | 操作者 / 現在 |
 | 儲存 | DRAFT | 更新內容，維持 `DRAFT` | 操作者 / 現在 |
 | 儲存 | SCHEDULED | 更新內容，**保留排程**；先執行發布前驗證，不通過 → 422 | 操作者 / 現在（視為由此人重新確認排程） |
-| 存成草稿 | DRAFT | 同「儲存」 | 操作者 / 現在 |
-| 存成草稿 | SCHEDULED | 更新內容，`status = DRAFT`、清空 `scheduledAt`（取消排程） | 操作者 / 現在 |
+| 取消排程（`saveMode = DRAFT`） | DRAFT | 同「儲存」（畫面只在已排程時提供「取消排程」） | 操作者 / 現在 |
+| 取消排程（`saveMode = DRAFT`） | SCHEDULED | 更新內容，`status = DRAFT`、清空 `scheduledAt`（取消排程） | 操作者 / 現在 |
 | 立即發布 | DRAFT、SCHEDULED | 先驗證；在交易中把舊的 PUBLISHED 改成 ARCHIVED、編輯中版本改成 PUBLISHED | 新版：操作者 / 現在；**舊版：不改動** |
 | 預約發布 | DRAFT、SCHEDULED | 先驗證；`status = SCHEDULED`、寫入 `scheduledAt`（已排程時即修改預約時間） | 操作者 / 現在 |
 | 排程到期 | SCHEDULED | 排程器在交易中把舊的 PUBLISHED 改成 ARCHIVED、SCHEDULED 改成 PUBLISHED；`scheduledAt` 保留 | 新版：**維持預約者** / 實際生效時間；舊版：不改動 |
 | 套用 | 來源：PUBLISHED、ARCHIVED、DISCARDED | 已有編輯中版本且未帶 `confirmOverwrite: true` → 409 `AI_CONFIG_OVERWRITE_PENDING`。否則在交易中：(1) 既有的編輯中版本改為 `DISCARDED`（`scheduledAt` 保留，作為「原預約時間」紀錄）；(2) 新增一份 `DRAFT`：`version = 最大值 + 1`，`name`、`content` 取自來源版本，`basedOnVersion = 來源版本`，`changeNote` 空。來源版本本身不變 | 新草稿：操作者 / 現在（`createdBy` 也是操作者）；被取代的版本：操作者 / 現在 |
-| 捨棄草稿 | DRAFT | `status = DISCARDED`，內容保留，不刪除；`SCHEDULED` 需先存成草稿才能捨棄 | 操作者 / 現在 |
+| 捨棄草稿 | DRAFT | `status = DISCARDED`，內容保留，不刪除；`SCHEDULED` 需先取消排程才能捨棄 | 操作者 / 現在 |
 
 所有寫入都以 `docVersion` 做條件更新；不一致 → 409 `AI_CONFIG_CONFLICT`。
 
@@ -191,8 +191,8 @@ stateDiagram-v2
 |---|---|
 | `NOT_EMPTY` | 去除空白後不可為空 |
 | `MAX_SIZE` | UTF-8 編碼後最多 65,536 bytes |
-| `REQUIRED_SECTION` | `SYSTEM_PROMPT` 必須有 `## 角色`、`## 安全規則`、`## 回答格式`；`SYSTEM_INSTRUCTION` 必須有 `## 適用問題`、`## 回答套版`、`## 範例問題`、`## 注意事項` |
-| `EXAMPLE_QUESTIONS` | `SYSTEM_INSTRUCTION` 的 `## 範例問題` 底下需有 1–5 個 `- ` 條列，每題最多 40 字 |
+| `REQUIRED_SECTION` | `SYSTEM_PROMPT` 不要求任何章節（平台安全規則由程式碼的 `SafetyRules` 固定附加）；`SYSTEM_INSTRUCTION` 只要求 `## 適用問題`，且該章節（到下一個 `## ` 標題之間）至少有一行非空白文字，因為路由只看分類名稱與這一節 |
+| `EXAMPLE_QUESTIONS` | `SYSTEM_INSTRUCTION` 的 `## 範例問題` 選填：可省略章節，有的話 0–5 個 `- ` 條列，每題最多 40 字；沒有範例問題的分類不顯示在快捷問題區，但仍參與路由 |
 | `FORBIDDEN_CONTENT` | 不得包含下表任何樣式 |
 
 禁止內容（regex，不分大小寫）：
@@ -201,11 +201,15 @@ stateDiagram-v2
 |---|---|
 | API key / token | `sk-[A-Za-z0-9_-]{16,}`、`Bearer\s+[A-Za-z0-9._-]{16,}` |
 | 密碼 | `(password\|passwd\|密碼)\s*[:：=]` |
-| 網址與 IP | `https?://`、`\b\d{1,3}(\.\d{1,3}){3}\b` |
+| 網址 | `https?://` 之後的 host（只取主機名稱字元：英數字、`.`、`-`，遇到其他字元即停止，所以緊接在後的 `)`、`。` 等標點不算進 host；結尾的 `.` 忽略；轉小寫）不在白名單 `ai-assistant.config.allowed-url-hosts` 內；清單為空＝不允許任何網址。完全相等才放行，不含子網域；host 後面緊接 `@`（如 `https://docs.example.com@evil.com`）一律不允許 |
+| IP | `\b\d{1,3}(\.\d{1,3}){3}\b`，獨立一項，一律擋，不受白名單影響（`http://10.1.2.3` 也擋） |
 | 身分證號 | `\b[A-Z][12]\d{8}\b` |
 | 手機號碼 | `\b09\d{2}-?\d{3}-?\d{3}\b` |
 | 顧客編號 | `\bC\d{3}\b`（POC 格式；整合時換成平台實際格式） |
-| 越權指令 | `忽略(以上\|先前\|所有).{0,10}(規則\|指示\|限制)`、`ignore (all\|previous\|above) (rules\|instructions)` |
+
+- 白名單與 tool call 的 `market.twse.allowed-hosts` 各自獨立：後者管後端程式可連線的對象，前者管 prompt 裡可以寫的連結。修改清單需改設定並重新啟動。
+- 錯誤訊息格式（`rule` 為 `FORBIDDEN_CONTENT`）：`第 {n} 行疑似包含{類型}，請移除`，類型直接接在「疑似包含」後面，例如 `第 12 行疑似包含未允許的網址，請移除`、`第 12 行疑似包含IP 位址，請移除`、`第 12 行疑似包含API key 或 token，請移除`。
+- 其他驗證訊息：`缺少必要章節「## 適用問題」`、`「## 適用問題」不可空白`、`「範例問題」最多 5 題，目前有 {n} 題`、`「範例問題」每題最多 40 字`。
 
 ### 2.6 讀取與快取
 
