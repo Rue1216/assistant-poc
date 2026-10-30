@@ -227,17 +227,102 @@ describe('AssistantPanel', () => {
     expect(foot.find('.ai-composer__count').text()).toBe('0 / 1000')
   })
 
-  it('scrolls to the start of a new answer rather than its end', async () => {
-    chat.mockResolvedValue(answer('長回答'))
-    const { wrapper, store } = await mountPanel()
-    // jsdom has no layout: the list starts at 100px, the answer at 500px
-    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
-      return { top: this.matches('article.ai-msg') ? 500 : 100 } as DOMRect
+  describe('scrolling', () => {
+    // jsdom has no layout: the list starts at 100px and the newest question at 400px when the list is not scrolled
+    function fakeLayout(list: HTMLElement, viewport: number, content: number) {
+      const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+        return { top: this.matches('.ai-msg--user') ? 400 - list.scrollTop : 100 } as DOMRect
+      })
+      Object.defineProperty(list, 'clientHeight', { configurable: true, value: viewport })
+      // scrollHeight includes the bottom space, as in a real browser
+      Object.defineProperty(list, 'scrollHeight', {
+        configurable: true,
+        get: () => content + (parseFloat(list.querySelector<HTMLElement>('.ai-tail')?.style.height ?? '') || 0),
+      })
+      return rect
+    }
+
+    it('scrolls the question to the top as soon as it is sent', async () => {
+      chat.mockReturnValue(new Promise(() => {}))
+      const { wrapper, store } = await mountPanel()
+      const list = wrapper.find('.ai-messages').element as HTMLElement
+      const rect = fakeLayout(list, 600, 2000)
+      void store.send('hello')
+      await flushPromises()
+      expect(list.scrollTop).toBe(284) // 400 - 100 - 16
+      rect.mockRestore()
     })
-    await store.send('hello')
-    await flushPromises()
-    expect(wrapper.find('.ai-messages').element.scrollTop).toBe(384)
-    rect.mockRestore()
+
+    it('does not scroll when the answer arrives', async () => {
+      let resolve!: (r: ChatResponse) => void
+      chat.mockReturnValue(new Promise<ChatResponse>((r) => (resolve = r)))
+      const { wrapper, store } = await mountPanel()
+      const list = wrapper.find('.ai-messages').element as HTMLElement
+      const rect = fakeLayout(list, 600, 2000)
+      void store.send('hello')
+      await flushPromises()
+      list.scrollTop = 50 // the user scrolls while waiting
+      resolve(answer('長回答'))
+      await flushPromises()
+      expect(list.scrollTop).toBe(50)
+      rect.mockRestore()
+    })
+
+    it('does not scroll when the request is cancelled', async () => {
+      chat.mockReturnValue(new Promise(() => {}))
+      const { wrapper, store } = await mountPanel()
+      const list = wrapper.find('.ai-messages').element as HTMLElement
+      const rect = fakeLayout(list, 600, 2000)
+      void store.send('hello')
+      await flushPromises()
+      list.scrollTop = 50
+      store.cancel()
+      await flushPromises()
+      expect(list.scrollTop).toBe(50)
+      rect.mockRestore()
+    })
+
+    it('adds bottom space so a short last exchange can reach the top', async () => {
+      chat.mockReturnValue(new Promise(() => {}))
+      const { wrapper, store } = await mountPanel()
+      const list = wrapper.find('.ai-messages').element as HTMLElement
+      const rect = fakeLayout(list, 600, 500)
+      void store.send('hello')
+      await flushPromises()
+      // the question must sit at 284 with 600px of view below: 284 + 600 - 500 = 384px of space
+      expect(wrapper.find<HTMLElement>('.ai-tail').element.style.height).toBe('384px')
+      expect(list.scrollTop).toBe(284)
+      rect.mockRestore()
+    })
+
+    it('needs no bottom space when the content is long enough', async () => {
+      chat.mockReturnValue(new Promise(() => {}))
+      const { wrapper, store } = await mountPanel()
+      const list = wrapper.find('.ai-messages').element as HTMLElement
+      const rect = fakeLayout(list, 600, 2000)
+      void store.send('hello')
+      await flushPromises()
+      expect(wrapper.find<HTMLElement>('.ai-tail').element.style.height).toBe('0px')
+      rect.mockRestore()
+    })
+
+    it.each([
+      ['answer', (_s: ReturnType<typeof useAssistantStore>, resolve: (r: ChatResponse) => void) => resolve(answer('短'))],
+      ['cancel', (s: ReturnType<typeof useAssistantStore>) => s.cancel()],
+    ])('removes the bottom space after the %s', async (_, finish) => {
+      let resolve!: (r: ChatResponse) => void
+      chat.mockReturnValue(new Promise<ChatResponse>((r) => (resolve = r)))
+      const { wrapper, store } = await mountPanel()
+      const list = wrapper.find('.ai-messages').element as HTMLElement
+      const rect = fakeLayout(list, 600, 500)
+      void store.send('hello')
+      await flushPromises()
+      expect(wrapper.find<HTMLElement>('.ai-tail').element.style.height).toBe('384px')
+      finish(store, resolve)
+      await flushPromises()
+      expect(wrapper.find<HTMLElement>('.ai-tail').element.style.height).toBe('0px')
+      rect.mockRestore()
+    })
   })
 
   describe('new chat button', () => {

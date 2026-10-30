@@ -24,10 +24,12 @@ defineEmits<{
 /** Earlier rounds stay on screen but are not sent as history; say so under each 新對話 divider. */
 const NEW_ROUND_HINT = "以下為新對話，不會參考上方的對話內容";
 
-/** Gap kept above an answer scrolled to the top, same as the list's padding. */
-const ANSWER_TOP_GAP = 16;
+/** Gap kept above a question scrolled to the top, same as the list's padding. */
+const QUESTION_TOP_GAP = 16;
 
 const box = ref<HTMLElement | null>(null);
+/** Space below the thread so the newest question can reach the top while its answer is still short. */
+const tailHeight = ref(0);
 function timeLabel(iso: string): string {
   // compare calendar days in Asia/Taipei; formatTaipei is "YYYY/MM/DD HH:mm"
   const day = (t: string) => formatTaipei(t).slice(0, 10);
@@ -46,8 +48,8 @@ const dividers = computed(() =>
 
 /** Message index -> how many of its round's messages were folded into the summary; set on the last such message only. */
 const summaryHints = computed(() => {
-  const counts = new Map<number, number>()
-  const lastIndex = new Map<number, number>()
+  const counts = new Map<number, number>();
+  const lastIndex = new Map<number, number>();
   props.messages.forEach((m, i) => {
     if (!m.summarized) return;
     counts.set(m.round, (counts.get(m.round) ?? 0) + 1);
@@ -69,23 +71,45 @@ const awaitingRound = computed(
 );
 
 watch(
-  () => [props.messages.length, props.messages.at(-1)?.state, props.round],
-  async () => {
+  () =>
+    [
+      props.messages.length,
+      props.messages.at(-1)?.state,
+      props.round,
+      props.messages.at(-1)?.id,
+    ] as const,
+  async ([, , , lastId], [, , , previousId]) => {
     await nextTick();
     const el = box.value;
     if (!el) return;
-    // a finished answer arrives whole; show its start instead of jumping to its end
-    const last = props.messages.at(-1);
-    const answer =
-      last?.role === "assistant" && last.state === "done"
-        ? el.querySelector(`[data-message-id="${last.id}"]`)
-        : null;
-    el.scrollTop = answer
-      ? el.scrollTop +
-        answer.getBoundingClientRect().top -
-        el.getBoundingClientRect().top -
-        ANSWER_TOP_GAP
-      : el.scrollHeight;
+    // A newly sent question goes to the top. Later state changes (answer, error, cancel) leave the scroll alone and
+    // drop the bottom space: it is only needed while the answer is pending, and whenever it was non-zero the whole
+    // exchange fits in the view, so removing it only shifts the view down to the end of the answer.
+    if (lastId === previousId && !awaitingRound.value) {
+      if (props.messages.at(-1)?.state !== "pending") tailHeight.value = 0;
+      return;
+    }
+    const question = awaitingRound.value
+      ? null
+      : [...props.messages].reverse().find((m) => m.role === "user");
+    const target = question
+      ? el.querySelector(`[data-message-id="${question.id}"]`)
+      : null;
+    if (!target) {
+      tailHeight.value = 0;
+      await nextTick();
+      el.scrollTop = el.scrollHeight;
+      return;
+    }
+    const top =
+      el.scrollTop +
+      target.getBoundingClientRect().top -
+      el.getBoundingClientRect().top -
+      QUESTION_TOP_GAP;
+    const content = el.scrollHeight - tailHeight.value;
+    tailHeight.value = Math.max(0, top + el.clientHeight - content);
+    await nextTick();
+    el.scrollTop = top;
   },
 );
 </script>
@@ -110,7 +134,11 @@ watch(
             {{ NEW_ROUND_HINT }}
           </p>
         </div>
-        <UserMessage v-if="m.role === 'user'" :message="m" />
+        <UserMessage
+          v-if="m.role === 'user'"
+          :data-message-id="m.id"
+          :message="m"
+        />
         <PendingMessage v-else-if="m.state === 'pending'" />
         <ErrorMessage
           v-else-if="m.state === 'error'"
@@ -139,6 +167,12 @@ watch(
         </div>
       </div>
     </div>
+    <div
+      v-if="!unavailable && messages.length > 0"
+      class="ai-tail"
+      :style="{ height: `${tailHeight}px` }"
+      aria-hidden="true"
+    />
   </div>
 </template>
 
@@ -150,6 +184,7 @@ watch(
   padding: var(--space-4);
   background: var(--gray-25);
   scroll-behavior: smooth;
+  overflowscroll-behavior: contain;
 }
 .ai-thread {
   display: flex;
