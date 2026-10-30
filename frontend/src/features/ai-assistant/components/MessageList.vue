@@ -44,6 +44,24 @@ const dividers = computed(() =>
   }),
 );
 
+/** Message index -> how many of its round's messages were folded into the summary; set on the last such message only. */
+const summaryHints = computed(() => {
+  const counts = new Map<number, number>()
+  const lastIndex = new Map<number, number>()
+  props.messages.forEach((m, i) => {
+    if (!m.summarized) return;
+    counts.set(m.round, (counts.get(m.round) ?? 0) + 1);
+    lastIndex.set(m.round, i);
+  });
+  const byIndex = new Map<number, number>();
+  for (const [round, i] of lastIndex) byIndex.set(i, counts.get(round)!);
+  return byIndex;
+});
+
+function summaryHint(n: number): string {
+  return `以上 ${n} 則對話已整理成摘要，小幫手會參考摘要繼續回答`;
+}
+
 /** A new round was started and has no messages yet. */
 const awaitingRound = computed(
   () =>
@@ -109,6 +127,11 @@ watch(
           :message="m"
           @rate="$emit('rate', m.id, $event)"
         />
+        <div v-if="summaryHints.has(i)" class="ai-round-break">
+          <div class="ai-divider">
+            <span>{{ summaryHint(summaryHints.get(i)!) }}</span>
+          </div>
+        </div>
       </template>
       <div v-if="awaitingRound" class="ai-round-break">
         <div class="ai-divider">

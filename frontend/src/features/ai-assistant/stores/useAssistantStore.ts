@@ -16,6 +16,8 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
   const unavailable = ref(false)
   // New chat keeps earlier messages on screen but starts a new round: only the current round is sent as history.
   const round = ref(0)
+  // Rolling summary of earlier turns of the current round; sent with each request, replaced by the server's newer one.
+  const summary = ref<string | null>(null)
 
   // The in-flight request. Anything that invalidates it sets this to null, so a late
   // response (customer switch, cancel, new round) is recognised as stale and dropped.
@@ -34,11 +36,14 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
     pending.value = false
   }
 
-  function buildHistory(): HistoryItem[] {
-    return messages.value
-      .filter((m) => m.round === round.value && m.state === 'done' && m.content.length > 0)
+  function buildHistory(): { items: HistoryItem[]; ids: string[] } {
+    const kept = messages.value
+      .filter((m) => m.round === round.value && m.state === 'done' && m.content.length > 0 && !m.summarized)
       .slice(-MAX_HISTORY_MESSAGES)
-      .map((m) => ({ role: m.role, content: m.content.slice(0, MAX_HISTORY_CONTENT) }))
+    return {
+      items: kept.map((m) => ({ role: m.role, content: m.content.slice(0, MAX_HISTORY_CONTENT) })),
+      ids: kept.map((m) => m.id),
+    }
   }
 
   function bindCustomer(id: string): void {
@@ -48,6 +53,7 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
     feedbackState.clear()
     unavailable.value = false
     round.value = 0
+    summary.value = null
     certNo.value = id
   }
 
@@ -58,6 +64,7 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
     feedbackState.clear()
     unavailable.value = false
     round.value = 0
+    summary.value = null
     certNo.value = null
   }
 
@@ -70,7 +77,7 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
     const cid = certNo.value
     if (!message || !cid || pending.value || unavailable.value) return
 
-    const history = buildHistory()
+    const { items: history, ids } = buildHistory()
     const now = new Date().toISOString()
     const r = round.value
     messages.value.push(
@@ -86,7 +93,7 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
     pending.value = true
 
     try {
-      const res = await aiAssistantApi.chat(cid, { message, history, ...(categoryKey ? { categoryKey } : {}) }, controller.signal)
+      const res = await aiAssistantApi.chat(cid, { message, history, ...(categoryKey ? { categoryKey } : {}), ...(summary.value ? { historySummary: summary.value } : {}) }, controller.signal)
       if (current !== controller) return
       user.state = 'done'
       bot.state = 'done'
@@ -97,6 +104,11 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
       bot.citations = res.citations
       bot.disclaimer = res.disclaimer
       bot.toolCalls = res.toolCalls
+      if (res.historySummary) {
+        summary.value = res.historySummary.text
+        const folded = new Set(ids.slice(0, res.historySummary.summarizedCount))
+        for (const m of messages.value) if (folded.has(m.id)) m.summarized = true
+      }
     } catch (e) {
       if (current !== controller) return
       if (e instanceof ApiError && e.code === NOT_FOUND_CODE) {
@@ -144,6 +156,7 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
     if (!messages.value.some((m) => m.round === round.value)) return
     cancel()
     round.value++
+    summary.value = null
   }
 
   /**
@@ -182,5 +195,5 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
     entry.inFlight = false
   }
 
-  return { certNo, messages, pending, unavailable, round, bindCustomer, reset, markUnavailable, send, cancel, retry, startNewRound, rate }
+  return { certNo, messages, pending, unavailable, round, summary, bindCustomer, reset, markUnavailable, send, cancel, retry, startNewRound, rate }
 })

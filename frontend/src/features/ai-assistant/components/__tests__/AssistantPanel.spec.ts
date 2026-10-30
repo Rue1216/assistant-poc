@@ -22,7 +22,7 @@ const CATEGORIES: SuggestionCategory[] = [
 ]
 
 function answer(text = '回答'): ChatResponse {
-  return { requestId: 'r', answer: text, blocks: [{ type: 'paragraph', text, citations: [] }], citations: [], queriedAt: '2026-10-19T14:03:24+08:00', disclaimer: null, toolCalls: [] }
+  return { requestId: 'r', answer: text, blocks: [{ type: 'paragraph', text, citations: [] }], citations: [], queriedAt: '2026-10-19T14:03:24+08:00', disclaimer: null, toolCalls: [], historySummary: null }
 }
 
 async function mountPanel(certNo = RETIREE, roleKey = 'SALES_RM') {

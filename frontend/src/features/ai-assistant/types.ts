@@ -29,6 +29,12 @@ export interface ToolCallSummary {
   durationMs: number
 }
 
+export interface HistorySummary {
+  text: string
+  /** Counted from the oldest item of the `history` array sent in that request. */
+  summarizedCount: number
+}
+
 export interface ChatResponse {
   requestId: string
   answer: string
@@ -37,6 +43,7 @@ export interface ChatResponse {
   queriedAt: string
   disclaimer: string | null
   toolCalls: ToolCallSummary[]
+  historySummary: HistorySummary | null
 }
 
 export interface SuggestionCategory {
@@ -55,6 +62,8 @@ export interface ChatRequestBody {
   history: HistoryItem[]
   /** configKey of a quick-question category; present only for chip questions (skips routing). */
   categoryKey?: string
+  /** Rolling summary of earlier turns; omitted when there is none (max 1000 code points). */
+  historySummary?: string
 }
 
 export type FeedbackRating = 'UP' | 'DOWN'
@@ -86,6 +95,8 @@ export interface ChatMessage {
   requestId?: string
   feedback?: FeedbackRating | null
   error?: ChatMessageError
+  /** Folded into the rolling summary: no longer sent as history. */
+  summarized?: boolean
 }
 
 // ---- Prompt management (02 section 3) ----

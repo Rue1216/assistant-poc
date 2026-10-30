@@ -24,6 +24,7 @@ function response(answer: string): ChatResponse {
     queriedAt: '2026-10-19T14:03:24+08:00',
     disclaimer: null,
     toolCalls: [],
+    historySummary: null,
   }
 }
 
@@ -479,6 +480,85 @@ describe('useAssistantStore', () => {
       d.reject(new Error('x'))
       await expect(p).resolves.toBeUndefined()
       expect(store.messages).toEqual([])
+    })
+  })
+
+  describe('rolling summary', () => {
+    const withSummary = (answer: string, text: string, summarizedCount: number): ChatResponse => ({
+      ...response(answer),
+      historySummary: { text, summarizedCount },
+    })
+
+    it('sends and stores the rolling summary', async () => {
+      const store = useAssistantStore()
+      store.bindCustomer(RETIREE)
+      chat.mockResolvedValueOnce(response('a1'))
+      await store.send('q1')
+      chat.mockResolvedValueOnce(withSummary('a2', 'S1', 2))
+      await store.send('q2')
+      expect(store.summary).toBe('S1')
+      expect(store.messages.map((m) => !!m.summarized)).toEqual([true, true, false, false])
+      chat.mockResolvedValueOnce(response('a3'))
+      await store.send('q3')
+      const body = chat.mock.calls[2]![1]
+      expect(body.historySummary).toBe('S1')
+      expect(body.history).toEqual([
+        { role: 'user', content: 'q2' },
+        { role: 'assistant', content: 'a2' },
+      ])
+    })
+
+    it('omits historySummary when there is none', async () => {
+      chat.mockResolvedValue(response('a'))
+      const store = useAssistantStore()
+      store.bindCustomer(RETIREE)
+      await store.send('q1')
+      await store.send('q2')
+      expect('historySummary' in chat.mock.calls[0]![1]).toBe(false)
+      expect('historySummary' in chat.mock.calls[1]![1]).toBe(false)
+    })
+
+    it('keeps summary state when the request fails', async () => {
+      const store = useAssistantStore()
+      store.bindCustomer(RETIREE)
+      chat.mockResolvedValueOnce(withSummary('a1', 'S1', 0))
+      await store.send('q1')
+      chat.mockRejectedValueOnce(new ApiError(500, 'AI_INTERNAL', 'x'))
+      await store.send('q2')
+      expect(store.summary).toBe('S1')
+      expect(store.messages.some((m) => m.summarized)).toBe(false)
+    })
+
+    it('drops a late summary after a new round', async () => {
+      const d = deferred<ChatResponse>()
+      chat.mockReturnValue(d.promise)
+      const store = useAssistantStore()
+      store.bindCustomer(RETIREE)
+      const p = store.send('q1')
+      store.startNewRound()
+      d.resolve(withSummary('a1', 'S1', 0))
+      await p
+      expect(store.summary).toBeNull()
+      expect(store.messages.some((m) => m.summarized)).toBe(false)
+    })
+
+    it('clears the summary on new round, customer switch and reset', async () => {
+      const store = useAssistantStore()
+      store.bindCustomer(RETIREE)
+      const seed = async () => {
+        chat.mockResolvedValueOnce(withSummary('a', 'S', 0))
+        await store.send('q')
+        expect(store.summary).toBe('S')
+      }
+      await seed()
+      store.startNewRound()
+      expect(store.summary).toBeNull()
+      await seed()
+      store.bindCustomer(COMPLAINT)
+      expect(store.summary).toBeNull()
+      await seed()
+      store.reset()
+      expect(store.summary).toBeNull()
     })
   })
 })
