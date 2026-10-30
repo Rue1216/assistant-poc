@@ -80,7 +80,8 @@ public class AuditLogger {
                 truncated, e.outcome(), clip(e.errorCode(), MAX_ID), calls, clamp(e.durationMs()), clock.instant(),
                 unverified(e.unverifiedNumbers()), clamp(e.modelCalls()), clamp(e.inputTokens()),
                 clamp(e.outputTokens()), clamp(e.totalTokens()), versions(e), clip(e.routeSource(), MAX_ID),
-                clip(e.instructionKey(), MAX_ID));
+                clip(e.instructionKey(), MAX_ID), e.summaryIn(), clip(e.summaryStatus(), MAX_ID),
+                clamp(e.summarizedMessages()), clamp(e.summaryTokens()));
     }
 
     private AuditRecord.ToolCall toCall(ToolOutcome o, Map<String, Integer> numbers, CustomerContext customer) {

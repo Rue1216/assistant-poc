@@ -12,6 +12,8 @@ import java.util.Map;
  * " [n]" markers; {@code citationNumbers} maps a citation id (S1) to its number in the answer.
  * The token counts add up every model round, including routing and those of a failed question.
  * {@code routeSource} (ROUTER, CHIP or FALLBACK) and {@code instructionKey} are null when routing never happened.
+ * The summary fields are false, null, 0 and 0 when no summary was brought in or made; {@code summaryTokens} is
+ * already part of {@code totalTokens}.
  */
 public record AuditEntry(String requestId, UserContext user, CustomerContext customer, String redactedQuestion,
                          String answer, boolean answerTruncated, String outcome, String errorCode,
@@ -19,5 +21,7 @@ public record AuditEntry(String requestId, UserContext user, CustomerContext cus
                          List<String> unverifiedNumbers, long durationMs, int modelCalls,
                          long inputTokens, long outputTokens, long totalTokens,
                          List<PromptVersion> promptVersions, String routeSource,
-                         String instructionKey) {
+                         String instructionKey,
+                         boolean summaryIn, String summaryStatus, int summarizedMessages,
+                         long summaryTokens) {
 }

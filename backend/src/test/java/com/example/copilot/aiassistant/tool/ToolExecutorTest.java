@@ -34,7 +34,7 @@ class ToolExecutorTest {
     private ToolExecutor executorFor(AssistantTool<?> tool, Duration ceiling) {
         AiAssistantProperties props = new AiAssistantProperties(null,
                 new AiAssistantProperties.Limits(1000, 10, 8000, 5, 3, Duration.ofSeconds(60), 16000,
-                        ceiling, 4096, 10), null, null, null, null);
+                        ceiling, 4096, 10, 1000), null, null, null, null);
         ToolGuard guard = new ToolGuard(new ToolRegistry(List.of(tool)),
                 Validation.buildDefaultValidatorFactory().getValidator(), mapper);
         return new ToolExecutor(guard, new PiiRedactor(), mapper, props);

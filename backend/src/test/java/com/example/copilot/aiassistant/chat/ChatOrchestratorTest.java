@@ -37,11 +37,13 @@ import com.example.copilot.aiassistant.privacy.PiiRedactor;
 import com.example.copilot.aiassistant.prompt.AssembledPrompt;
 import com.example.copilot.aiassistant.config.AssistantConfig;
 import com.example.copilot.aiassistant.prompt.CustomerNotes;
+import com.example.copilot.aiassistant.prompt.HistorySummarizer;
 import com.example.copilot.aiassistant.prompt.InstructionRouter;
 import com.example.copilot.aiassistant.prompt.InstructionSelection;
 import com.example.copilot.aiassistant.prompt.PromptAssembler;
 import com.example.copilot.aiassistant.prompt.PublishedConfigCache.PublishedConfigs;
 import com.example.copilot.aiassistant.prompt.PromptVersion;
+import com.example.copilot.aiassistant.prompt.SummaryPrompt;
 import com.example.copilot.aiassistant.tool.CitationDetail;
 import com.example.copilot.aiassistant.tool.ToolExecutor;
 import com.example.copilot.aiassistant.tool.ToolGuard;
@@ -89,6 +91,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.IntFunction;
 import java.util.stream.IntStream;
 import org.apache.logging.log4j.Level;
 import org.junit.jupiter.api.AfterEach;
@@ -122,7 +125,7 @@ class ChatOrchestratorTest {
     private final PiiRedactor redactor = new PiiRedactor();
     private final AiAssistantProperties props = new AiAssistantProperties(null,
             new AiAssistantProperties.Limits(1000, 10, 8000, 5, 3, Duration.ofSeconds(60), 16000,
-                    Duration.ofSeconds(5), 4096, 10), null, null, null, null);
+                    Duration.ofSeconds(5), 4096, 10, 1000), null, null, null, null);
     private final ScriptedChatModel model = new ScriptedChatModel();
     private final List<AuditEntry> audits = new ArrayList<>();
     private ChatOrchestrator orchestrator;
@@ -178,6 +181,11 @@ class ChatOrchestratorTest {
     }
 
     private ChatOrchestrator orchestrator(ToolRegistry registry, PromptAssembler assembler, CustomerDataPort port) {
+        return orchestrator(registry, assembler, port, props);
+    }
+
+    private ChatOrchestrator orchestrator(ToolRegistry registry, PromptAssembler assembler, CustomerDataPort port,
+                                          AiAssistantProperties props) {
         ToolExecutor executor = new ToolExecutor(new ToolGuard(registry, VALIDATOR, mapper), redactor, mapper, props);
         AuditLogger auditLogger = new AuditLogger(null, clock, null, null, null) {
             @Override
@@ -186,7 +194,9 @@ class ChatOrchestratorTest {
             }
         };
         return new ChatOrchestrator(model, registry, executor, redactor, assembler, new CustomerNotes(), port,
-                new InstructionRouter(model, new LlmErrorMapper(), mapper), new AnswerAssembler(redactor, mapper), auditLogger, new LlmErrorMapper(), props, clock);
+                new InstructionRouter(model, new LlmErrorMapper(), mapper),
+                new HistorySummarizer(model, new LlmErrorMapper(), mapper, redactor, props),
+                new AnswerAssembler(redactor, mapper), auditLogger, new LlmErrorMapper(), props, clock);
     }
 
     @AfterEach
@@ -838,33 +848,272 @@ class ChatOrchestratorTest {
         assertThat(systemText(model.requests().get(0))).doesNotContain("本顧客註記");
     }
 
+    private static final String SUMMARY_REPLY = "{\"summary\":\"- 摘要內容\"}";
+
+    private static List<HistoryMessage> alternating(int count, IntFunction<String> content) {
+        return IntStream.range(0, count)
+                .mapToObj(i -> new HistoryMessage(i % 2 == 0 ? "user" : "assistant", content.apply(i))).toList();
+    }
+
+    /** The history messages of an answer request that carries a summary message: between it and the question. */
+    private static List<ChatMessage> historyAfterSummary(ChatRequest request) {
+        List<ChatMessage> messages = request.messages();
+        return messages.subList(2, messages.size() - 1);
+    }
+
+    private String previousSummaryOf(ChatRequest summaryRequest) {
+        var previous = mapper.readTree(((UserMessage) summaryRequest.messages().get(1)).singleText())
+                .get("previousSummary");
+        return previous.isNull() ? null : previous.asString();
+    }
+
     @Test
     void historyTrimmedToLimits() {
-        // 25 short messages: only the newest 20 (10 turns) are sent
-        List<HistoryMessage> shortHistory = IntStream.range(0, 25)
-                .mapToObj(i -> new HistoryMessage(i % 2 == 0 ? "user" : "assistant", "第" + i + "則"))
-                .toList();
-        model.reply(answer(10, "好"));
-        orchestrator.chat(new ChatCommand("問題", shortHistory, null), USER, RETIREE_FULL);
+        // 25 short messages: the newest 18 are the limit; the first of them is an assistant message, so 17 are kept
+        model.reply(text(SUMMARY_REPLY, 30)).reply(answer(10, "好"));
+        ChatResult result = orchestrator.chat(new ChatCommand("問題", alternating(25, i -> "第" + i + "則"), null),
+                USER, RETIREE_FULL);
 
-        List<ChatMessage> sent = history(model.requests().get(0));
-        assertThat(sent).hasSize(20);
-        assertThat(sent.get(0)).isInstanceOf(AiMessage.class);
-        assertThat(((AiMessage) sent.get(0)).text()).isEqualTo("第5則");
-        assertThat(((UserMessage) sent.get(19)).singleText()).isEqualTo("第24則");
+        assertThat(((SystemMessage) model.requests().get(0).messages().get(0)).text()).isEqualTo(SummaryPrompt.TEXT);
+        List<ChatMessage> sent = historyAfterSummary(model.requests().get(1));
+        assertThat(sent).hasSize(17);
+        assertThat(((UserMessage) sent.get(0)).singleText()).isEqualTo("第8則");
+        assertThat(((UserMessage) sent.get(16)).singleText()).isEqualTo("第24則");
+        assertThat(result.historySummary()).isEqualTo(new ChatResult.HistorySummary("- 摘要內容", 8));
 
-        // 25 long messages: total characters stay within 8000, newest kept
-        List<HistoryMessage> longHistory = IntStream.range(0, 25)
-                .mapToObj(i -> new HistoryMessage(i % 2 == 0 ? "user" : "assistant", i + "字".repeat(497)))
-                .toList();
-        model.reply(answer(10, "好"));
-        orchestrator.chat(new ChatCommand("問題", longHistory, null), USER, RETIREE_FULL);
+        // 25 long messages: total characters stay within 8000, newest kept, kept part starts with a user message
+        model.reply(text(SUMMARY_REPLY, 30)).reply(answer(10, "好"));
+        ChatResult longResult = orchestrator.chat(
+                new ChatCommand("問題", alternating(25, i -> i + "字".repeat(497)), null), USER, RETIREE_FULL);
 
-        List<ChatMessage> sentLong = history(model.requests().get(1));
-        assertThat(sentLong).hasSizeLessThanOrEqualTo(20);
+        List<ChatMessage> sentLong = historyAfterSummary(model.requests().get(3));
         assertThat(sentLong.stream().mapToInt(ChatOrchestratorTest::chars).sum()).isLessThanOrEqualTo(8000);
-        assertThat(sentLong).hasSize(16); // 16 newest: 15 x 499 + 498 = 7983; one more would exceed 8000
+        assertThat(sentLong.get(0)).isInstanceOf(UserMessage.class);
         assertThat(((UserMessage) sentLong.get(sentLong.size() - 1)).singleText()).startsWith("24字");
+        assertThat(sentLong).hasSize(15); // 16 newest fit (7983), but the oldest of them is an assistant message
+        assertThat(longResult.historySummary().summarizedCount() + sentLong.size()).isEqualTo(25);
+    }
+
+    @Test
+    void noSummaryWhenWithinLimits() {
+        List<HistoryMessage> history = alternating(3, i -> "短訊息" + i);
+        model.reply(answer(10, "好"));
+
+        ChatResult result = orchestrator.chat(new ChatCommand("問題", history, null), USER, RETIREE_FULL);
+
+        assertThat(model.requests()).singleElement().satisfies(request -> {
+            assertThat(request.messages()).hasSize(5);
+            assertThat(request.messages().get(0)).isInstanceOf(SystemMessage.class);
+            assertThat(history(request)).containsExactly(UserMessage.from("短訊息0"), AiMessage.from("短訊息1"),
+                    UserMessage.from("短訊息2"));
+            assertThat(request.messages().get(4)).isEqualTo(UserMessage.from("問題"));
+        });
+        assertThat(result.historySummary()).isNull();
+        assertThat(singleAudit().summaryStatus()).isNull();
+    }
+
+    @Test
+    void keptHistoryStartsWithUser() {
+        // sizes 100, 3000, 3000, 2000: the char limit cuts right before the 100-char user message, so the kept
+        // part would start with the assistant message at index 1, which then joins the overflow
+        List<HistoryMessage> history = List.of(new HistoryMessage("user", "甲".repeat(100)),
+                new HistoryMessage("assistant", "乙".repeat(3000)), new HistoryMessage("user", "丙".repeat(3000)),
+                new HistoryMessage("assistant", "丁".repeat(2000)));
+        model.reply(text(SUMMARY_REPLY, 30)).reply(answer(10, "好"));
+
+        ChatResult result = orchestrator.chat(new ChatCommand("問題", history, null), USER, RETIREE_FULL);
+
+        List<ChatMessage> kept = historyAfterSummary(model.requests().get(1));
+        assertThat(kept).hasSize(2);
+        assertThat(kept.get(0)).isInstanceOf(UserMessage.class);
+        assertThat(((UserMessage) kept.get(0)).singleText()).startsWith("丙");
+        assertThat(result.historySummary().summarizedCount()).isEqualTo(2);
+    }
+
+    @Test
+    void summaryMessagePrecedesHistory() {
+        model.reply(text(SUMMARY_REPLY, 30)).reply(answer(10, "好"));
+
+        orchestrator.chat(new ChatCommand("問題", alternating(25, i -> "第" + i + "則"), null, "- 舊摘要"), USER,
+                RETIREE_FULL);
+
+        assertThat(previousSummaryOf(model.requests().get(0))).isEqualTo("- 舊摘要");
+        assertThat(model.requests().get(1).messages().get(1))
+                .isEqualTo(UserMessage.from(ChatOrchestrator.SUMMARY_PREFIX + "- 摘要內容"));
+    }
+
+    @Test
+    void summaryWithoutHistoryIsStillSent() {
+        model.reply(answer(10, "好"));
+
+        ChatResult result = orchestrator.chat(new ChatCommand("問題", List.of(), null, "- 舊摘要"), USER,
+                RETIREE_FULL);
+
+        assertThat(model.requests()).singleElement().satisfies(request -> {
+            assertThat(request.messages()).hasSize(3);
+            assertThat(request.messages().get(1))
+                    .isEqualTo(UserMessage.from(ChatOrchestrator.SUMMARY_PREFIX + "- 舊摘要"));
+        });
+        assertThat(result.historySummary()).isNull();
+        assertThat(singleAudit().summaryIn()).isTrue();
+    }
+
+    @Test
+    void incomingSummaryIsRedacted() {
+        model.reply(answer(10, "好")).reply(answer(10, "好"));
+
+        orchestrator.chat(new ChatCommand("問題", List.of(), null, "王小明想要月配息"), USER, RETIREE_FULL);
+        orchestrator.chat(new ChatCommand("問題", List.of(), null, "   "), USER, RETIREE_FULL);
+
+        assertThat(model.requests().get(0).messages().get(1))
+                .isEqualTo(UserMessage.from(ChatOrchestrator.SUMMARY_PREFIX + "【本顧客】想要月配息"));
+        assertThat(model.requests().get(1).messages()).hasSize(2);
+    }
+
+    @Test
+    void summaryFailureFallsBack() {
+        model.reply(text("not json", 30)).reply(answer(10, "好"));
+
+        ChatResult result = orchestrator.chat(
+                new ChatCommand("問題", alternating(25, i -> "第" + i + "則"), null, "- 舊摘要"), USER, RETIREE_FULL);
+
+        assertThat(result.answer()).isEqualTo("好");
+        assertThat(result.historySummary()).isNull();
+        ChatRequest answerRequest = model.requests().get(1);
+        assertThat(answerRequest.messages().get(1))
+                .isEqualTo(UserMessage.from(ChatOrchestrator.SUMMARY_PREFIX + "- 舊摘要"));
+        assertThat(historyAfterSummary(answerRequest)).hasSize(17);
+        assertThat(singleAudit().outcome()).isEqualTo("ANSWERED");
+    }
+
+    @Test
+    void everythingOverflowsWhenOneMessageExceedsLimit() {
+        AiAssistantProperties small = new AiAssistantProperties(null,
+                new AiAssistantProperties.Limits(1000, 10, 200, 5, 3, Duration.ofSeconds(60), 16000,
+                        Duration.ofSeconds(5), 4096, 10, 1000), null, null, null, null);
+        ChatOrchestrator target = orchestrator(new ToolRegistry(List.of()), new PromptAssembler(null, clock) {
+            @Override
+            public PublishedConfigs snapshot() {
+                return new PublishedConfigs(null, List.of());
+            }
+
+            @Override
+            public AssembledPrompt assemble(PublishedConfigs configs, InstructionSelection selection,
+                                            String customerNotes) {
+                return new AssembledPrompt(SYSTEM, List.of());
+            }
+        }, MockCustomerPorts.adapter(), small);
+        model.reply(text(SUMMARY_REPLY, 30)).reply(answer(10, "好"));
+
+        ChatResult result = target.chat(new ChatCommand("問題", alternating(2, i -> "字".repeat(1000)), null),
+                USER, RETIREE_FULL);
+
+        assertThat(historyAfterSummary(model.requests().get(1))).isEmpty();
+        assertThat(result.historySummary().summarizedCount()).isEqualTo(2);
+    }
+
+    @Test
+    void routerReceivesSummary() {
+        ChatOrchestrator routed = routing(routedConfigs());
+        // no summary triggered: the incoming one goes to the router
+        model.reply(route(KEY_A, 400, 10)).reply(answer(100, "回答"));
+        askRouted(routed, "那他呢？", null, List.of(), "- 舊摘要");
+        assertThat(mapper.readTree(((UserMessage) model.requests().get(0).messages().get(1)).singleText())
+                .get("summary").asString()).isEqualTo("- 舊摘要");
+
+        // summary triggered: the router sees the new one
+        model.reply(text(SUMMARY_REPLY, 30)).reply(route(KEY_A, 400, 10)).reply(answer(100, "回答"));
+        askRouted(routed, "那他呢？", null, alternating(25, i -> "第" + i + "則"), "- 舊摘要");
+        assertThat(mapper.readTree(((UserMessage) model.requests().get(3).messages().get(1)).singleText())
+                .get("summary").asString()).isEqualTo("- 摘要內容");
+    }
+
+    @Test
+    void summaryCountsTowardModelCallsAndTokens() {
+        model.reply(text(SUMMARY_REPLY, 30)).reply(answer(10, "好"));
+
+        orchestrator.chat(new ChatCommand("問題", alternating(25, i -> "第" + i + "則"), null), USER, RETIREE_FULL);
+
+        AuditEntry audit = singleAudit();
+        assertThat(audit.modelCalls()).isEqualTo(2);
+        assertThat(audit.totalTokens()).isEqualTo(40);
+    }
+
+    /** 25 messages starting with an assistant one: the cut falls before index 7, a user message, so 7 overflow. */
+    private static List<HistoryMessage> sevenOverflow() {
+        return IntStream.range(0, 25)
+                .mapToObj(i -> new HistoryMessage(i % 2 == 0 ? "assistant" : "user", "第" + i + "則")).toList();
+    }
+
+    @Test
+    void auditRecordsSummaryOutcomes() {
+        // 1. nothing incoming, nothing triggered
+        model.reply(answer(10, "好"));
+        orchestrator.chat(new ChatCommand("問題", List.of(), null), USER, RETIREE_FULL);
+        // 2. incoming summary, not triggered
+        model.reply(answer(10, "好"));
+        orchestrator.chat(new ChatCommand("問題", List.of(), null, "- 舊摘要"), USER, RETIREE_FULL);
+        // 3. summarized
+        model.reply(text(SUMMARY_REPLY, 30)).reply(answer(10, "好"));
+        orchestrator.chat(new ChatCommand("問題", sevenOverflow(), null), USER, RETIREE_FULL);
+        // 4. summary failed
+        model.reply(text("not json", 25)).reply(answer(10, "好"));
+        orchestrator.chat(new ChatCommand("問題", sevenOverflow(), null), USER, RETIREE_FULL);
+
+        assertThat(audits).hasSize(4);
+        assertThat(audits).extracting(AuditEntry::summaryIn).containsExactly(false, true, false, false);
+        assertThat(audits).extracting(AuditEntry::summaryStatus).containsExactly(null, null, "SUMMARIZED", "FAILED");
+        assertThat(audits).extracting(AuditEntry::summarizedMessages).containsExactly(0, 0, 7, 7);
+        assertThat(audits.get(2).summaryTokens()).isEqualTo(30);
+        assertThat(audits.get(3).summaryTokens()).isEqualTo(25);
+        assertThat(audits.get(0).summaryTokens()).isZero();
+        assertThat(audits.get(1).summaryTokens()).isZero();
+    }
+
+    @Test
+    void budgetExceededBySummaryIsAuditedWithSummaryFields() {
+        AiAssistantProperties tiny = new AiAssistantProperties(null,
+                new AiAssistantProperties.Limits(1000, 10, 8000, 5, 3, Duration.ofSeconds(60), 20,
+                        Duration.ofSeconds(5), 4096, 10, 1000), null, null, null, null);
+        ChatOrchestrator target = orchestrator(new ToolRegistry(List.of()), new PromptAssembler(null, clock) {
+            @Override
+            public PublishedConfigs snapshot() {
+                return new PublishedConfigs(null, List.of());
+            }
+
+            @Override
+            public AssembledPrompt assemble(PublishedConfigs configs, InstructionSelection selection,
+                                            String customerNotes) {
+                return new AssembledPrompt(SYSTEM, List.of());
+            }
+        }, MockCustomerPorts.adapter(), tiny);
+        model.reply(text(SUMMARY_REPLY, 30)).reply(answer(10, "不該送出"));
+
+        assertThatThrownBy(() -> target.chat(new ChatCommand("問題", sevenOverflow(), null), USER, RETIREE_FULL))
+                .isInstanceOfSatisfying(AssistantException.class,
+                        e -> assertThat(e.code()).isEqualTo(ErrorCode.AI_TOKEN_BUDGET_EXCEEDED));
+
+        AuditEntry audit = singleAudit();
+        assertThat(audit.outcome()).isEqualTo("FAILED");
+        assertThat(audit.errorCode()).isEqualTo("AI_TOKEN_BUDGET_EXCEEDED");
+        assertThat(audit.summaryStatus()).isEqualTo("SUMMARIZED");
+        assertThat(audit.summarizedMessages()).isEqualTo(7);
+        assertThat(audit.summaryTokens()).isEqualTo(30);
+    }
+
+    @Test
+    void logLinesCarrySummaryCounters() {
+        model.reply(text(SUMMARY_REPLY, 30)).reply(answer(10, "好"));
+
+        List<String> lines;
+        try (LogCapture capture = LogCapture.of(ChatOrchestrator.class, Level.INFO)) {
+            orchestrator.chat(new ChatCommand("問題", sevenOverflow(), null, "- 舊摘要"), USER, RETIREE_FULL);
+            lines = capture.events().stream().map(LogCapture::render).toList();
+        }
+
+        assertThat(lines).anySatisfy(line -> assertThat(line).contains("chat answered",
+                "summaryIn=true summaryStatus=SUMMARIZED summarizedMessages=7 summaryTokens=30"));
+        assertThat(lines).allSatisfy(line -> assertThat(line).doesNotContain("- 摘要內容", "- 舊摘要"));
     }
 
     @Test
@@ -1210,7 +1459,12 @@ class ChatOrchestratorTest {
 
     private ChatResult askRouted(ChatOrchestrator target, String question, String categoryKey,
                                  List<HistoryMessage> history) {
-        return target.chat(new ChatCommand(question, history, categoryKey), USER, RETIREE_FULL);
+        return askRouted(target, question, categoryKey, history, null);
+    }
+
+    private ChatResult askRouted(ChatOrchestrator target, String question, String categoryKey,
+                                 List<HistoryMessage> history, String summary) {
+        return target.chat(new ChatCommand(question, history, categoryKey, summary), USER, RETIREE_FULL);
     }
 
     @Test

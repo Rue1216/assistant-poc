@@ -19,7 +19,7 @@ ai-assistant:
   limits:
     message-max-chars: 1000
     history-max-turns: 10
-    history-max-chars: 8000
+    history-max-chars: 8000   # 手動測試摘要時可暫改為 200，測完改回
     max-tool-calls: 5
     max-model-rounds: 3
     request-timeout: 60s
@@ -27,6 +27,7 @@ ai-assistant:
     tool-timeout: 5s
     tool-result-max-bytes: 4096
     rate-limit-per-minute: 10
+    summary-max-chars: 1000   # 摘要本身的上限，不計入 history-max-chars
   config:
     scheduler-enabled: true          # tests turn this off so the job never fires on its own
     schedule-check-interval: 30s     # 預約發布的檢查頻率

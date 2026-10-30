@@ -7,5 +7,6 @@ import java.util.List;
 
 public record ChatRequestBody(@NotNull String message,
                               List<@NotNull @Valid HistoryItem> history,
-                              @Pattern(regexp = "^instruction\\.[a-z0-9-]{1,50}$") String categoryKey) {
+                              @Pattern(regexp = "^instruction\\.[a-z0-9-]{1,50}$") String categoryKey,
+                              String historySummary) {
 }

@@ -159,6 +159,25 @@ class MongoSchemaTest extends IntegrationTestBase {
     }
 
     @Test
+    void auditValidatorChecksSummaryFields() {
+        mongo.getCollection(AUDIT).insertOne(auditDocWithFeedback("schema-sum-ok1", null)
+                .append("summaryIn", true).append("summaryStatus", "SUMMARIZED")
+                .append("summarizedMessages", 7).append("summaryTokens", 30));
+        mongo.getCollection(AUDIT).insertOne(auditDocWithFeedback("schema-sum-ok2", null)
+                .append("summaryIn", true).append("summaryStatus", "FAILED")
+                .append("summarizedMessages", 2).append("summaryTokens", 0));
+        mongo.getCollection(AUDIT).insertOne(auditDocWithFeedback("schema-sum-ok3", null)
+                .append("summaryIn", false).append("summaryStatus", null)
+                .append("summarizedMessages", 0).append("summaryTokens", 0));
+        assertThatThrownBy(() -> mongo.getCollection(AUDIT).insertOne(
+                auditDocWithFeedback("schema-sum-bad1", null).append("summaryStatus", "OTHER")))
+                .isInstanceOf(MongoWriteException.class);
+        assertThatThrownBy(() -> mongo.getCollection(AUDIT).insertOne(
+                auditDocWithFeedback("schema-sum-bad2", null).append("summarizedMessages", -1)))
+                .isInstanceOf(MongoWriteException.class);
+    }
+
+    @Test
     void auditValidatorRejectsBadFeedback() {
         assertThatThrownBy(() -> mongo.getCollection(AUDIT).insertOne(auditDocWithFeedback("schema-bad-2", "MAYBE")))
                 .isInstanceOf(MongoWriteException.class);

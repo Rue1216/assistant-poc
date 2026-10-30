@@ -41,6 +41,7 @@ public class InstructionRouter {
     private static final String SCOPE_HEADING = "## 適用問題";
     private static final int MAX_HISTORY = 4;
     private static final int MAX_HISTORY_CODE_POINTS = 500;
+    private static final int MAX_SUMMARY_CODE_POINTS = 1000;
 
     private final ChatModel chatModel;
     private final LlmErrorMapper errorMapper;
@@ -52,7 +53,10 @@ public class InstructionRouter {
         this.mapper = mapper;
     }
 
-    public RouteDecision route(String redactedQuestion, List<ChatMessage> redactedHistory,
+    /**
+     * @param summary the de-identified summary of earlier turns, or null when there is none
+     */
+    public RouteDecision route(String redactedQuestion, List<ChatMessage> redactedHistory, String summary,
                                List<AssistantConfig> instructions) {
         if (instructions.isEmpty()) {
             return new RouteDecision(null, RouteSource.ROUTER, false, 0, 0, 0);
@@ -60,7 +64,7 @@ public class InstructionRouter {
         List<AssistantConfig> sorted = instructions.stream()
                 .sorted(Comparator.comparing(AssistantConfig::getConfigKey)).toList();
         try {
-            ChatResponse response = chatModel.chat(request(redactedQuestion, redactedHistory, sorted));
+            ChatResponse response = chatModel.chat(request(redactedQuestion, redactedHistory, summary, sorted));
             TokenUsage usage = response.tokenUsage();
             return parse(response.aiMessage(), sorted, count(usage == null ? null : usage.inputTokenCount()),
                     count(usage == null ? null : usage.outputTokenCount()),
@@ -95,9 +99,15 @@ public class InstructionRouter {
         return new RouteDecision(null, RouteSource.FALLBACK, true, in, out, total);
     }
 
-    private ChatRequest request(String question, List<ChatMessage> history, List<AssistantConfig> instructions) {
+    private ChatRequest request(String question, List<ChatMessage> history, String summary,
+                                List<AssistantConfig> instructions) {
         ObjectNode user = mapper.createObjectNode();
         user.put("question", question);
+        if (summary == null) {
+            user.putNull("summary");
+        } else {
+            user.put("summary", clip(summary, MAX_SUMMARY_CODE_POINTS));
+        }
         ArrayNode historyNode = user.putArray("history");
         List<ChatMessage> recent = history.subList(Math.max(0, history.size() - MAX_HISTORY), history.size());
         for (ChatMessage message : recent) {
@@ -123,12 +133,16 @@ public class InstructionRouter {
     private ObjectNode turn(String role, String text) {
         ObjectNode node = mapper.createObjectNode();
         node.put("role", role);
-        String content = text == null ? "" : text;
-        if (content.codePointCount(0, content.length()) > MAX_HISTORY_CODE_POINTS) {
-            content = content.substring(0, content.offsetByCodePoints(0, MAX_HISTORY_CODE_POINTS));
-        }
-        node.put("content", content);
+        node.put("content", clip(text == null ? "" : text, MAX_HISTORY_CODE_POINTS));
         return node;
+    }
+
+    /** Keeps at most {@code maxCodePoints} code points, so a surrogate pair is never split. */
+    private static String clip(String text, int maxCodePoints) {
+        if (text.codePointCount(0, text.length()) > maxCodePoints) {
+            return text.substring(0, text.offsetByCodePoints(0, maxCodePoints));
+        }
+        return text;
     }
 
     /** The body of the "## 適用問題" section, or the instruction name when it is missing or empty. */

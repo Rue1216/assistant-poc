@@ -27,7 +27,7 @@ public record AiAssistantProperties(Llm llm, Limits limits, Config config, Marke
     public record Limits(int messageMaxChars, int historyMaxTurns, int historyMaxChars,
                          int maxToolCalls, int maxModelRounds, Duration requestTimeout,
                          int tokenBudget, Duration toolTimeout, int toolResultMaxBytes,
-                         int rateLimitPerMinute) {
+                         int rateLimitPerMinute, int summaryMaxChars) {
     }
 
     /** {@code allowedUrlHosts}: hosts a prompt may link to; empty means no URL is allowed. */

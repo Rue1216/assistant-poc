@@ -43,7 +43,7 @@ class InstructionRouterTest {
     }
 
     private RouteDecision route(ScriptedChatModel model) {
-        return router(model).route("【本顧客】最近有什麼互動？", List.of(), INSTRUCTIONS);
+        return router(model).route("【本顧客】最近有什麼互動？", List.of(), null, INSTRUCTIONS);
     }
 
     @Test
@@ -57,7 +57,7 @@ class InstructionRouterTest {
         history.add(AiMessage.from("a".repeat(499) + "😀額外"));
         history.add(UserMessage.from("u5"));
 
-        router(model).route("【本顧客】最近有什麼互動？", history, INSTRUCTIONS);
+        router(model).route("【本顧客】最近有什麼互動？", history, null, INSTRUCTIONS);
 
         ChatRequest request = model.requests().getFirst();
         assertThat(request.messages()).hasSize(2);
@@ -67,6 +67,7 @@ class InstructionRouterTest {
 
         JsonNode user = mapper.readTree(((UserMessage) request.messages().get(1)).singleText());
         assertThat(user.get("question").asString()).isEqualTo("【本顧客】最近有什麼互動？");
+        assertThat(user.get("summary").isNull()).isTrue();
         JsonNode h = user.get("history");
         assertThat(h).hasSize(4);
         assertThat(h.get(0).get("role").asString()).isEqualTo("assistant");
@@ -92,6 +93,34 @@ class InstructionRouterTest {
         assertThat(root.additionalProperties()).isFalse();
         assertThat(((JsonEnumSchema) root.properties().get("category")).enumValues())
                 .containsExactlyInAnyOrder("instruction.contact-prep", "instruction.market-brief", "none");
+    }
+
+    @Test
+    void sendsSummary() {
+        ScriptedChatModel model = new ScriptedChatModel()
+                .reply(ScriptedChatModel.text("{\"category\":\"none\"}", 30));
+
+        router(model).route("問題", List.of(), "- 本顧客關心月配息", INSTRUCTIONS);
+
+        JsonNode user = mapper.readTree(((UserMessage) model.requests().getFirst().messages().get(1)).singleText());
+        assertThat(user.get("summary").asString()).isEqualTo("- 本顧客關心月配息");
+    }
+
+    @Test
+    void summaryTruncatedToCodePoints() {
+        ScriptedChatModel model = new ScriptedChatModel()
+                .reply(ScriptedChatModel.text("{\"category\":\"none\"}", 30));
+
+        router(model).route("問題", List.of(), "字".repeat(1200), INSTRUCTIONS);
+
+        JsonNode user = mapper.readTree(((UserMessage) model.requests().getFirst().messages().get(1)).singleText());
+        String summary = user.get("summary").asString();
+        assertThat(summary.codePointCount(0, summary.length())).isEqualTo(1000);
+    }
+
+    @Test
+    void promptMentionsSummary() {
+        assertThat(RouterPrompt.TEXT).contains("summary");
     }
 
     @Test
@@ -146,7 +175,7 @@ class InstructionRouterTest {
     void noInstructionsSkipsModel() {
         ScriptedChatModel model = new ScriptedChatModel();
 
-        RouteDecision decision = router(model).route("問題", List.of(), List.of());
+        RouteDecision decision = router(model).route("問題", List.of(), null, List.of());
 
         assertThat(decision).isEqualTo(new RouteDecision(null, RouteSource.ROUTER, false, 0, 0, 0));
         assertThat(model.requests()).isEmpty();
@@ -156,7 +185,7 @@ class InstructionRouterTest {
     void failureLogHasCodeOnly() {
         try (LogCapture capture = LogCapture.of(InstructionRouter.class, Level.WARN)) {
             router(new ScriptedChatModel().fail(new IllegalStateException("提問內容子丑寅")))
-                    .route("提問內容子丑寅", List.of(), INSTRUCTIONS);
+                    .route("提問內容子丑寅", List.of(), null, INSTRUCTIONS);
 
             List<String> lines = capture.events().stream().map(LogCapture::render).toList();
             assertThat(lines).hasSize(1);

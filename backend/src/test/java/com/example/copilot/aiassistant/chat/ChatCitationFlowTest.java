@@ -48,7 +48,7 @@ class ChatCitationFlowTest extends IntegrationTestBase {
                         .contentType(MediaType.APPLICATION_JSON).content("{\"message\":\"顧客概況？\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.keys()").value(containsInAnyOrder("requestId", "blocks", "answer",
-                        "citations", "queriedAt", "disclaimer", "toolCalls")))
+                        "citations", "queriedAt", "disclaimer", "toolCalls", "historySummary")))
                 .andExpect(jsonPath("$.blocks[0].type").value("paragraph"))
                 .andExpect(jsonPath("$.blocks[0].text").value("本顧客屬退休客群"))
                 .andExpect(jsonPath("$.blocks[0].citations[0]").value(1))

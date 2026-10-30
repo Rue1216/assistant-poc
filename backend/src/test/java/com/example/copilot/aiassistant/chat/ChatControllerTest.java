@@ -56,7 +56,35 @@ class ChatControllerTest extends IntegrationTestBase {
                 .andExpect(jsonPath("$.citations.length()").value(0))
                 .andExpect(jsonPath("$.toolCalls.length()").value(0))
                 .andExpect(jsonPath("$.keys()").value(org.hamcrest.Matchers.containsInAnyOrder(
-                        "requestId", "blocks", "answer", "citations", "queriedAt", "disclaimer", "toolCalls")));
+                        "requestId", "blocks", "answer", "citations", "queriedAt", "disclaimer", "toolCalls",
+                        "historySummary")))
+                .andExpect(jsonPath("$.historySummary").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
+    void tooLongHistorySummaryIs400() throws Exception {
+        chat(TestCustomers.RETIREE, TestUsers.as("ICRM00018"),
+                "{\"message\":\"hi\",\"historySummary\":\"" + "摘".repeat(1001) + "\"}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("AI_INPUT_INVALID"))
+                .andExpect(jsonPath("$.details[0].field").value("historySummary"));
+        verify(chatModel, never()).chat(any(ChatRequest.class));
+
+        chat(TestCustomers.RETIREE, TestUsers.as("ICRM00018"),
+                "{\"message\":\"hi\",\"historySummary\":\"  " + "摘".repeat(1000) + "  \"}")
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void blankHistorySummaryIsIgnored() throws Exception {
+        chat(TestCustomers.RETIREE, TestUsers.as("ICRM00018"), "{\"message\":\"hi\",\"historySummary\":\"   \"}")
+                .andExpect(status().isOk());
+        org.mockito.ArgumentCaptor<ChatRequest> captor = org.mockito.ArgumentCaptor.forClass(ChatRequest.class);
+        verify(chatModel, org.mockito.Mockito.atLeastOnce()).chat(captor.capture());
+        for (ChatRequest request : captor.getAllValues()) {
+            assertThat(request.messages()).noneMatch(m -> m instanceof dev.langchain4j.data.message.UserMessage u
+                    && u.singleText().startsWith("【先前對話摘要】"));
+        }
     }
 
     @Test

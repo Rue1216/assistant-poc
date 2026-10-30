@@ -51,6 +51,14 @@ public class ChatController {
         if (body.history() != null && body.history().size() > limits.historyMaxTurns() * 2) {
             throw new AssistantException(ErrorCode.AI_INPUT_INVALID, List.of(Map.of("field", "history")));
         }
+        String historySummary = body.historySummary() == null ? null : body.historySummary().strip();
+        if (historySummary != null && historySummary.isEmpty()) {
+            historySummary = null;
+        }
+        if (historySummary != null
+                && historySummary.codePointCount(0, historySummary.length()) > limits.summaryMaxChars()) {
+            throw new AssistantException(ErrorCode.AI_INPUT_INVALID, List.of(Map.of("field", "historySummary")));
+        }
         UserContext user = currentUser.currentUser();
         if (!rateLimiter.tryAcquire(user.userId())) {
             throw new AssistantException(ErrorCode.AI_RATE_LIMITED);
@@ -59,7 +67,7 @@ public class ChatController {
                 .orElseThrow(() -> new AssistantException(ErrorCode.AI_CUSTOMER_NOT_FOUND));
         List<HistoryMessage> history = body.history() == null ? List.of()
                 : body.history().stream().map(h -> new HistoryMessage(h.role(), h.content())).toList();
-        return ChatResponseBody.from(orchestrator.chat(new ChatCommand(message, history, body.categoryKey()), user,
-                customer));
+        return ChatResponseBody.from(orchestrator.chat(new ChatCommand(message, history, body.categoryKey(),
+                historySummary), user, customer));
     }
 }

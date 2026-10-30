@@ -9,7 +9,8 @@ import java.util.List;
  * results; citation texts are already redacted.
  */
 public record ChatResult(String requestId, List<AnswerBlock> blocks, String answer, List<CitationView> citations,
-                         Instant queriedAt, String disclaimer, List<ToolCallSummary> toolCalls) {
+                         Instant queriedAt, String disclaimer, List<ToolCallSummary> toolCalls,
+                         HistorySummary historySummary) {
 
     public ChatResult {
         blocks = List.copyOf(blocks);
@@ -21,6 +22,10 @@ public record ChatResult(String requestId, List<AnswerBlock> blocks, String answ
     public record CitationView(int id, String toolName, String title, String target, String excerpt,
                                String description, String sourceName, String url, String dataTime,
                                Instant queriedAt, boolean cited) {
+    }
+
+    /** The summary made this turn and how many history messages it folded in; the result's field is null if none. */
+    public record HistorySummary(String text, int summarizedCount) {
     }
 
     public record ToolCallSummary(String name, String purpose, String status, long durationMs) {

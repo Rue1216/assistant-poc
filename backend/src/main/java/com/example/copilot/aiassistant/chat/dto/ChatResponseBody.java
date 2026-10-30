@@ -7,7 +7,11 @@ import java.util.List;
 
 /** 02 section 2.1 response with answer-citations spec 3.1; timestamps are ISO 8601 with a +08:00 offset. */
 public record ChatResponseBody(String requestId, List<BlockBody> blocks, String answer, List<CitationBody> citations,
-                               OffsetDateTime queriedAt, String disclaimer, List<ToolCallBody> toolCalls) {
+                               OffsetDateTime queriedAt, String disclaimer, List<ToolCallBody> toolCalls,
+                               HistorySummaryBody historySummary) {
+
+    public record HistorySummaryBody(String text, int summarizedCount) {
+    }
 
     /** {@code type} is the lower-case block type; {@code citations} are citation ids (1, 2...). */
     public record BlockBody(String type, String text, List<Integer> citations) {
@@ -33,6 +37,8 @@ public record ChatResponseBody(String requestId, List<BlockBody> blocks, String 
                 AdminTime.at(r.queriedAt()), r.disclaimer(),
                 r.toolCalls().stream()
                         .map(t -> new ToolCallBody(t.name(), t.purpose(), t.status(), t.durationMs()))
-                        .toList());
+                        .toList(),
+                r.historySummary() == null ? null
+                        : new HistorySummaryBody(r.historySummary().text(), r.historySummary().summarizedCount()));
     }
 }
