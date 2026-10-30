@@ -335,15 +335,16 @@ public class ChatOrchestrator {
             }
             int maxMessages = (limits.historyMaxTurns() - 1) * 2;
             List<ChatMessage> all = new ArrayList<>();
+            List<String> texts = new ArrayList<>();
             for (HistoryMessage message : history) {
                 String text = redact(message.content());
+                texts.add(text);
                 all.add(USER_ROLE.equals(message.role()) ? UserMessage.from(text) : AiMessage.from(text));
             }
             int first = all.size();
             int chars = 0;
             for (int i = all.size() - 1; i >= 0 && all.size() - i <= maxMessages; i--) {
-                String text = history.get(i).content();
-                text = redact(text);
+                String text = texts.get(i);
                 chars += text.codePointCount(0, text.length());
                 if (chars > limits.historyMaxChars()) {
                     break;

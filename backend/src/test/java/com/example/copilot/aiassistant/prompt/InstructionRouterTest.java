@@ -121,6 +121,7 @@ class InstructionRouterTest {
     @Test
     void promptMentionsSummary() {
         assertThat(RouterPrompt.TEXT).contains("summary");
+        assertThat(RouterPrompt.TEXT).contains("question、summary、history 與 categories");
     }
 
     @Test
