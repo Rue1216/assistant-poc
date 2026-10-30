@@ -1,15 +1,58 @@
+# Maven build output
+**/target/
+*.jar
+*.war
+*.class
+.mvn/repository/
+hs_err_pid*.log
+
+# npm / Node.js / Vite
+**/node_modules/
+frontend/dist/
+frontend/.vite/
+**/.cache/
+npm-debug.log*
+
+# IDE 設定(詳細排除由 .idea/.gitignore 控制)
+.idea/jarRepositories.xml
+.idea/modules.xml
+.idea/workspace.xml
+*.iml
+!icrm.iml
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
 # Local Claude Code settings
 /.claude/
 
 # Secrets
 .env
+.env.local
+.env.*.local
 *.env.local
+**/application-local.yml
+**/application-prod.yml
+*.key
+*.pem
+*.pfx
+*.keystore
+*.truststore
+jasypt.properties
+**/jasypt-local.properties
+**/secrets/
+
+
+# 暫存檔
+*.tmp
+*.bak
+*.orig
+*.swp
+*.swo
 
 # Local reference material and UI prototype (not versioned)
 /reference.md
+*instructions.md
 /prototype/
-
-# Build output
-backend/target/
-frontend/node_modules/
-frontend/dist/
