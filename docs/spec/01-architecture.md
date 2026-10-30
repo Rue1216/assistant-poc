@@ -55,12 +55,12 @@ flowchart LR
 
 ## 2. 模組邊界
 
-| 模組 | 位置 | 整合時 |
-|---|---|---|
-| 小幫手後端 | `backend/.../aiassistant` | 搬進平台 |
-| 小幫手前端 | `frontend/src/features/ai-assistant` | 搬進平台 |
-| 平台替身（後端） | `backend/.../mockplatform` | 刪除，改由平台實作 port |
-| 平台替身（前端） | `frontend/src/platform-mock` | 刪除，改用平台的 `api-client`、Toast、layout |
+| 模組             | 位置                                 | 整合時                                       |
+| ---------------- | ------------------------------------ | -------------------------------------------- |
+| 小幫手後端       | `backend/.../aiassistant`            | 搬進平台                                     |
+| 小幫手前端       | `frontend/src/features/ai-assistant` | 搬進平台                                     |
+| 平台替身（後端） | `backend/.../mockplatform`           | 刪除，改由平台實作 port                      |
+| 平台替身（前端） | `frontend/src/platform-mock`         | 刪除，改用平台的 `api-client`、Toast、layout |
 
 ### 2.1 小幫手依賴的 port
 
@@ -92,11 +92,11 @@ public interface CustomerDataPort {
 
 ### 2.2 去識別化元件
 
-| 元件 | 職責 | 套用位置 |
-|---|---|---|
-| `CustomerContextFactory` | 呼叫 `CustomerAccessPort` 判斷存取等級；建立只存在 Java 端的 `CustomerContext`（含 `certNo` 與已知識別資料） | `ChatController` 收到請求時 |
-| `CustomerDeidentifier` | 把 Record 轉成只含可送出欄位的工具 `data`：刪除識別欄位、年齡泛化為區間 | 每個顧客工具 |
-| `PiiRedactor` | 自由文字的去識別化：精確比對本顧客的識別資料，再以 regex 遮蔽身分證號、手機、Email、帳號、其他顧客的 `certNo` | 使用者提問、對話歷史、工具結果文字欄位、最終回答 |
+| 元件                     | 職責                                                                                                          | 套用位置                                         |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `CustomerContextFactory` | 呼叫 `CustomerAccessPort` 判斷存取等級；建立只存在 Java 端的 `CustomerContext`（含 `certNo` 與已知識別資料）  | `ChatController` 收到請求時                      |
+| `CustomerDeidentifier`   | 把 Record 轉成只含可送出欄位的工具 `data`：刪除識別欄位、年齡泛化為區間                                       | 每個顧客工具                                     |
+| `PiiRedactor`            | 自由文字的去識別化：精確比對本顧客的識別資料，再以 regex 遮蔽身分證號、手機、Email、帳號、其他顧客的 `certNo` | 使用者提問、對話歷史、工具結果文字欄位、最終回答 |
 
 規則細節見 [03-tool-catalog.md](03-tool-catalog.md) 1.6。**送進 `ChatModel` 的每一則訊息都必須先經過這些元件**，由 `ChatOrchestrator` 統一把關，並以單元測試驗證。
 
@@ -305,7 +305,7 @@ frontend/src/
                     頁面：登入（9 個員工帳號，選單顯示「帳號 職稱」）、首頁、顧客經營（/customer：輸入 certNo + 列表）、
                           個人 360（/customer/:certNo，版面照 prototype 的 A–M 區塊，卡片讀 mock API，放置小幫手；
                           pages/customer360/ 為各區塊元件，含自寫 SVG 的 RadarChart、RingChart、PairBars）、
-                          後台管理（/setting/prompt-management，掛載 PromptManagementPage）
+                          後台管理（/maintenance/prompt-management，掛載 PromptManagementPage）
 ```
 
 **視覺依據**：小幫手與 Prompt 管理頁照 `prototype/chatbot.html`、`prototype/prompt-management.html`（元件拆分照 prototype 註解中的 Vue 元件名稱，樣式取自 `prototype/styles/chatbot.css`、`prompt-management.css`，改寫為元件的 scoped CSS）。`prototype/` 不進版控，所以用到的樣式要複製進 `frontend/`。prototype 中標示「原型切換，Vue 版不實作」的控制列不實作。
@@ -322,61 +322,61 @@ frontend/src/
 
 ```yaml
 spring:
-  config.import: optional:file:./.env[.properties]   # 讀取 backend/.env（已列入 .gitignore）
-  threads.virtual.enabled: true
-  mongodb.uri: ${MONGODB_URI:mongodb://localhost:27017/copilot?replicaSet=rs0}
+    config.import: optional:file:./.env[.properties] # 讀取 backend/.env（已列入 .gitignore）
+    threads.virtual.enabled: true
+    mongodb.uri: ${MONGODB_URI:mongodb://localhost:27017/copilot?replicaSet=rs0}
 
-management.endpoints.web.exposure.include: health   # 不開放 /env 等端點
+management.endpoints.web.exposure.include: health # 不開放 /env 等端點
 
 ai-assistant:
-  llm:
-    provider: openai
-    api-key: ${OPENAI_API_KEY}        # 來自 backend/.env；不得寫死、不得進版控、不得寫入 log
-    model-name: ${OPENAI_MODEL}
-    temperature: 0.2
-    timeout: 30s
-    max-output-tokens: 1500           # 回答改為 JSON 輸出，比純 Markdown 多用 token；最終值依真實模型實測決定
-  limits:
-    message-max-chars: 1000
-    history-max-turns: 10
-    history-max-chars: 8000
-    max-tool-calls: 5
-    max-model-rounds: 3
-    request-timeout: 60s
-    token-budget: 16000
-    tool-timeout: 5s
-    tool-result-max-bytes: 4096
-    rate-limit-per-minute: 10
-  config:
-    schedule-check-interval: 30s     # 預約發布的檢查頻率
-    schedule-min-lead: 1m            # 預約時間至少在 1 分鐘後
-    schedule-max-lead: 90d           # 預約時間最多在 90 天內
-    allowed-url-hosts: []            # prompt 內允許出現的網址 host；空白＝不允許任何網址
-  audit:
-    store-tool-results: false         # true 時稽核文件才保存工具回傳資料（含顧客資料），預設關閉；開啟前需 M36 法遵同意
-  eval:
-    dataset: classpath:eval/eval-cases.yml   # 評測題目，啟動時驗證，不合格則啟動失敗
-    max-cases: 30                            # 1–30
-    run-timeout: 30m                         # 整次評測上限
-    stale-after: 10m                         # RUNNING 紀錄心跳超過此時間視為中斷
-  market.twse:
-    base-url: https://openapi.twse.com.tw/v1
-    allowed-hosts: [openapi.twse.com.tw]
-    connect-timeout: 3s
-    read-timeout: 5s
-    max-response-bytes: 2097152
-    cache-ttl: 10m
+    llm:
+        provider: openai
+        api-key: ${OPENAI_API_KEY} # 來自 backend/.env；不得寫死、不得進版控、不得寫入 log
+        model-name: ${OPENAI_MODEL}
+        temperature: 0.2
+        timeout: 30s
+        max-output-tokens: 1500 # 回答改為 JSON 輸出，比純 Markdown 多用 token；最終值依真實模型實測決定
+    limits:
+        message-max-chars: 1000
+        history-max-turns: 10
+        history-max-chars: 8000
+        max-tool-calls: 5
+        max-model-rounds: 3
+        request-timeout: 60s
+        token-budget: 16000
+        tool-timeout: 5s
+        tool-result-max-bytes: 4096
+        rate-limit-per-minute: 10
+    config:
+        schedule-check-interval: 30s # 預約發布的檢查頻率
+        schedule-min-lead: 1m # 預約時間至少在 1 分鐘後
+        schedule-max-lead: 90d # 預約時間最多在 90 天內
+        allowed-url-hosts: [] # prompt 內允許出現的網址 host；空白＝不允許任何網址
+    audit:
+        store-tool-results: false # true 時稽核文件才保存工具回傳資料（含顧客資料），預設關閉；開啟前需 M36 法遵同意
+    eval:
+        dataset: classpath:eval/eval-cases.yml # 評測題目，啟動時驗證，不合格則啟動失敗
+        max-cases: 30 # 1–30
+        run-timeout: 30m # 整次評測上限
+        stale-after: 10m # RUNNING 紀錄心跳超過此時間視為中斷
+    market.twse:
+        base-url: https://openapi.twse.com.tw/v1
+        allowed-hosts: [openapi.twse.com.tw]
+        connect-timeout: 3s
+        read-timeout: 5s
+        max-response-bytes: 2097152
+        cache-ttl: 10m
 ```
 
 ### 6.1 Secret 管理
 
-| 項目 | POC 做法 |
-|---|---|
+| 項目     | POC 做法                                                                                             |
+| -------- | ---------------------------------------------------------------------------------------------------- |
 | 存放位置 | `backend/.env`，只由後端以 `spring.config.import` 讀取；不放全域環境變數，避免電腦上其他程式都讀得到 |
-| 版控 | `.env` 已列入 `.gitignore`；repo 只提供不含真實值的 `backend/.env.example` |
-| Key 本身 | 為本專案另建專用 key：權限設為 Restricted、設定每月花費上限與用量通知、POC 結束後撤銷 |
-| 程式防護 | 不寫入 log 與錯誤訊息；Actuator 只開放 `health` |
-| 正式環境 | 改用平台的 secret 管理機制（Vault、K8s Secret 等），見 questions-for-manager.md S14 |
+| 版控     | `.env` 已列入 `.gitignore`；repo 只提供不含真實值的 `backend/.env.example`                           |
+| Key 本身 | 為本專案另建專用 key：權限設為 Restricted、設定每月花費上限與用量通知、POC 結束後撤銷                |
+| 程式防護 | 不寫入 log 與錯誤訊息；Actuator 只開放 `health`                                                      |
+| 正式環境 | 改用平台的 secret 管理機制（Vault、K8s Secret 等），見 questions-for-manager.md S14                  |
 
 `backend/.env` 格式：
 
@@ -387,29 +387,29 @@ OPENAI_MODEL=<模型名稱>
 
 ## 7. 執行環境
 
-| 元件 | 版本 |
-|---|---|
-| JDK | 25 |
-| Spring Boot | 4.1.0（和平台相同） |
-| 依賴版本覆寫 | 照平台 root pom 的 properties：Jackson 2 2.22.1、Jackson 3 3.2.1、MongoDB driver 5.9.2、Log4j2 2.26.1、Tomcat 11.0.25、Netty 4.2.17.Final、Testcontainers 1.21.4、jspecify 1.0.0。平台升級時要同步修改 `backend/pom.xml` |
-| 日誌 | Log4j2（`spring-boot-starter-log4j2`，排除 `spring-boot-starter-logging`），和平台相同；程式只使用 SLF4J API |
-| LangChain4j | 1.22.0（`langchain4j`、`langchain4j-open-ai`），jar 放在 `backend/lib-repo/`（見 7.1） |
-| Node.js | 24 |
-| 前端套件 | 和平台相同、固定版本（不用 `^`、`~`）：Vue 3.5.33、TypeScript 6.0.3、Vite 7.3.5、axios 1.17.0、Pinia 3.0.4、Vue Router 5.0.6、@vitejs/plugin-vue 6.0.7、Vitest 4.1.5、vue-tsc 3.2.8。平台清單以外的開發工具（@types/node、@vue/test-utils、@vue/tsconfig、jsdom）也固定版本 |
-| MongoDB | 8.x，docker compose 單節點 replica set |
+| 元件         | 版本                                                                                                                                                                                                                                                                        |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| JDK          | 25                                                                                                                                                                                                                                                                          |
+| Spring Boot  | 4.1.0（和平台相同）                                                                                                                                                                                                                                                         |
+| 依賴版本覆寫 | 照平台 root pom 的 properties：Jackson 2 2.22.1、Jackson 3 3.2.1、MongoDB driver 5.9.2、Log4j2 2.26.1、Tomcat 11.0.25、Netty 4.2.17.Final、Testcontainers 1.21.4、jspecify 1.0.0。平台升級時要同步修改 `backend/pom.xml`                                                    |
+| 日誌         | Log4j2（`spring-boot-starter-log4j2`，排除 `spring-boot-starter-logging`），和平台相同；程式只使用 SLF4J API                                                                                                                                                                |
+| LangChain4j  | 1.22.0（`langchain4j`、`langchain4j-open-ai`），jar 放在 `backend/lib-repo/`（見 7.1）                                                                                                                                                                                      |
+| Node.js      | 24                                                                                                                                                                                                                                                                          |
+| 前端套件     | 和平台相同、固定版本（不用 `^`、`~`）：Vue 3.5.33、TypeScript 6.0.3、Vite 7.3.5、axios 1.17.0、Pinia 3.0.4、Vue Router 5.0.6、@vitejs/plugin-vue 6.0.7、Vitest 4.1.5、vue-tsc 3.2.8。平台清單以外的開發工具（@types/node、@vue/test-utils、@vue/tsconfig、jsdom）也固定版本 |
+| MongoDB      | 8.x，docker compose 單節點 replica set                                                                                                                                                                                                                                      |
 
 ### 7.1 第三方依賴（lib-repo）
 
 公司環境連不到外部 Maven repo，所以平台沒有的依賴照 Maven 目錄結構放在 `backend/lib-repo/`，和程式碼一起 commit。
 
-| 項目 | 做法 |
-|---|---|
-| 放什麼 | LangChain4j 的 jar 和 pom（含 parent pom），以及它帶進來、但平台沒有的間接依賴。Spring Boot 已管理的依賴不放 |
-| 目錄結構 | 和 `~/.m2/repository` 相同，例如 `lib-repo/dev/langchain4j/langchain4j-open-ai/1.22.0/` 底下放 `.jar` 和 `.pom` |
-| 引用方式 | pom.xml 宣告一個 id 為 `project-local` 的 file repository（見下方），依賴照一般方式寫 `<dependency>` |
-| 不用 `system` scope | `system` scope 已不建議使用，不處理間接依賴，Spring Boot 打包時預設也不會放進執行檔 |
-| 更新方式 | 在能連網的電腦下載後複製進來，步驟見 [setup.md](../setup.md) 第 6 節 |
-| 授權 | LangChain4j 是 Apache License 2.0，允許重新散布；放進 `lib-repo` 的 jar 不含 LICENSE 檔，正式納入平台時依公司規範補上 NOTICE |
+| 項目                | 做法                                                                                                                         |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| 放什麼              | LangChain4j 的 jar 和 pom（含 parent pom），以及它帶進來、但平台沒有的間接依賴。Spring Boot 已管理的依賴不放                 |
+| 目錄結構            | 和 `~/.m2/repository` 相同，例如 `lib-repo/dev/langchain4j/langchain4j-open-ai/1.22.0/` 底下放 `.jar` 和 `.pom`              |
+| 引用方式            | pom.xml 宣告一個 id 為 `project-local` 的 file repository（見下方），依賴照一般方式寫 `<dependency>`                         |
+| 不用 `system` scope | `system` scope 已不建議使用，不處理間接依賴，Spring Boot 打包時預設也不會放進執行檔                                          |
+| 更新方式            | 在能連網的電腦下載後複製進來，步驟見 [setup.md](../setup.md) 第 6 節                                                         |
+| 授權                | LangChain4j 是 Apache License 2.0，允許重新散布；放進 `lib-repo` 的 jar 不含 LICENSE 檔，正式納入平台時依公司規範補上 NOTICE |
 
 ```xml
 <repositories>

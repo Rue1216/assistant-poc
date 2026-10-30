@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { useAuthStore } from '../useAuthStore'
+import { useAuthStore } from "../useAuthStore";
 
-const auth = useAuthStore()
+const auth = useAuthStore();
 </script>
 
 <template>
@@ -14,7 +14,11 @@ const auth = useAuthStore()
         <strong>顧客經營</strong>
         <span class="tile__desc">查看顧客清單與個人 360，使用 AI 小幫手</span>
       </RouterLink>
-      <RouterLink v-if="auth.hasPermission('AI_CONFIG_READ')" class="card tile" to="/setting/prompt-management">
+      <RouterLink
+        v-if="auth.hasPermission('AI_CONFIG_READ')"
+        class="card tile"
+        to="/maintenance/prompt-management"
+      >
         <span class="tile__icon" aria-hidden="true">⚙</span>
         <strong>Prompt 管理</strong>
         <span class="tile__desc">管理小幫手的 System Prompt 與問題分類</span>
@@ -46,7 +50,9 @@ h1 {
   padding: var(--space-5);
   text-decoration: none;
   color: var(--color-text);
-  transition: border-color var(--duration-fast), transform var(--duration-fast);
+  transition:
+    border-color var(--duration-fast),
+    transform var(--duration-fast);
 }
 .tile:hover {
   border-color: var(--green-300);

@@ -4,22 +4,22 @@
 
 ## 1. 共通規則
 
-| 項目 | 規則 |
-|---|---|
-| Base path | `/api/ai-assistant` |
-| 驗證 | 沿用平台 Session（POC 由 `mockplatform` 的 Spring Security session 提供），未登入回 401 |
-| CSRF | 寫入類請求需帶 `X-XSRF-TOKEN` header（值取自 `XSRF-TOKEN` cookie，axios 會自動處理） |
-| 格式 | `application/json; charset=UTF-8` |
-| 時間 | ISO 8601，含時區，例如 `2026-10-19T14:03:22+08:00` |
-| 追蹤 | 每個回應都有 `X-Request-Id` header；錯誤回應的 body 也帶 `requestId` |
-| 錯誤格式 | 見第 5 節與 [05-error-codes.md](05-error-codes.md) |
+| 項目      | 規則                                                                                    |
+| --------- | --------------------------------------------------------------------------------------- |
+| Base path | `/api/ai-assistant`                                                                     |
+| 驗證      | 沿用平台 Session（POC 由 `mockplatform` 的 Spring Security session 提供），未登入回 401 |
+| CSRF      | 寫入類請求需帶 `X-XSRF-TOKEN` header（值取自 `XSRF-TOKEN` cookie，axios 會自動處理）    |
+| 格式      | `application/json; charset=UTF-8`                                                       |
+| 時間      | ISO 8601，含時區，例如 `2026-10-19T14:03:22+08:00`                                      |
+| 追蹤      | 每個回應都有 `X-Request-Id` header；錯誤回應的 body 也帶 `requestId`                    |
+| 錯誤格式  | 見第 5 節與 [05-error-codes.md](05-error-codes.md)                                      |
 
 ### 1.1 使用範圍
 
-| 功能 | 入口 | 可使用的角色 |
-|---|---|---|
-| 對話小幫手 | 顧客經營模組（`/customer`）→ 個人 360 頁面（`/customer/{certNo}`）右下角 | 9 個帳號（見 1.2） |
-| Prompt 管理 | 後台管理模組（`/setting`）→ Prompt 管理（`/setting/prompt-management`） | 後台管理人員、IT 管理人員 |
+| 功能        | 入口                                                                            | 可使用的角色              |
+| ----------- | ------------------------------------------------------------------------------- | ------------------------- |
+| 對話小幫手  | 顧客經營模組（`/customer`）→ 個人 360 頁面（`/customer/{certNo}`）右下角        | 9 個帳號（見 1.2）        |
+| Prompt 管理 | 後台管理模組（`/maintenance`）→ Prompt 管理（`/maintenance/prompt-management`） | 後台管理人員、IT 管理人員 |
 
 - 小幫手**只**出現在個人 360 頁面，其他頁面不顯示。
 - 使用者透過輸入顧客編號（`certNo`，即身分證字號），或從顧客列表點擊，進入個人 360 頁面。
@@ -29,25 +29,25 @@
 
 ### 1.2 角色與權限碼
 
-| 權限碼 | 用途 |
-|---|---|
+| 權限碼              | 用途                                                          |
+| ------------------- | ------------------------------------------------------------- |
 | `CUSTOMER_360_VIEW` | 進入個人 360 頁面（平台既有權限，POC 由 `mockplatform` 模擬） |
-| `AI_ASSISTANT_USE` | 使用對話小幫手、對回答按讚／倒讚 |
-| `AI_CONFIG_READ` | 進入 Prompt 管理頁、檢視設定與版本、查看回饋統計與評測結果 |
-| `AI_CONFIG_EDIT` | 新增設定、編輯與捨棄草稿、套用歷史版本為草稿、開始評測 |
-| `AI_CONFIG_PUBLISH` | 立即發布、預約發布 |
+| `AI_ASSISTANT_USE`  | 使用對話小幫手、對回答按讚／倒讚                              |
+| `AI_CONFIG_READ`    | 進入 Prompt 管理頁、檢視設定與版本、查看回饋統計與評測結果    |
+| `AI_CONFIG_EDIT`    | 新增設定、編輯與捨棄草稿、套用歷史版本為草稿、開始評測        |
+| `AI_CONFIG_PUBLISH` | 立即發布、預約發布                                            |
 
-| 帳號 | 職稱（roleName） | roleKey（業務角色碼） | scope（顧客範圍） | 分行 / 區域 / 單位 | 權限 |
-|---|---|---|---|---|---|
-| `ICRM00047` | 總行查詢人員 | `ANALYST` | `ALL` | 總行 | `CUSTOMER_360_VIEW`、`AI_ASSISTANT_USE` |
-| `ICRM00007` | 區域查詢人員 | `ANALYST` | `REGION` | 北區（B101、B102） | 同上 |
-| `ICRM00018` | 分行單位主管 | `MANAGER` | `BRANCH` | B101 | 同上 |
-| `ICRM00024` | 理專主管 | `MANAGER` | `BRANCH_WEALTH` | B101 | 同上 |
-| `ICRM00028` | 理專經辦 | `RM` | `ASSIGNEE_WEALTH` | B101 | 同上 |
-| `ICRM00036` | AO主管 | `MANAGER` | `MARKETING_UNIT` | B101、行銷單位 MU-N1 | 同上 |
-| `ICRM00040` | AO經辦 | `AO` | `ASSIGNEE_MARKETING` | B101、行銷單位 MU-N1 | 同上 |
-| `EEE11111` | 後台管理人員 | `ADMIN` | `ALL` | 總行 | 同上 + `AI_CONFIG_READ`、`AI_CONFIG_EDIT`、`AI_CONFIG_PUBLISH` |
-| `EEE22222` | IT 管理人員 | `ADMIN` | `ALL` | 總行 | 同上 + `AI_CONFIG_READ`、`AI_CONFIG_EDIT`、`AI_CONFIG_PUBLISH` |
+| 帳號        | 職稱（roleName） | roleKey（業務角色碼） | scope（顧客範圍）    | 分行 / 區域 / 單位   | 權限                                                           |
+| ----------- | ---------------- | --------------------- | -------------------- | -------------------- | -------------------------------------------------------------- |
+| `ICRM00047` | 總行查詢人員     | `ANALYST`             | `ALL`                | 總行                 | `CUSTOMER_360_VIEW`、`AI_ASSISTANT_USE`                        |
+| `ICRM00007` | 區域查詢人員     | `ANALYST`             | `REGION`             | 北區（B101、B102）   | 同上                                                           |
+| `ICRM00018` | 分行單位主管     | `MANAGER`             | `BRANCH`             | B101                 | 同上                                                           |
+| `ICRM00024` | 理專主管         | `MANAGER`             | `BRANCH_WEALTH`      | B101                 | 同上                                                           |
+| `ICRM00028` | 理專經辦         | `RM`                  | `ASSIGNEE_WEALTH`    | B101                 | 同上                                                           |
+| `ICRM00036` | AO主管           | `MANAGER`             | `MARKETING_UNIT`     | B101、行銷單位 MU-N1 | 同上                                                           |
+| `ICRM00040` | AO經辦           | `AO`                  | `ASSIGNEE_MARKETING` | B101、行銷單位 MU-N1 | 同上                                                           |
+| `EEE11111`  | 後台管理人員     | `ADMIN`               | `ALL`                | 總行                 | 同上 + `AI_CONFIG_READ`、`AI_CONFIG_EDIT`、`AI_CONFIG_PUBLISH` |
+| `EEE22222`  | IT 管理人員      | `ADMIN`               | `ALL`                | 總行                 | 同上 + `AI_CONFIG_READ`、`AI_CONFIG_EDIT`、`AI_CONFIG_PUBLISH` |
 
 - `roleKey` 使用去前綴的業務角色碼（依 `reference.md`「職務角色」）；Spring Security authority 為 `ROLE_<角色碼>` 加上權限碼。顧客範圍由使用者屬性 `scope` 決定，`MockCustomerAccessAdapter` 依 `scope` 判斷，不再依角色。
 - 職稱對角色碼的對應是推定，列入 questions-for-manager。
@@ -59,25 +59,25 @@
 
 使用者能否存取某位顧客，取決於顧客的以下屬性：
 
-| 顧客屬性 | 說明 |
-|---|---|
-| 主經營行 | 顧客的主要往來分行 |
-| 利潤分行 | 顧客業績歸屬的分行 |
-| 理財分行 | 顧客財管業務歸屬的分行 |
+| 顧客屬性         | 說明                                                   |
+| ---------------- | ------------------------------------------------------ |
+| 主經營行         | 顧客的主要往來分行                                     |
+| 利潤分行         | 顧客業績歸屬的分行                                     |
+| 理財分行         | 顧客財管業務歸屬的分行                                 |
 | 生效名單分派人員 | 目前生效的名單分派對象（人員本人，以及該人員所屬分行） |
-| 行銷單位 | 顧客歸屬的 AO 行銷單位 |
+| 行銷單位         | 顧客歸屬的 AO 行銷單位                                 |
 
-| 帳號（`scope`） | 存取等級 | 符合以下任一條件即可存取 |
-|---|---|---|
-| 總行查詢人員（`ALL`） | `FULL` | 所有分行的顧客 |
-| 區域查詢人員（`REGION`） | `FULL` | 主經營行、利潤分行、理財分行、分派人員所屬分行，任一在**所屬區域**內 |
-| 分行單位主管（`BRANCH`） | `FULL` | 主經營行、利潤分行、理財分行、分派人員所屬分行，任一等於**所屬分行** |
-| 理專主管（`BRANCH_WEALTH`） | `FULL` | 主經營行、理財分行、分派人員所屬分行，任一等於所屬分行 |
-| 理專經辦（`ASSIGNEE_WEALTH`） | `FULL` | 主經營行或理財分行等於所屬分行，或**分派人員是本人** |
-| AO 主管（`MARKETING_UNIT`） | `FULL` | 主經營行、利潤分行、分派人員所屬分行，任一等於所屬分行；或行銷單位等於所屬單位 |
-| AO 經辦（`ASSIGNEE_MARKETING`） | `FULL` | 主經營行或利潤分行等於所屬分行，或分派人員是本人，或行銷單位等於所屬單位 |
-| 後台管理人員（`ALL`） | `FULL` | 全行顧客（改為 `FULL`，取代 POC 設計 v0.4 的 `LIMITED`） |
-| IT 管理人員（`ALL`） | `FULL` | 同上 |
+| 帳號（`scope`）                 | 存取等級 | 符合以下任一條件即可存取                                                       |
+| ------------------------------- | -------- | ------------------------------------------------------------------------------ |
+| 總行查詢人員（`ALL`）           | `FULL`   | 所有分行的顧客                                                                 |
+| 區域查詢人員（`REGION`）        | `FULL`   | 主經營行、利潤分行、理財分行、分派人員所屬分行，任一在**所屬區域**內           |
+| 分行單位主管（`BRANCH`）        | `FULL`   | 主經營行、利潤分行、理財分行、分派人員所屬分行，任一等於**所屬分行**           |
+| 理專主管（`BRANCH_WEALTH`）     | `FULL`   | 主經營行、理財分行、分派人員所屬分行，任一等於所屬分行                         |
+| 理專經辦（`ASSIGNEE_WEALTH`）   | `FULL`   | 主經營行或理財分行等於所屬分行，或**分派人員是本人**                           |
+| AO 主管（`MARKETING_UNIT`）     | `FULL`   | 主經營行、利潤分行、分派人員所屬分行，任一等於所屬分行；或行銷單位等於所屬單位 |
+| AO 經辦（`ASSIGNEE_MARKETING`） | `FULL`   | 主經營行或利潤分行等於所屬分行，或分派人員是本人，或行銷單位等於所屬單位       |
+| 後台管理人員（`ALL`）           | `FULL`   | 全行顧客（改為 `FULL`，取代 POC 設計 v0.4 的 `LIMITED`）                       |
+| IT 管理人員（`ALL`）            | `FULL`   | 同上                                                                           |
 
 - 停止蒐集利用個資的顧客（`stopUseCustomerDataFlag = "Y"`）不論角色與範圍，存取等級一律為 `NONE`；顧客清單只依範圍顯示（範圍內的該顧客仍會出現在清單，點進去才由 CIP 擋下）。
 - `LIMITED` 機制保留（去識別化基本輪廓），目前沒有 mock 角色使用，之後依平台實際角色權限對應；評測集以 `accessLevel: LIMITED` 直接測這條路徑。
@@ -89,15 +89,15 @@
 
 依 [03-tool-catalog.md](03-tool-catalog.md) 5.2 的假資料推得：
 
-| 顧客（certNo） | 總行 | 區域（北） | 分行主管 | 理專主管 | 理專經辦 | AO 主管 | AO 經辦 | 後台 / IT | 關鍵屬性 |
-|---|---|---|---|---|---|---|---|---|---|
-| 王小明（A123456789） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 全部屬性都在 B101 |
-| 林美君（F223456780） | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | 只有理財分行在 B101 |
-| 陳志華（H123456781） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | 分派給 ICRM00028（B101） |
-| 黃俊豪（B124567892） | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ | ✓ | 利潤分行 B101、行銷單位 MU-N1 |
-| 周雅婷（E224567893） | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✓ | 全部在南區 |
-| 吳建德（N125678904） | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ | ✓ | ✓ | 只有行銷單位 MU-N1 |
-| 蔡宗翰（A129876543） | 清單可見 | 清單可見 | 清單可見 | 清單可見 | 清單可見 | 清單可見 | 清單可見 | 清單可見 | 停止蒐集利用個資：進入 360 頁面被 CIP 擋下，對話、快速提問、`/360`、`/real-time`、名片對所有帳號都是 404 |
+| 顧客（certNo）       | 總行     | 區域（北） | 分行主管 | 理專主管 | 理專經辦 | AO 主管  | AO 經辦  | 後台 / IT | 關鍵屬性                                                                                                 |
+| -------------------- | -------- | ---------- | -------- | -------- | -------- | -------- | -------- | --------- | -------------------------------------------------------------------------------------------------------- |
+| 王小明（A123456789） | ✓        | ✓          | ✓        | ✓        | ✓        | ✓        | ✓        | ✓         | 全部屬性都在 B101                                                                                        |
+| 林美君（F223456780） | ✓        | ✓          | ✓        | ✓        | ✓        | ✗        | ✗        | ✓         | 只有理財分行在 B101                                                                                      |
+| 陳志華（H123456781） | ✓        | ✓          | ✓        | ✓        | ✓        | ✓        | ✗        | ✓         | 分派給 ICRM00028（B101）                                                                                 |
+| 黃俊豪（B124567892） | ✓        | ✓          | ✓        | ✗        | ✗        | ✓        | ✓        | ✓         | 利潤分行 B101、行銷單位 MU-N1                                                                            |
+| 周雅婷（E224567893） | ✓        | ✗          | ✗        | ✗        | ✗        | ✗        | ✗        | ✓         | 全部在南區                                                                                               |
+| 吳建德（N125678904） | ✓        | ✗          | ✗        | ✗        | ✗        | ✓        | ✓        | ✓         | 只有行銷單位 MU-N1                                                                                       |
+| 蔡宗翰（A129876543） | 清單可見 | 清單可見   | 清單可見 | 清單可見 | 清單可見 | 清單可見 | 清單可見 | 清單可見  | 停止蒐集利用個資：進入 360 頁面被 CIP 擋下，對話、快速提問、`/360`、`/real-time`、名片對所有帳號都是 404 |
 
 ---
 
@@ -120,21 +120,24 @@
 
 #### Request
 
-| 欄位 | 型別 | 必填 | 規則 |
-|---|---|---|---|
-| `message` | string | ✓ | 去除前後空白後 1–1000 字 |
-| `history` | array | | 最多 20 則（10 輪），內容總長最多 8000 字；超過時後端從最舊的開始截掉。前端只帶目前這一輪（按「開新對話」之後）的訊息，見 1.1 |
-| `history[].role` | string | ✓ | `user` 或 `assistant` |
-| `history[].content` | string | ✓ | 1–4000 字 |
-| `categoryKey` | string | | 選填。快捷按鈕所屬問題分類的 `configKey`，格式 `^instruction\.[a-z0-9-]{1,50}$`，格式不符 → 400 `AI_INPUT_INVALID`。格式正確但不是本次快照中已發布的問題分類（例如按鈕在分類下架前載入、之後才被點）時**忽略**，改走路由，不回錯誤。輸入框上方「快捷問題」清單的按鈕同樣帶所屬分類的 `configKey`；自行輸入的提問不帶此欄位，一律走路由 |
+| 欄位                | 型別   | 必填 | 規則                                                                                                                                                                                                                                                                                                                                   |
+| ------------------- | ------ | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `message`           | string | ✓    | 去除前後空白後 1–1000 字                                                                                                                                                                                                                                                                                                               |
+| `history`           | array  |      | 最多 20 則（10 輪），內容總長最多 8000 字；超過時後端從最舊的開始截掉。前端只帶目前這一輪（按「開新對話」之後）的訊息，見 1.1                                                                                                                                                                                                          |
+| `history[].role`    | string | ✓    | `user` 或 `assistant`                                                                                                                                                                                                                                                                                                                  |
+| `history[].content` | string | ✓    | 1–4000 字                                                                                                                                                                                                                                                                                                                              |
+| `categoryKey`       | string |      | 選填。快捷按鈕所屬問題分類的 `configKey`，格式 `^instruction\.[a-z0-9-]{1,50}$`，格式不符 → 400 `AI_INPUT_INVALID`。格式正確但不是本次快照中已發布的問題分類（例如按鈕在分類下架前載入、之後才被點）時**忽略**，改走路由，不回錯誤。輸入框上方「快捷問題」清單的按鈕同樣帶所屬分類的 `configKey`；自行輸入的提問不帶此欄位，一律走路由 |
 
 ```json
 {
-  "message": "王小明最近有什麼提醒？幫我準備下次聯繫重點",
-  "history": [
-    { "role": "user", "content": "幫我整理這位顧客的概況" },
-    { "role": "assistant", "content": "本顧客為退休樂活客群，年齡區間 55-64，主經營行 B101……" }
-  ]
+    "message": "王小明最近有什麼提醒？幫我準備下次聯繫重點",
+    "history": [
+        { "role": "user", "content": "幫我整理這位顧客的概況" },
+        {
+            "role": "assistant",
+            "content": "本顧客為退休樂活客群，年齡區間 55-64，主經營行 B101……"
+        }
+    ]
 }
 ```
 
@@ -144,33 +147,33 @@
 
 #### Response 200
 
-| 欄位 | 型別 | 說明 |
-|---|---|---|
-| `requestId` | string | 追蹤用 |
-| `blocks` | array | 回答的區塊，前端依序渲染；文字已去識別化，以「本顧客」稱呼顧客。最多 40 個區塊，文字合計最多 8000 字 |
-| `blocks[].type` | string | `heading`、`paragraph`、`bullet`、`numbered` |
-| `blocks[].text` | string | 區塊文字，只含行內格式（粗體、連結），不含標題或清單符號，也不含 `[S1]` 這類標註 |
-| `blocks[].citations` | number[] | 支持這個區塊的引用編號（1 起算），對應 `citations[].id`；`heading` 或沒有依據時為空陣列 |
-| `answer` | string | 由 `blocks` 扁平化的 Markdown（不含引用編號），供對話歷史與複製使用；前端不直接渲染它 |
-| `citations` | array | 本次每一次成功的工具呼叫各一筆；被回答引用的在前（依首次出現順序），未被引用的依呼叫順序接在後面 |
-| `citations[].id` | number | 引用編號，1 起算 |
-| `citations[].toolName` | string | 工具名稱 |
-| `citations[].title` | string | 引用標題（例如「上市個股行情」）；工具沒有提供時為該工具的中文用途 |
-| `citations[].target` | string \| null | 查詢對象（例如「台積電 2330」），只有外部資料工具有 |
-| `citations[].excerpt` | string \| null | 外部資料的原文摘錄，前端只以純文字顯示 |
-| `citations[].description` | string \| null | 內部資料的說明（例如「3 筆」），不含顧客資料內容 |
-| `citations[].sourceName` | string \| null | 來源名稱 |
-| `citations[].url` | string \| null | 只有公開外部來源才有，內部來源一律為 `null` |
-| `citations[].dataTime` | string \| null | 資料本身的時間（例如收盤日） |
-| `citations[].queriedAt` | string | 查詢時間 |
-| `citations[].cited` | boolean | 回答是否引用了這筆；`false` 表示只是查過 |
-| `queriedAt` | string | 本次提問的處理時間 |
-| `disclaimer` | string \| null | 用到市場工具時為「資訊僅供內部經營參考，不構成投資建議」 |
-| `toolCalls` | array | 本次的工具呼叫摘要，沒有呼叫工具時為空陣列。對話視窗不顯示，供除錯與驗收 |
-| `toolCalls[].name` | string | 工具名稱 |
-| `toolCalls[].purpose` | string | 中文用途 |
-| `toolCalls[].status` | string | `SUCCESS`、`ERROR`、`DENIED`、`TIMEOUT` |
-| `toolCalls[].durationMs` | number | 耗時（毫秒） |
+| 欄位                      | 型別           | 說明                                                                                                 |
+| ------------------------- | -------------- | ---------------------------------------------------------------------------------------------------- |
+| `requestId`               | string         | 追蹤用                                                                                               |
+| `blocks`                  | array          | 回答的區塊，前端依序渲染；文字已去識別化，以「本顧客」稱呼顧客。最多 40 個區塊，文字合計最多 8000 字 |
+| `blocks[].type`           | string         | `heading`、`paragraph`、`bullet`、`numbered`                                                         |
+| `blocks[].text`           | string         | 區塊文字，只含行內格式（粗體、連結），不含標題或清單符號，也不含 `[S1]` 這類標註                     |
+| `blocks[].citations`      | number[]       | 支持這個區塊的引用編號（1 起算），對應 `citations[].id`；`heading` 或沒有依據時為空陣列              |
+| `answer`                  | string         | 由 `blocks` 扁平化的 Markdown（不含引用編號），供對話歷史與複製使用；前端不直接渲染它                |
+| `citations`               | array          | 本次每一次成功的工具呼叫各一筆；被回答引用的在前（依首次出現順序），未被引用的依呼叫順序接在後面     |
+| `citations[].id`          | number         | 引用編號，1 起算                                                                                     |
+| `citations[].toolName`    | string         | 工具名稱                                                                                             |
+| `citations[].title`       | string         | 引用標題（例如「上市個股行情」）；工具沒有提供時為該工具的中文用途                                   |
+| `citations[].target`      | string \| null | 查詢對象（例如「台積電 2330」），只有外部資料工具有                                                  |
+| `citations[].excerpt`     | string \| null | 外部資料的原文摘錄，前端只以純文字顯示                                                               |
+| `citations[].description` | string \| null | 內部資料的說明（例如「3 筆」），不含顧客資料內容                                                     |
+| `citations[].sourceName`  | string \| null | 來源名稱                                                                                             |
+| `citations[].url`         | string \| null | 只有公開外部來源才有，內部來源一律為 `null`                                                          |
+| `citations[].dataTime`    | string \| null | 資料本身的時間（例如收盤日）                                                                         |
+| `citations[].queriedAt`   | string         | 查詢時間                                                                                             |
+| `citations[].cited`       | boolean        | 回答是否引用了這筆；`false` 表示只是查過                                                             |
+| `queriedAt`               | string         | 本次提問的處理時間                                                                                   |
+| `disclaimer`              | string \| null | 用到市場工具時為「資訊僅供內部經營參考，不構成投資建議」                                             |
+| `toolCalls`               | array          | 本次的工具呼叫摘要，沒有呼叫工具時為空陣列。對話視窗不顯示，供除錯與驗收                             |
+| `toolCalls[].name`        | string         | 工具名稱                                                                                             |
+| `toolCalls[].purpose`     | string         | 中文用途                                                                                             |
+| `toolCalls[].status`      | string         | `SUCCESS`、`ERROR`、`DENIED`、`TIMEOUT`                                                              |
+| `toolCalls[].durationMs`  | number         | 耗時（毫秒）                                                                                         |
 
 `toolCalls` **不包含**參數、工具結果、顧客個資、內部網址、錯誤細節。
 
@@ -180,46 +183,84 @@
 
 ```json
 {
-  "requestId": "a1b2c3d4",
-  "blocks": [
-    { "type": "heading", "text": "待處理提醒", "citations": [] },
-    { "type": "bullet", "text": "定存 3,000,000 元將於 2026/11/15 到期；10 月下旬面談尚未排定", "citations": [1] },
-    { "type": "heading", "text": "可搭配的專屬活動", "citations": [] },
-    { "type": "bullet", "text": "退休金規劃講座：……（資料日期 2026/10/27）", "citations": [2] },
-    { "type": "heading", "text": "下次聯繫重點", "citations": [] },
-    { "type": "numbered", "text": "……", "citations": [] }
-  ],
-  "answer": "### 待處理提醒\n\n- 定存 3,000,000 元將於 2026/11/15 到期；10 月下旬面談尚未排定\n\n### 可搭配的專屬活動\n\n- 退休金規劃講座：……\n\n### 下次聯繫重點\n\n1. ……",
-  "citations": [
-    { "id": 1, "toolName": "getRealTimeCustomer", "title": "個人360・即時註記與提醒", "target": null, "excerpt": null,
-      "description": "註記、畫像標籤、關鍵提醒", "sourceName": "平台顧客資料（模擬）", "url": null,
-      "dataTime": null, "queriedAt": "2026-10-19T14:03:22+08:00", "cited": true },
-    { "id": 2, "toolName": "getCustomer", "title": "個人360・顧客經營", "target": null, "excerpt": null,
-      "description": "資料日期 2026/10/27", "sourceName": "平台顧客資料（模擬）", "url": null,
-      "dataTime": null, "queriedAt": "2026-10-19T14:03:23+08:00", "cited": true }
-  ],
-  "queriedAt": "2026-10-19T14:03:24+08:00",
-  "disclaimer": null,
-  "toolCalls": [
-    { "name": "getRealTimeCustomer", "purpose": "查詢顧客即時註記與提醒", "status": "SUCCESS", "durationMs": 12 },
-    { "name": "getCustomer", "purpose": "查詢顧客 360 資料", "status": "SUCCESS", "durationMs": 9 }
-  ]
+    "requestId": "a1b2c3d4",
+    "blocks": [
+        { "type": "heading", "text": "待處理提醒", "citations": [] },
+        {
+            "type": "bullet",
+            "text": "定存 3,000,000 元將於 2026/11/15 到期；10 月下旬面談尚未排定",
+            "citations": [1]
+        },
+        { "type": "heading", "text": "可搭配的專屬活動", "citations": [] },
+        {
+            "type": "bullet",
+            "text": "退休金規劃講座：……（資料日期 2026/10/27）",
+            "citations": [2]
+        },
+        { "type": "heading", "text": "下次聯繫重點", "citations": [] },
+        { "type": "numbered", "text": "……", "citations": [] }
+    ],
+    "answer": "### 待處理提醒\n\n- 定存 3,000,000 元將於 2026/11/15 到期；10 月下旬面談尚未排定\n\n### 可搭配的專屬活動\n\n- 退休金規劃講座：……\n\n### 下次聯繫重點\n\n1. ……",
+    "citations": [
+        {
+            "id": 1,
+            "toolName": "getRealTimeCustomer",
+            "title": "個人360・即時註記與提醒",
+            "target": null,
+            "excerpt": null,
+            "description": "註記、畫像標籤、關鍵提醒",
+            "sourceName": "平台顧客資料（模擬）",
+            "url": null,
+            "dataTime": null,
+            "queriedAt": "2026-10-19T14:03:22+08:00",
+            "cited": true
+        },
+        {
+            "id": 2,
+            "toolName": "getCustomer",
+            "title": "個人360・顧客經營",
+            "target": null,
+            "excerpt": null,
+            "description": "資料日期 2026/10/27",
+            "sourceName": "平台顧客資料（模擬）",
+            "url": null,
+            "dataTime": null,
+            "queriedAt": "2026-10-19T14:03:23+08:00",
+            "cited": true
+        }
+    ],
+    "queriedAt": "2026-10-19T14:03:24+08:00",
+    "disclaimer": null,
+    "toolCalls": [
+        {
+            "name": "getRealTimeCustomer",
+            "purpose": "查詢顧客即時註記與提醒",
+            "status": "SUCCESS",
+            "durationMs": 12
+        },
+        {
+            "name": "getCustomer",
+            "purpose": "查詢顧客 360 資料",
+            "status": "SUCCESS",
+            "durationMs": 9
+        }
+    ]
 }
 ```
 
 #### 錯誤
 
-| HTTP | code | 情境 |
-|---|---|---|
-| 400 | `AI_INPUT_INVALID` | 欄位格式錯誤、超過長度、顧客編號格式錯誤 |
-| 401 | `AI_UNAUTHENTICATED` | 未登入 |
-| 403 | `AI_FORBIDDEN` | 沒有 `AI_ASSISTANT_USE` |
-| 404 | `AI_CUSTOMER_NOT_FOUND` | 顧客不存在，或不在使用者的範圍內，或顧客停止蒐集利用個資（沒有任何模型呼叫） |
-| 422 | `AI_TOKEN_BUDGET_EXCEEDED` | 超過 token 預算 |
-| 429 | `AI_RATE_LIMITED` | 超過限流 |
-| 502 | `AI_ANSWER_FORMAT_INVALID` | 模型的最終回答格式不符、回答為空，或模型拒絕回答 |
-| 503 | `AI_LLM_RATE_LIMITED` / `AI_LLM_UNAVAILABLE` | GPT 限流 / 不可用 |
-| 504 | `AI_LLM_TIMEOUT` / `AI_REQUEST_TIMEOUT` | GPT 逾時 / 整體逾時 |
+| HTTP | code                                         | 情境                                                                         |
+| ---- | -------------------------------------------- | ---------------------------------------------------------------------------- |
+| 400  | `AI_INPUT_INVALID`                           | 欄位格式錯誤、超過長度、顧客編號格式錯誤                                     |
+| 401  | `AI_UNAUTHENTICATED`                         | 未登入                                                                       |
+| 403  | `AI_FORBIDDEN`                               | 沒有 `AI_ASSISTANT_USE`                                                      |
+| 404  | `AI_CUSTOMER_NOT_FOUND`                      | 顧客不存在，或不在使用者的範圍內，或顧客停止蒐集利用個資（沒有任何模型呼叫） |
+| 422  | `AI_TOKEN_BUDGET_EXCEEDED`                   | 超過 token 預算                                                              |
+| 429  | `AI_RATE_LIMITED`                            | 超過限流                                                                     |
+| 502  | `AI_ANSWER_FORMAT_INVALID`                   | 模型的最終回答格式不符、回答為空，或模型拒絕回答                             |
+| 503  | `AI_LLM_RATE_LIMITED` / `AI_LLM_UNAVAILABLE` | GPT 限流 / 不可用                                                            |
+| 504  | `AI_LLM_TIMEOUT` / `AI_REQUEST_TIMEOUT`      | GPT 逾時 / 整體逾時                                                          |
 
 > 工具失敗（例如 TWSE 逾時）**不會**回傳錯誤，而是 200，並在 `toolCalls[].status` 標示，由回答說明。
 
@@ -232,10 +273,24 @@
 
 ```json
 {
-  "categories": [
-    { "configKey": "instruction.customer-overview", "name": "顧客概況", "questions": ["幫我整理這位顧客的概況", "這位顧客有哪些註記和標籤？"] },
-    { "configKey": "instruction.asset-liability", "name": "資產負債", "questions": ["這位顧客的資產配置跟客群比起來如何？", "這位顧客的負債結構是什麼？"] }
-  ]
+    "categories": [
+        {
+            "configKey": "instruction.customer-overview",
+            "name": "顧客概況",
+            "questions": [
+                "幫我整理這位顧客的概況",
+                "這位顧客有哪些註記和標籤？"
+            ]
+        },
+        {
+            "configKey": "instruction.asset-liability",
+            "name": "資產負債",
+            "questions": [
+                "這位顧客的資產配置跟客群比起來如何？",
+                "這位顧客的負債結構是什麼？"
+            ]
+        }
+    ]
 }
 ```
 
@@ -256,33 +311,33 @@ Request：
 { "rating": "UP" }
 ```
 
-| 欄位 | 型別 | 規則 |
-|---|---|---|
+| 欄位     | 型別           | 規則                                                                                 |
+| -------- | -------------- | ------------------------------------------------------------------------------------ |
 | `rating` | string \| null | `UP`（有幫助）、`DOWN`（沒有幫助）或 `null`（取消）；其他值 → 400 `AI_INPUT_INVALID` |
 
 - **204**，沒有 body。
 - 處理：更新符合 `{ requestId, userId: 目前使用者, outcome: "ANSWERED" }` 的稽核紀錄，寫入 `feedback` 與 `feedbackAt`（取消時 `feedback` 為 null，`feedbackAt` 仍更新）。`requestId` 只有 8 碼十六進位，所以一定同時比對 `userId`；同一人有兩筆相同 `requestId` 時更新 `createdAt` 最新的一筆。
 - 對同一則回答可重複呼叫，以最後一次為準；前端對同一則訊息的請求逐一送出，所以伺服器最後保存的是最後一次點擊。
 
-| HTTP | code | 情境 |
-|---|---|---|
-| 400 | `AI_INPUT_INVALID` | `requestId` 格式錯誤、`rating` 不是 `UP`／`DOWN`／`null` |
-| 401 | `AI_UNAUTHENTICATED` | 未登入 |
-| 403 | `AI_FORBIDDEN` | 沒有 `AI_ASSISTANT_USE` |
-| 404 | `AI_FEEDBACK_NOT_FOUND` | 找不到自己的、成功的對應回答。別人的 `requestId`、不存在的 `requestId`、失敗的提問、稽核寫入失敗的回答，一律回同樣的 404，不透露紀錄是否存在 |
+| HTTP | code                    | 情境                                                                                                                                         |
+| ---- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| 400  | `AI_INPUT_INVALID`      | `requestId` 格式錯誤、`rating` 不是 `UP`／`DOWN`／`null`                                                                                     |
+| 401  | `AI_UNAUTHENTICATED`    | 未登入                                                                                                                                       |
+| 403  | `AI_FORBIDDEN`          | 沒有 `AI_ASSISTANT_USE`                                                                                                                      |
+| 404  | `AI_FEEDBACK_NOT_FOUND` | 找不到自己的、成功的對應回答。別人的 `requestId`、不存在的 `requestId`、失敗的提問、稽核寫入失敗的回答，一律回同樣的 404，不透露紀錄是否存在 |
 
 ---
 
 ## 3. Prompt 管理 API
 
 - **權限**：
-  - 查詢類（3.1、3.3、3.4、3.11、3.13–3.16）：`AI_CONFIG_READ`
-  - 編輯類（3.2、3.5–3.8、3.10、3.12 開始評測）：`AI_CONFIG_EDIT`
-  - 發布類（3.9）：`AI_CONFIG_PUBLISH`
+    - 查詢類（3.1、3.3、3.4、3.11、3.13–3.16）：`AI_CONFIG_READ`
+    - 編輯類（3.2、3.5–3.8、3.10、3.12 開始評測）：`AI_CONFIG_EDIT`
+    - 發布類（3.9）：`AI_CONFIG_PUBLISH`
 - **版本的辨識**：`version` 是內部流水號，只用於 API 路徑與唯一索引（需求 3-5），**畫面上不顯示**。畫面一律以時間辨識版本：已發布 / 已封存的版本顯示 `updatedAt`（即生效時間）與 `updatedBy`，草稿顯示「最後儲存」時間，已捨棄的版本顯示捨棄時間與捨棄者。
 - **設定類型**：
-  - `SYSTEM_PROMPT`：只有一份 `system.main`，定義角色、安全規則、回答格式
-  - `SYSTEM_INSTRUCTION`：可以有多份，**每份代表一個問題分類**，包含適用問題、回答套版、範例問題
+    - `SYSTEM_PROMPT`：只有一份 `system.main`，定義角色、安全規則、回答格式
+    - `SYSTEM_INSTRUCTION`：可以有多份，**每份代表一個問題分類**，包含適用問題、回答套版、範例問題
 - **`configKey` 格式**：`^(system|instruction)\.[a-z0-9-]{1,50}$`
 - **內容上限**：`content` UTF-8 編碼後最多 65,536 bytes
 - **狀態與操作**：每個 key 同時只有一份「編輯中版本」（`DRAFT` 或 `SCHEDULED`）。狀態轉換與 `updatedBy` 規則見 [04-mongodb-schema.md](04-mongodb-schema.md) 2.4。
@@ -307,13 +362,13 @@ Request：
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-| 按鈕 | 草稿時 | 已排程時 | API |
-|---|---|---|---|
-| 儲存 | 儲存內容，維持草稿 | 儲存內容，保留排程 | `PUT .../draft`，`saveMode: "KEEP_STATUS"` |
-| 取消排程 | 不顯示 | 取消排程、退回草稿（內容不變） | `PUT .../draft`，`saveMode: "DRAFT"` |
-| 立即發布 | 立即發布 | 立即發布（不等預約時間） | 先儲存，再 `POST .../publish`，`publishMode: "IMMEDIATE"` |
-| 預約發布／更新預約 | 按「預約…」展開日期時間後，按「預約發布」改為已排程 | 按「更新預約」修改預約時間 | 先儲存，再 `POST .../publish`，`publishMode: "SCHEDULED"` |
-| 捨棄草稿 | 草稿改為「已捨棄」，內容保留在版本分頁 | 不顯示（需先取消排程） | `DELETE .../draft` |
+| 按鈕               | 草稿時                                              | 已排程時                       | API                                                       |
+| ------------------ | --------------------------------------------------- | ------------------------------ | --------------------------------------------------------- |
+| 儲存               | 儲存內容，維持草稿                                  | 儲存內容，保留排程             | `PUT .../draft`，`saveMode: "KEEP_STATUS"`                |
+| 取消排程           | 不顯示                                              | 取消排程、退回草稿（內容不變） | `PUT .../draft`，`saveMode: "DRAFT"`                      |
+| 立即發布           | 立即發布                                            | 立即發布（不等預約時間）       | 先儲存，再 `POST .../publish`，`publishMode: "IMMEDIATE"` |
+| 預約發布／更新預約 | 按「預約…」展開日期時間後，按「預約發布」改為已排程 | 按「更新預約」修改預約時間     | 先儲存，再 `POST .../publish`，`publishMode: "SCHEDULED"` |
+| 捨棄草稿           | 草稿改為「已捨棄」，內容保留在版本分頁              | 不顯示（需先取消排程）         | `DELETE .../draft`                                        |
 
 - 「發布」由前端 composable 依序呼叫儲存與發布，用儲存回傳的 `docVersion` 接著發布。
 - 已排程時，預約時間顯示於標題列的狀態標籤，日期時間欄位帶入目前的預約時間；「至少 1 分鐘後、最多 90 天內」的提示只在預約時間錯誤時顯示。
@@ -338,20 +393,40 @@ Request：
 
 ```json
 [
-  {
-    "configKey": "system.main",
-    "configType": "SYSTEM_PROMPT",
-    "name": "主要系統提示",
-    "published": { "version": 2, "updatedBy": "EEE22222", "updatedAt": "2026-10-19T09:30:00+08:00" },
-    "workingCopy": { "version": 3, "status": "DRAFT", "scheduledAt": null, "updatedBy": "EEE11111", "updatedAt": "2026-10-19T10:00:00+08:00" }
-  },
-  {
-    "configKey": "instruction.contact-prep",
-    "configType": "SYSTEM_INSTRUCTION",
-    "name": "聯繫準備",
-    "published": { "version": 1, "updatedBy": "system", "updatedAt": "2026-10-19T08:00:00+08:00" },
-    "workingCopy": { "version": 2, "status": "SCHEDULED", "scheduledAt": "2026-10-24T09:00:00+08:00", "updatedBy": "EEE22222", "updatedAt": "2026-10-19T11:00:00+08:00" }
-  }
+    {
+        "configKey": "system.main",
+        "configType": "SYSTEM_PROMPT",
+        "name": "主要系統提示",
+        "published": {
+            "version": 2,
+            "updatedBy": "EEE22222",
+            "updatedAt": "2026-10-19T09:30:00+08:00"
+        },
+        "workingCopy": {
+            "version": 3,
+            "status": "DRAFT",
+            "scheduledAt": null,
+            "updatedBy": "EEE11111",
+            "updatedAt": "2026-10-19T10:00:00+08:00"
+        }
+    },
+    {
+        "configKey": "instruction.contact-prep",
+        "configType": "SYSTEM_INSTRUCTION",
+        "name": "聯繫準備",
+        "published": {
+            "version": 1,
+            "updatedBy": "system",
+            "updatedAt": "2026-10-19T08:00:00+08:00"
+        },
+        "workingCopy": {
+            "version": 2,
+            "status": "SCHEDULED",
+            "scheduledAt": "2026-10-24T09:00:00+08:00",
+            "updatedBy": "EEE22222",
+            "updatedAt": "2026-10-19T11:00:00+08:00"
+        }
+    }
 ]
 ```
 
@@ -362,11 +437,11 @@ Request：
 
 新增一個設定 key，並建立 v1 草稿。用於新增問題分類（System Instruction）。
 
-| 欄位 | 型別 | 必填 | 規則 |
-|---|---|---|---|
-| `configKey` | string | ✓ | 格式如上；不可與既有 key 重複 |
-| `configType` | string | ✓ | `SYSTEM_PROMPT` 或 `SYSTEM_INSTRUCTION`，且必須和 key 前綴一致（`system.` / `instruction.`） |
-| `name` | string | ✓ | 1–50 字，例如「聯繫準備」 |
+| 欄位         | 型別   | 必填 | 規則                                                                                         |
+| ------------ | ------ | ---- | -------------------------------------------------------------------------------------------- |
+| `configKey`  | string | ✓    | 格式如上；不可與既有 key 重複                                                                |
+| `configType` | string | ✓    | `SYSTEM_PROMPT` 或 `SYSTEM_INSTRUCTION`，且必須和 key 前綴一致（`system.` / `instruction.`） |
+| `name`       | string | ✓    | 1–50 字，例如「聯繫準備」                                                                    |
 
 - 新增的草稿內容預設帶入該類型的範本（見 [07-prompt-examples.md](07-prompt-examples.md)），方便 IT 人員填寫。
 - **201**：回傳新草稿（格式同 3.4）
@@ -378,9 +453,36 @@ Request：
 
 ```json
 [
-  { "version": 3, "status": "SCHEDULED", "scheduledAt": "2026-10-24T09:00:00+08:00", "changeNote": "調整回答格式", "basedOnVersion": null, "createdBy": "EEE11111", "updatedBy": "EEE11111", "updatedAt": "2026-10-20T14:32:00+08:00" },
-  { "version": 2, "status": "PUBLISHED", "scheduledAt": null, "changeNote": "新增安全規則", "basedOnVersion": null, "createdBy": "EEE22222", "updatedBy": "EEE22222", "updatedAt": "2026-10-19T09:30:00+08:00" },
-  { "version": 1, "status": "ARCHIVED", "scheduledAt": null, "changeNote": "初始版本", "basedOnVersion": null, "createdBy": "system", "updatedBy": "system", "updatedAt": "2026-10-19T08:00:00+08:00" }
+    {
+        "version": 3,
+        "status": "SCHEDULED",
+        "scheduledAt": "2026-10-24T09:00:00+08:00",
+        "changeNote": "調整回答格式",
+        "basedOnVersion": null,
+        "createdBy": "EEE11111",
+        "updatedBy": "EEE11111",
+        "updatedAt": "2026-10-20T14:32:00+08:00"
+    },
+    {
+        "version": 2,
+        "status": "PUBLISHED",
+        "scheduledAt": null,
+        "changeNote": "新增安全規則",
+        "basedOnVersion": null,
+        "createdBy": "EEE22222",
+        "updatedBy": "EEE22222",
+        "updatedAt": "2026-10-19T09:30:00+08:00"
+    },
+    {
+        "version": 1,
+        "status": "ARCHIVED",
+        "scheduledAt": null,
+        "changeNote": "初始版本",
+        "basedOnVersion": null,
+        "createdBy": "system",
+        "updatedBy": "system",
+        "updatedAt": "2026-10-19T08:00:00+08:00"
+    }
 ]
 ```
 
@@ -393,21 +495,21 @@ Request：
 
 ```json
 {
-  "configKey": "instruction.contact-prep",
-  "configType": "SYSTEM_INSTRUCTION",
-  "name": "聯繫準備",
-  "content": "## 適用問題\n……\n\n## 回答套版\n……\n\n## 範例問題\n- 整理近期互動，幫我準備下次聯繫重點\n\n## 注意事項\n……",
-  "exampleQuestions": ["整理近期互動，幫我準備下次聯繫重點"],
-  "status": "PUBLISHED",
-  "version": 1,
-  "basedOnVersion": null,
-  "changeNote": "初始版本",
-  "createdBy": "system",
-  "createdAt": "2026-10-19T08:00:00+08:00",
-  "updatedBy": "system",
-  "updatedAt": "2026-10-19T08:00:00+08:00",
-  "scheduledAt": null,
-  "docVersion": 0
+    "configKey": "instruction.contact-prep",
+    "configType": "SYSTEM_INSTRUCTION",
+    "name": "聯繫準備",
+    "content": "## 適用問題\n……\n\n## 回答套版\n……\n\n## 範例問題\n- 整理近期互動，幫我準備下次聯繫重點\n\n## 注意事項\n……",
+    "exampleQuestions": ["整理近期互動，幫我準備下次聯繫重點"],
+    "status": "PUBLISHED",
+    "version": 1,
+    "basedOnVersion": null,
+    "changeNote": "初始版本",
+    "createdBy": "system",
+    "createdAt": "2026-10-19T08:00:00+08:00",
+    "updatedBy": "system",
+    "updatedAt": "2026-10-19T08:00:00+08:00",
+    "scheduledAt": null,
+    "docVersion": 0
 }
 ```
 
@@ -425,19 +527,19 @@ Request：
 
 儲存編輯中版本。對應編輯頁的「儲存」和「取消排程」。
 
-| 欄位 | 型別 | 必填 | 規則 |
-|---|---|---|---|
-| `name` | string | ✓ | 1–50 字 |
-| `content` | string | ✓ | 最多 65,536 bytes；`DRAFT` 時允許空白 |
-| `changeNote` | string | | 最多 200 字 |
-| `saveMode` | string | ✓ | `KEEP_STATUS`（儲存）或 `DRAFT`（取消排程，退回草稿） |
-| `docVersion` | number | ✓ | 讀取時拿到的 `docVersion` |
+| 欄位         | 型別   | 必填 | 規則                                                  |
+| ------------ | ------ | ---- | ----------------------------------------------------- |
+| `name`       | string | ✓    | 1–50 字                                               |
+| `content`    | string | ✓    | 最多 65,536 bytes；`DRAFT` 時允許空白                 |
+| `changeNote` | string |      | 最多 200 字                                           |
+| `saveMode`   | string | ✓    | `KEEP_STATUS`（儲存）或 `DRAFT`（取消排程，退回草稿） |
+| `docVersion` | number | ✓    | 讀取時拿到的 `docVersion`                             |
 
-| 目前狀態 | `saveMode` | 結果 |
-|---|---|---|
-| `DRAFT` | 任一 | 維持 `DRAFT` |
+| 目前狀態    | `saveMode`    | 結果                                                                             |
+| ----------- | ------------- | -------------------------------------------------------------------------------- |
+| `DRAFT`     | 任一          | 維持 `DRAFT`                                                                     |
 | `SCHEDULED` | `KEEP_STATUS` | 維持 `SCHEDULED`，保留 `scheduledAt`；**先執行發布前驗證**，確保到期時能成功發布 |
-| `SCHEDULED` | `DRAFT` | 改為 `DRAFT`，清空 `scheduledAt`（取消排程） |
+| `SCHEDULED` | `DRAFT`       | 改為 `DRAFT`，清空 `scheduledAt`（取消排程）                                     |
 
 - `updatedBy`、`updatedAt` 都更新為操作者與現在時間。排程中按「儲存」視為由此人重新確認排程，到期自動發布時記的是此人。
 - **200**：回傳更新後的版本（`docVersion` 會加 1）
@@ -460,12 +562,18 @@ Request：
 
 ```json
 {
-  "valid": false,
-  "errors": [
-    { "rule": "REQUIRED_SECTION", "message": "「## 適用問題」不可空白" },
-    { "rule": "EXAMPLE_QUESTIONS", "message": "「範例問題」最多 5 題，目前有 6 題" },
-    { "rule": "FORBIDDEN_CONTENT", "message": "第 12 行疑似包含未允許的網址，請移除" }
-  ]
+    "valid": false,
+    "errors": [
+        { "rule": "REQUIRED_SECTION", "message": "「## 適用問題」不可空白" },
+        {
+            "rule": "EXAMPLE_QUESTIONS",
+            "message": "「範例問題」最多 5 題，目前有 6 題"
+        },
+        {
+            "rule": "FORBIDDEN_CONTENT",
+            "message": "第 12 行疑似包含未允許的網址，請移除"
+        }
+    ]
 }
 ```
 
@@ -476,20 +584,24 @@ Request：
 
 發布編輯中版本，可以立即發布或預約發布。兩種方式都會先執行發布前驗證。
 
-| 欄位 | 型別 | 必填 | 規則 |
-|---|---|---|---|
-| `publishMode` | string | ✓ | `IMMEDIATE` 或 `SCHEDULED` |
+| 欄位          | 型別   | 必填             | 規則                                         |
+| ------------- | ------ | ---------------- | -------------------------------------------- |
+| `publishMode` | string | ✓                | `IMMEDIATE` 或 `SCHEDULED`                   |
 | `scheduledAt` | string | `SCHEDULED` 必填 | ISO 8601 含時區；至少 1 分鐘後、最多 90 天內 |
-| `docVersion` | number | ✓ | |
+| `docVersion`  | number | ✓                |                                              |
 
 ```json
-{ "publishMode": "SCHEDULED", "scheduledAt": "2026-10-24T09:00:00+08:00", "docVersion": 5 }
+{
+    "publishMode": "SCHEDULED",
+    "scheduledAt": "2026-10-24T09:00:00+08:00",
+    "docVersion": 5
+}
 ```
 
-| `publishMode` | 結果 |
-|---|---|
-| `IMMEDIATE` | 在同一個交易中：舊的 PUBLISHED → ARCHIVED（不改動它的 `updatedBy`、`updatedAt`），編輯中版本 → PUBLISHED。已排程的版本也可以提前立即發布 |
-| `SCHEDULED` | 編輯中版本 → `SCHEDULED`，寫入 `scheduledAt`；已排程時即修改預約時間。到期由排程器自動發布，`updatedBy` 維持預約者 |
+| `publishMode` | 結果                                                                                                                                     |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `IMMEDIATE`   | 在同一個交易中：舊的 PUBLISHED → ARCHIVED（不改動它的 `updatedBy`、`updatedAt`），編輯中版本 → PUBLISHED。已排程的版本也可以提前立即發布 |
+| `SCHEDULED`   | 編輯中版本 → `SCHEDULED`，寫入 `scheduledAt`；已排程時即修改預約時間。到期由排程器自動發布，`updatedBy` 維持預約者                       |
 
 - **200**：回傳發布後或排程後的版本
 - **400** `AI_INPUT_INVALID`：`scheduledAt` 缺少或超出範圍
@@ -501,20 +613,20 @@ Request：
 
 套用任一已發布、已封存或已捨棄的版本：以它的 `name` 與 `content` **新增一份草稿**，記錄 `basedOnVersion`。**不會直接發布**，之後照 3.9 立即發布或預約發布（因此套用的內容一樣會經過發布前驗證，也可以預約）。取代原本的「回復上一版」。
 
-| 欄位 | 型別 | 必填 | 規則 |
-|---|---|---|---|
-| `workingCopyDocVersion` | number \| null | 有編輯中版本時必填 | 使用者看到的編輯中版本 `docVersion`；沒有編輯中版本時為 `null` |
-| `confirmOverwrite` | boolean | 有編輯中版本時必填 `true` | 使用者已確認目前的草稿或排程會被改為「已捨棄」 |
+| 欄位                    | 型別           | 必填                      | 規則                                                           |
+| ----------------------- | -------------- | ------------------------- | -------------------------------------------------------------- |
+| `workingCopyDocVersion` | number \| null | 有編輯中版本時必填        | 使用者看到的編輯中版本 `docVersion`；沒有編輯中版本時為 `null` |
+| `confirmOverwrite`      | boolean        | 有編輯中版本時必填 `true` | 使用者已確認目前的草稿或排程會被改為「已捨棄」                 |
 
 ```json
 { "workingCopyDocVersion": 7, "confirmOverwrite": true }
 ```
 
-| 目前的編輯中版本 | 結果（在同一個交易中完成） |
-|---|---|
-| 沒有 | 新增一份 `DRAFT` |
-| `DRAFT` | 原草稿改為 `DISCARDED`（內容保留）；新增一份 `DRAFT` |
-| `SCHEDULED` | 原排程版本改為 `DISCARDED`（排程取消，`scheduledAt` 保留作為「原預約時間」紀錄）；新增一份 `DRAFT` |
+| 目前的編輯中版本 | 結果（在同一個交易中完成）                                                                         |
+| ---------------- | -------------------------------------------------------------------------------------------------- |
+| 沒有             | 新增一份 `DRAFT`                                                                                   |
+| `DRAFT`          | 原草稿改為 `DISCARDED`（內容保留）；新增一份 `DRAFT`                                               |
+| `SCHEDULED`      | 原排程版本改為 `DISCARDED`（排程取消，`scheduledAt` 保留作為「原預約時間」紀錄）；新增一份 `DRAFT` |
 
 新增的草稿：`version` = 最大值 + 1，`name`、`content` 取自來源版本，`basedOnVersion` = 來源版本，`changeNote` 空，`createdBy`、`updatedBy` 為操作者。被改為 `DISCARDED` 的版本，`updatedBy`、`updatedAt` 為操作者與現在時間，`createdBy` 保留原作者。
 
@@ -523,20 +635,27 @@ Request：
 1. 前端送出套用（`confirmOverwrite` 為 false 或未帶）。
 2. 後端發現已有編輯中版本，回 409 `AI_CONFIG_OVERWRITE_PENDING`：
 
-   ```json
-   {
-     "code": "AI_CONFIG_OVERWRITE_PENDING",
-     "message": "此設定已有編輯中的版本，套用後它會被標為已捨棄",
-     "requestId": "a1b2c3d4",
-     "details": [ { "status": "SCHEDULED", "scheduledAt": "2026-10-24T09:00:00+08:00", "updatedAt": "2026-10-20T14:32:00+08:00", "docVersion": 7 } ]
-   }
-   ```
+    ```json
+    {
+        "code": "AI_CONFIG_OVERWRITE_PENDING",
+        "message": "此設定已有編輯中的版本，套用後它會被標為已捨棄",
+        "requestId": "a1b2c3d4",
+        "details": [
+            {
+                "status": "SCHEDULED",
+                "scheduledAt": "2026-10-24T09:00:00+08:00",
+                "updatedAt": "2026-10-20T14:32:00+08:00",
+                "docVersion": 7
+            }
+        ]
+    }
+    ```
 
 3. 前端跳出確認視窗：
-   - 標題：「以 {來源時間} 的版本建立草稿？」
-   - 草稿時：「目前 {updatedAt} 儲存的草稿會改為已捨棄，可在版本列表找回。」
-   - 已排程時：「目前預約於 {scheduledAt} 發布的版本會取消排程並改為已捨棄，可在版本列表找回。」
-   - 按鈕：「取消」「建立草稿」
+    - 標題：「以 {來源時間} 的版本建立草稿？」
+    - 草稿時：「目前 {updatedAt} 儲存的草稿會改為已捨棄，可在版本列表找回。」
+    - 已排程時：「目前預約於 {scheduledAt} 發布的版本會取消排程並改為已捨棄，可在版本列表找回。」
+    - 按鈕：「取消」「建立草稿」
 4. 使用者確認後，前端帶 `confirmOverwrite: true` 與 `details[0].docVersion` 重送。
 
 **回應**
@@ -555,8 +674,8 @@ Request：
 
 ```json
 [
-  { "version": 3, "up": 12, "down": 3 },
-  { "version": 2, "up": 40, "down": 15 }
+    { "version": 3, "up": 12, "down": 3 },
+    { "version": 2, "up": 40, "down": 15 }
 ]
 ```
 
@@ -578,9 +697,9 @@ Request：
 { "docVersion": 5 }
 ```
 
-| 欄位 | 型別 | 必填 | 規則 |
-|---|---|---|---|
-| `docVersion` | number | ✓ | 編輯中版本目前的 `docVersion` |
+| 欄位         | 型別   | 必填 | 規則                          |
+| ------------ | ------ | ---- | ----------------------------- |
+| `docVersion` | number | ✓    | 編輯中版本目前的 `docVersion` |
 
 請求**不含**顧客或存取等級的欄位：評測的顧客與存取等級只來自資料集檔案，管理者無法藉評測查詢任意顧客。
 
@@ -592,13 +711,13 @@ Response 202：
 
 同步檢查依序為：
 
-| 順序 | HTTP | code | 情境 |
-|---|---|---|---|
-| 1 | 404 | `AI_CONFIG_NOT_FOUND` | `configKey` 不存在 |
-| 2 | 409 | `AI_CONFIG_INVALID_STATE` | 沒有編輯中版本（`DRAFT` 或 `SCHEDULED`） |
-| 3 | 409 | `AI_CONFIG_CONFLICT` | `docVersion` 不一致 |
-| 4 | 422 | `AI_CONFIG_VALIDATION_FAILED` | 編輯中版本未通過發布前驗證；`details` 同 3.8 的 `errors` |
-| 5 | 409 | `AI_EVAL_RUNNING` | 任何 key 已有執行中的評測；`details` 為 `[{ runId, configKey, triggeredBy, completedCases, totalCases }]` |
+| 順序 | HTTP | code                          | 情境                                                                                                      |
+| ---- | ---- | ----------------------------- | --------------------------------------------------------------------------------------------------------- |
+| 1    | 404  | `AI_CONFIG_NOT_FOUND`         | `configKey` 不存在                                                                                        |
+| 2    | 409  | `AI_CONFIG_INVALID_STATE`     | 沒有編輯中版本（`DRAFT` 或 `SCHEDULED`）                                                                  |
+| 3    | 409  | `AI_CONFIG_CONFLICT`          | `docVersion` 不一致                                                                                       |
+| 4    | 422  | `AI_CONFIG_VALIDATION_FAILED` | 編輯中版本未通過發布前驗證；`details` 同 3.8 的 `errors`                                                  |
+| 5    | 409  | `AI_EVAL_RUNNING`             | 任何 key 已有執行中的評測；`details` 為 `[{ runId, configKey, triggeredBy, completedCases, totalCases }]` |
 
 另有 400 `AI_INPUT_INVALID`（`configKey` 格式錯誤或缺少 `docVersion`）、401、403，以及評測任務無法交給執行緒時的 500 `AI_INTERNAL_ERROR`。
 
@@ -613,31 +732,53 @@ Response 202：
 
 ```json
 [
-  {
-    "runId": "6719f0c2a4b5e6f7a8b9c0d1",
-    "status": "COMPLETED",
-    "errorCode": null,
-    "triggeredBy": "EEE22222",
-    "startedAt": "2026-10-24T15:02:11+08:00",
-    "finishedAt": "2026-10-24T15:07:40+08:00",
-    "candidateVersion": 6,
-    "candidateUpdatedAt": "2026-10-24T14:58:03+08:00",
-    "candidateDocVersion": 5,
-    "datasetChanged": false,
-    "totalCases": 30,
-    "completedCases": 30,
-    "summary": {
-      "baseline":  { "correct": 14, "total": 30, "toolsOk": 16, "routeOk": 13, "routeCases": 13,
-                     "refusedExpected": 6, "expectedRefusals": 6,
-                     "refusedNormal": 0, "normalCases": 11, "avgTotalTokens": 7420, "avgInputTokens": 7080,
-                     "avgOutputTokens": 340, "avgDurationMs": 6200 },
-      "candidate": { "correct": 16, "total": 30, "toolsOk": 16, "routeOk": 12, "routeCases": 13,
-                     "refusedExpected": 6, "expectedRefusals": 6,
-                     "refusedNormal": 1, "normalCases": 11, "avgTotalTokens": 7610, "avgInputTokens": 7230,
-                     "avgOutputTokens": 380, "avgDurationMs": 6500 },
-      "judgeTokens": 48200
+    {
+        "runId": "6719f0c2a4b5e6f7a8b9c0d1",
+        "status": "COMPLETED",
+        "errorCode": null,
+        "triggeredBy": "EEE22222",
+        "startedAt": "2026-10-24T15:02:11+08:00",
+        "finishedAt": "2026-10-24T15:07:40+08:00",
+        "candidateVersion": 6,
+        "candidateUpdatedAt": "2026-10-24T14:58:03+08:00",
+        "candidateDocVersion": 5,
+        "datasetChanged": false,
+        "totalCases": 30,
+        "completedCases": 30,
+        "summary": {
+            "baseline": {
+                "correct": 14,
+                "total": 30,
+                "toolsOk": 16,
+                "routeOk": 13,
+                "routeCases": 13,
+                "refusedExpected": 6,
+                "expectedRefusals": 6,
+                "refusedNormal": 0,
+                "normalCases": 11,
+                "avgTotalTokens": 7420,
+                "avgInputTokens": 7080,
+                "avgOutputTokens": 340,
+                "avgDurationMs": 6200
+            },
+            "candidate": {
+                "correct": 16,
+                "total": 30,
+                "toolsOk": 16,
+                "routeOk": 12,
+                "routeCases": 13,
+                "refusedExpected": 6,
+                "expectedRefusals": 6,
+                "refusedNormal": 1,
+                "normalCases": 11,
+                "avgTotalTokens": 7610,
+                "avgInputTokens": 7230,
+                "avgOutputTokens": 380,
+                "avgDurationMs": 6500
+            },
+            "judgeTokens": 48200
+        }
     }
-  }
 ]
 ```
 
@@ -666,57 +807,69 @@ Response 200：3.13 的欄位，加上 `configKey` 與 `cases`：
 
 ```json
 {
-  "runId": "6719f0c2a4b5e6f7a8b9c0d1",
-  "configKey": "instruction.contact-prep",
-  "status": "COMPLETED",
-  "errorCode": null,
-  "triggeredBy": "EEE22222",
-  "startedAt": "2026-10-24T15:02:11+08:00",
-  "finishedAt": "2026-10-24T15:07:40+08:00",
-  "candidateVersion": 6,
-  "candidateUpdatedAt": "2026-10-24T14:58:03+08:00",
-  "candidateDocVersion": 5,
-  "datasetChanged": false,
-  "totalCases": 30,
-  "completedCases": 30,
-  "summary": { "baseline": { "…": "…" }, "candidate": { "…": "…" }, "judgeTokens": 48200 },
-  "cases": [
-    {
-      "caseId": "Q8-contact-prep",
-      "group": "顧客經營",
-      "question": "聯繫這位顧客前，有哪些提醒要處理？",
-      "expectRefusal": false,
-      "expectCategory": "instruction.contact-prep",
-      "baseline": {
-        "outcome": "ANSWERED",
-        "errorCode": null,
-        "answer": "### 待處理提醒\n\n- 定存 3,000,000 元 2026/11/15 到期……",
-        "toolCalls": [ { "toolName": "getCustomer", "status": "SUCCESS" }, { "toolName": "getRealTimeCustomer", "status": "SUCCESS" } ],
-        "modelCalls": 2,
-        "inputTokens": 7080,
-        "outputTokens": 340,
-        "totalTokens": 7420,
-        "durationMs": 6200,
-        "unverifiedNumbers": [],
-        "toolsOk": true,
-        "numbersOk": true,
-        "routeOk": true,
-        "routeSource": "ROUTER",
-        "instructionKey": "instruction.contact-prep",
-        "missingPhrases": [],
-        "forbiddenPhrases": [],
-        "judge": {
-          "refused": false,
-          "rubric": [ { "text": "列出定存 2026/11/15 到期的提醒", "met": true } ],
-          "comment": "無",
-          "error": null,
-          "tokens": 1500
-        },
-        "passed": true
-      },
-      "candidate": { "…": "…" }
-    }
-  ]
+    "runId": "6719f0c2a4b5e6f7a8b9c0d1",
+    "configKey": "instruction.contact-prep",
+    "status": "COMPLETED",
+    "errorCode": null,
+    "triggeredBy": "EEE22222",
+    "startedAt": "2026-10-24T15:02:11+08:00",
+    "finishedAt": "2026-10-24T15:07:40+08:00",
+    "candidateVersion": 6,
+    "candidateUpdatedAt": "2026-10-24T14:58:03+08:00",
+    "candidateDocVersion": 5,
+    "datasetChanged": false,
+    "totalCases": 30,
+    "completedCases": 30,
+    "summary": {
+        "baseline": { "…": "…" },
+        "candidate": { "…": "…" },
+        "judgeTokens": 48200
+    },
+    "cases": [
+        {
+            "caseId": "Q8-contact-prep",
+            "group": "顧客經營",
+            "question": "聯繫這位顧客前，有哪些提醒要處理？",
+            "expectRefusal": false,
+            "expectCategory": "instruction.contact-prep",
+            "baseline": {
+                "outcome": "ANSWERED",
+                "errorCode": null,
+                "answer": "### 待處理提醒\n\n- 定存 3,000,000 元 2026/11/15 到期……",
+                "toolCalls": [
+                    { "toolName": "getCustomer", "status": "SUCCESS" },
+                    { "toolName": "getRealTimeCustomer", "status": "SUCCESS" }
+                ],
+                "modelCalls": 2,
+                "inputTokens": 7080,
+                "outputTokens": 340,
+                "totalTokens": 7420,
+                "durationMs": 6200,
+                "unverifiedNumbers": [],
+                "toolsOk": true,
+                "numbersOk": true,
+                "routeOk": true,
+                "routeSource": "ROUTER",
+                "instructionKey": "instruction.contact-prep",
+                "missingPhrases": [],
+                "forbiddenPhrases": [],
+                "judge": {
+                    "refused": false,
+                    "rubric": [
+                        {
+                            "text": "列出定存 2026/11/15 到期的提醒",
+                            "met": true
+                        }
+                    ],
+                    "comment": "無",
+                    "error": null,
+                    "tokens": 1500
+                },
+                "passed": true
+            },
+            "candidate": { "…": "…" }
+        }
+    ]
 }
 ```
 
@@ -734,25 +887,34 @@ Response 200：3.13 的欄位，加上 `configKey` 與 `cases`：
 
 ```json
 {
-  "datasetHash": "3f9a…（SHA-256，共 64 字元）",
-  "cases": [
-    {
-      "id": "Q8-contact-prep",
-      "group": "顧客經營",
-      "accessLevel": "FULL",
-      "certNo": "A123456789",
-      "question": "聯繫這位顧客前，有哪些提醒要處理？",
-      "expect": {
-        "tools": ["getCustomer", "getRealTimeCustomer"],
-        "forbiddenTools": [],
-        "refusal": false,
-        "mustContain": [],
-        "mustNotContain": ["王小明", "A123456789", "0912-000-111", "58 歲"],
-        "category": "instruction.contact-prep"
-      },
-      "rubric": ["列出定存 2026/11/15 到期、10 月下旬面談尚未排定、KYC 到期", "列出可搭配的專屬活動", "提出 2–3 個聯繫重點"]
-    }
-  ]
+    "datasetHash": "3f9a…（SHA-256，共 64 字元）",
+    "cases": [
+        {
+            "id": "Q8-contact-prep",
+            "group": "顧客經營",
+            "accessLevel": "FULL",
+            "certNo": "A123456789",
+            "question": "聯繫這位顧客前，有哪些提醒要處理？",
+            "expect": {
+                "tools": ["getCustomer", "getRealTimeCustomer"],
+                "forbiddenTools": [],
+                "refusal": false,
+                "mustContain": [],
+                "mustNotContain": [
+                    "王小明",
+                    "A123456789",
+                    "0912-000-111",
+                    "58 歲"
+                ],
+                "category": "instruction.contact-prep"
+            },
+            "rubric": [
+                "列出定存 2026/11/15 到期、10 月下旬面談尚未排定、KYC 到期",
+                "列出可搭配的專屬活動",
+                "提出 2–3 個聯繫重點"
+            ]
+        }
+    ]
 }
 ```
 
@@ -764,16 +926,16 @@ Response 200：3.13 的欄位，加上 `configKey` 與 `cases`：
 
 ## 4. 平台替身 API（POC 專用，整合時刪除）
 
-| Method | Path | 說明 |
-|---|---|---|
-| `POST` | `/api/mock/auth/login` | `{ username, password }`，成功後建立 session |
-| `POST` | `/api/mock/auth/logout` | 登出 |
-| `GET` | `/api/mock/auth/me` | `{ username, displayName, roleKey, roleName, permissions[] }`（`roleKey` 為業務角色碼，例如 `RM`） |
-| `GET` | `/api/mock/customers` | 目前使用者範圍內的顧客清單（只依範圍，停止利用個資的顧客也會列出），供顧客列表頁使用；`LIMITED` 時 `certNo` 與姓名遮罩（目前無 mock 角色是 `LIMITED`） |
-| `GET` | `/api/mock/customers/{certNo}` | 名片：`certNo`（`LIMITED` 遮罩）、`accessLevel`、`name`（`LIMITED` 遮蔽）、`segment`；`NONE` 或不存在回 404 |
-| `GET` | `/api/mock/customers/{certNo}/360` | `CustomerDto`（欄位名照平台原樣，含 `segement`、`financialCounsultant`、`segementProgressPercent`）；需 `FULL`，`LIMITED` 回 403，`NONE` 或不存在回 404 `AI_CUSTOMER_NOT_FOUND` |
-| `GET` | `/api/mock/customers/{certNo}/real-time` | `RealTimeCustomerDto`（`attentionCustomer`、`specialCareCustomer`、`profilePhoto`、`customerFlaggingList`、`keyAlerts`）；權限規則同 `/360` |
-| `GET` | `/api/mock/customers/{certNo}/cip` | 模擬平台 CIP `findCustomerInfo`，只回 `{"stopUseCustomerDataFlag": "Y" 或 "N"}`；只依角色範圍判斷（不看註記），範圍外或不存在回 404 |
+| Method | Path                                     | 說明                                                                                                                                                                            |
+| ------ | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST` | `/api/mock/auth/login`                   | `{ username, password }`，成功後建立 session                                                                                                                                    |
+| `POST` | `/api/mock/auth/logout`                  | 登出                                                                                                                                                                            |
+| `GET`  | `/api/mock/auth/me`                      | `{ username, displayName, roleKey, roleName, permissions[] }`（`roleKey` 為業務角色碼，例如 `RM`）                                                                              |
+| `GET`  | `/api/mock/customers`                    | 目前使用者範圍內的顧客清單（只依範圍，停止利用個資的顧客也會列出），供顧客列表頁使用；`LIMITED` 時 `certNo` 與姓名遮罩（目前無 mock 角色是 `LIMITED`）                          |
+| `GET`  | `/api/mock/customers/{certNo}`           | 名片：`certNo`（`LIMITED` 遮罩）、`accessLevel`、`name`（`LIMITED` 遮蔽）、`segment`；`NONE` 或不存在回 404                                                                     |
+| `GET`  | `/api/mock/customers/{certNo}/360`       | `CustomerDto`（欄位名照平台原樣，含 `segement`、`financialCounsultant`、`segementProgressPercent`）；需 `FULL`，`LIMITED` 回 403，`NONE` 或不存在回 404 `AI_CUSTOMER_NOT_FOUND` |
+| `GET`  | `/api/mock/customers/{certNo}/real-time` | `RealTimeCustomerDto`（`attentionCustomer`、`specialCareCustomer`、`profilePhoto`、`customerFlaggingList`、`keyAlerts`）；權限規則同 `/360`                                     |
+| `GET`  | `/api/mock/customers/{certNo}/cip`       | 模擬平台 CIP `findCustomerInfo`，只回 `{"stopUseCustomerDataFlag": "Y" 或 "N"}`；只依角色範圍判斷（不看註記），範圍外或不存在回 404                                             |
 
 > 平台替身的 360 頁面為了 demo 會顯示虛構的姓名等資料（`LIMITED` 時遮罩），這是**平台畫面**的行為；送進 LLM 的內容一律經過去識別化。360 頁面卡片讀 `/360` 與 `/real-time`，與小幫手的工具資料來源相同，所以畫面與回答的數字一致。
 
@@ -783,10 +945,10 @@ Response 200：3.13 的欄位，加上 `configKey` 與 `cases`：
 
 ```json
 {
-  "code": "AI_CONFIG_CONFLICT",
-  "message": "內容已被他人更新，請重新載入後再編輯",
-  "requestId": "a1b2c3d4",
-  "details": []
+    "code": "AI_CONFIG_CONFLICT",
+    "message": "內容已被他人更新，請重新載入後再編輯",
+    "requestId": "a1b2c3d4",
+    "details": []
 }
 ```
 
