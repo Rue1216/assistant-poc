@@ -1,6 +1,6 @@
 # 04 MongoDB Schema
 
-> 版本：v1.1（POC）・2026-10-29（audit 移除顧客編號欄位與索引 `IX_ICRM_AI_AUDIT_3`；seed 改為 7 個問題分類；範例帳號改為員工帳號；見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md)）
+> 版本：v1.2（POC）・2026-10-30（2.5 顧客編號禁止規則改為 `certNo` 格式、補未納入的越權指令樣式；v1.1 2026-10-29 為 audit 移除顧客編號欄位與索引 `IX_ICRM_AI_AUDIT_3`；seed 改為 7 個問題分類；範例帳號改為員工帳號；見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md)）
 
 ## 1. Collection 總覽
 
@@ -205,9 +205,11 @@ stateDiagram-v2
 | IP | `\b\d{1,3}(\.\d{1,3}){3}\b`，獨立一項，一律擋，不受白名單影響（`http://10.1.2.3` 也擋） |
 | 身分證號 | `\b[A-Z][12]\d{8}\b` |
 | 手機號碼 | `\b09\d{2}-?\d{3}-?\d{3}\b` |
-| 顧客編號 | `\bC\d{3}\b`（POC 格式；整合時換成平台實際格式） |
+| 顧客編號 | 與 `PiiRedactor` 規則 7 同一組樣式（`PiiRedactor.CERT_NO_REGEX`）：`[A-Z][12]\d{8}`、`[A-Z]{3}\d{6}`、`&[A-Z]\d{8}`，前後不得緊接英數字或 `&`（見 [03-tool-catalog.md](03-tool-catalog.md) 1.6；後兩種為推定，整合時換成平台實際格式） |
 
 - 白名單與 tool call 的 `market.twse.allowed-hosts` 各自獨立：後者管後端程式可連線的對象，前者管 prompt 裡可以寫的連結。修改清單需改設定並重新啟動。
+- 名稱（`name`）也套用同一組禁止內容規則。
+- **未納入的樣式**：需求 3-5 的「可繞過權限的指令」（例如「忽略以上規則」）目前不在禁止清單：這類自然語言樣式誤判率高，且安全規則寫死在程式碼並放在 prompt 最後（[01-architecture.md](01-architecture.md) 第 4 節），要求模型忽略使用者與資料中的指令。列為待辦，若之後需要再以 regex 加入（questions-for-manager M24）。
 - 錯誤訊息格式（`rule` 為 `FORBIDDEN_CONTENT`）：`第 {n} 行疑似包含{類型}，請移除`，類型直接接在「疑似包含」後面，例如 `第 12 行疑似包含未允許的網址，請移除`、`第 12 行疑似包含IP 位址，請移除`、`第 12 行疑似包含API key 或 token，請移除`。
 - 其他驗證訊息：`缺少必要章節「## 適用問題」`、`「## 適用問題」不可空白`、`「範例問題」最多 5 題，目前有 {n} 題`、`「範例問題」每題最多 40 字`。
 

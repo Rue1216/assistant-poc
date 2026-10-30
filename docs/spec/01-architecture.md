@@ -1,6 +1,6 @@
 # 01 架構說明
 
-> 版本：v1.1（POC）・2026-10-29（個人 360 內容重寫：`CustomerDataPort` 對應平台兩支 API、每題資料暫存、本顧客註記、`certNo`、mock 帳號與 `scope`；見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
+> 版本：v1.2（POC）・2026-10-30（新增 5.1 的 Clean Architecture 對應、第 7 節 UI 框架說明、第 9 節與 requirements.md 的差異；v1.1 2026-10-29 為個人 360 內容重寫：`CustomerDataPort` 對應平台兩支 API、每題資料暫存、本顧客註記、`certNo`、mock 帳號與 `scope`，見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
 
 ## 1. 系統元件
 
@@ -139,7 +139,7 @@ sequenceDiagram
   O->>O: AnswerAssembler 驗證、逐區塊去識別化、重新編號、核對數字；附加 citations、查詢時間、警語；寫入稽核
   O-->>C: ChatResponse
   C-->>U: blocks、answer、citations、disclaimer、toolCalls
-  Note over U: ⑥ 區塊顯示引用上標，可展開引用清單；有 toolCalls 時顯示可展開的摘要區塊
+  Note over U: ⑥ 區塊顯示引用上標，可展開引用清單（toolCalls 不顯示，見 9.2）
 ```
 
 ### 3.1 迴圈規則
@@ -277,6 +277,18 @@ backend/
 
 > 套件名稱 `com.example.copilot` 是 POC 暫定，整合時依平台規範調整。
 
+**與 Clean Architecture 的對應**（需求第 2 節）：套件依功能切分，依賴方向一律由外向內，平台能力只經 `port/` 進入：
+
+| 層 | 套件 | 說明 |
+|---|---|---|
+| 介面（inbound adapter） | `chat`、`config`、`feedback`、`evaluation` 的 Controller 與 `dto/` | REST 入口；只做參數驗證與 DTO 轉換，不含業務規則 |
+| 應用（use case） | `ChatOrchestrator`、`ConfigService`、`FeedbackService`、`EvalRunService`／`EvalRunner` | 一次提問、發布、評測的流程；只依賴下兩層與 port |
+| 領域（domain） | `answer`、`privacy`、`prompt`、`tool`（含 `customer/`、`market/`）、`audit` 的規則類別 | 去識別化、prompt 組裝、工具驗證、回答組裝、稽核內容；不依賴 Spring Web、不知道平台 |
+| 出站介面（output port） | `port/`（`CurrentUserPort`、`CustomerAccessPort`、`CustomerDataPort`） | 小幫手對平台的唯一依賴，由平台實作 |
+| 基礎設施（outbound adapter） | `llm`（LangChain4j `ChatModel`）、`market/TwseClient`、各 Repository、`mockplatform`（POC 替身） | 對外連線與資料庫；`mockplatform` 整合時刪除 |
+
+套件沒有照 `adapter / application / domain` 命名分資料夾，整合時依平台既有模組的分層命名調整（questions-for-manager S2）；類別的職責與依賴方向不變。
+
 ### 5.2 前端
 
 ```
@@ -397,6 +409,8 @@ OPENAI_API_KEY=sk-...
 | 前端套件     | 和平台相同、固定版本（不用 `^`、`~`）：Vue 3.5.33、TypeScript 6.0.3、Vite 7.3.5、axios 1.17.0、Pinia 3.0.4、Vue Router 5.0.6、@vitejs/plugin-vue 6.0.7、Vitest 4.1.5、vue-tsc 3.2.8。平台清單以外的開發工具（@types/node、@vue/test-utils、@vue/tsconfig、jsdom）也固定版本 |
 | MongoDB      | 8.x，docker compose 單節點 replica set                                                                                                                                                                                                                                      |
 
+> **UI 框架**：需求列出 PrimeVue 4 unstyled，但平台前端雖有這個依賴，現有頁面實際未使用，所以小幫手與平台一致，不引入 PrimeVue，元件樣式用 scoped CSS 與 `tokens.css` 的 CSS variables（見 5.2）。Markdown 渲染、sanitizer、diff 也不引入套件，自行實作。
+
 ### 7.1 第三方依賴（lib-repo）
 
 公司環境連不到外部 Maven repo，所以平台沒有的依賴照 Maven 目錄結構放在 `backend/lib-repo/`，和程式碼一起 commit。
@@ -437,3 +451,52 @@ OPENAI_API_KEY=sk-...
 8. 評測需要平台提供專用的假測試顧客（資料集的 `certNo` 改用那些顧客；正式環境的評測集只能使用測試顧客的 `certNo`，資料集在版控中），並且評測執行緒會用掉 GPT token；見 [platform-setup-requests.md](../platform-setup-requests.md)。多個 pod 時，同時只有一個評測由 `UK_ICRM_AI_EVAL_1` 保證；評測只在收到請求的那個 pod 上執行。
 9. 依平台管理第三方 jar 的方式，併入 `backend/lib-repo/` 的 jar；平台已有的 artifact 不要重複放（見 7.1）。
 10. 深色模式：平台有深色模式時，把 `tokens.css` 的 `html.dark` 選擇器改成平台切換深色時使用的 class 或屬性；平台沒有深色模式就不用處理，`html.dark` 的覆蓋不會生效。
+
+## 9. 與 requirements.md 的差異
+
+以下是規格與需求字面不同、且已決定的地方，集中列在這裡方便審查；細節在各自的文件。
+
+### 9.1 助理只在個人 360 頁面（需求 3-1「所有已授權頁面」）
+
+對話綁定頁面上的那一位顧客：顧客編號走 API 路徑、不經 LLM，顧客工具因此不需要顧客參數，模型無法指定或切換顧客（[03-tool-catalog.md](03-tool-catalog.md) 1.1）。掛在所有頁面就需要「在對話中指定顧客」的機制（輸入編號或用姓名搜尋），去識別化與權限都更難保證。其他頁面之後以「情境」概念擴充（[ideas-backlog.md](../ideas-backlog.md) 想法 7）。決定於 2026-10-19。
+
+### 9.2 對話視窗不顯示工具呼叫摘要（需求 2-2 步驟 6）
+
+需求要求以可展開區塊顯示工具名稱、用途、執行狀態與耗時。POC 改以**回答引用**（加分項 1）呈現資料來源：每個區塊帶引用上標，展開後可看引用標題（例如「個人360・資產負債」「上市個股行情」）、來源名稱、資料日期與查詢時間（[02-rest-api.md](02-rest-api.md) 2.1 `citations`）。理由：
+
+- 使用者在意的是「這段話根據什麼資料」，引用直接對到區塊；工具名稱、狀態與耗時對行銷人員沒有意義，也不該把內部工具名稱暴露在畫面上。
+- 工具失敗時回答本身會說明「市場資料暫時無法取得」等（[05-error-codes.md](05-error-codes.md) 第 3 節），不需要另一個狀態區塊。
+- 耗時與狀態供驗收與除錯用，API 回應的 `toolCalls` 仍完整回傳，稽核紀錄也保存（[04-mongodb-schema.md](04-mongodb-schema.md) 3.1）。
+
+需要時前端可以加回摘要區塊，不需改 API。
+
+### 9.3 「互動摘要」以「聯繫準備」對應（需求 3-2 第 3 類）
+
+需求的三類問答對應：顧客概況 → 「顧客概況」分類；經營機會 → 「商品機會」分類；互動摘要（近期互動紀錄或活動結果，協助準備後續聯繫）→ 「聯繫準備」分類（即時提醒、專屬活動、聯繫重點）。平台的互動紀錄在個人 360 的下一層頁面，進入該頁並通過該頁的權限審核後才看得到細節，不在 360 頁的兩支 API 內；小幫手綁定 360 頁的權限，不能繞過那一層審核，所以 `getRecentInteractions` 於 2026-10-28 移除，被問到時引導使用者至互動紀錄頁（[06-conversation-scenarios.md](06-conversation-scenarios.md) O1）。等平台提供互動紀錄頁的 API 與權限規則後，再新增工具並在工具層重做權限檢查（ideas-backlog 想法 8）。
+
+### 9.4 Skill 改稱 System Instruction；「回復前一版本」改為套用為草稿（需求 1-3、3-5）
+
+每份 System Instruction 是一個問題分類（適用問題、回答套版、範例問題），由路由選出一份載入（4.1）。回復不直接把舊版切回已發布，而是把任一已發布、已封存或已捨棄的版本套用成新草稿，再經發布前驗證立即或預約發布，歷程完整保留（[02-rest-api.md](02-rest-api.md) 3.10、[04-mongodb-schema.md](04-mongodb-schema.md) 2.4）。
+
+### 9.5 Tool Registry 依存取等級篩選，不直接看角色（需求 3-4）
+
+角色與顧客範圍由平台的 `CustomerAccessPort` 判斷成 `NONE`／`LIMITED`／`FULL`，`ToolRegistry.toolsFor` 只看這個結果。角色差異表現在「能不能進這位顧客的頁面、能用哪個等級的工具」，而不是每個角色各一組工具。POC 的 9 個 mock 帳號都是 `FULL`，`LIMITED` 路徑以評測集與單元測試驗證，實際角色對應待平台確認（questions-for-manager M43）。
+
+### 9.6 稽核的「執行結果」預設只存雜湊（需求 3-4）
+
+工具結果含顧客資料，預設只記錄 `resultHash`（SHA-256）、`resultCount` 與狀態；`ai-assistant.audit.store-tool-results: true` 才保存內容，開啟前需法遵同意（questions-for-manager M36）。
+
+### 9.7 發布前驗證的範圍（需求 3-5）
+
+- `SYSTEM_PROMPT` 不要求必要章節：安全規則與回答格式規則寫死在 Java、固定附加在可編輯內容之後（第 4 節），不依賴管理者自己寫安全章節。
+- 禁止內容目前不含「忽略以上規則」這類越權指令的樣式：這類文字誤判率高，而且安全規則在 prompt 最後、要求忽略使用者與資料中的指令。列為待辦（[04-mongodb-schema.md](04-mongodb-schema.md) 2.5）。
+
+### 9.8 多一次路由模型呼叫（需求 2-2 流程圖）
+
+回答前先以一次小型模型呼叫選出問題分類（4.1），計入 `modelCalls` 與 token 上限；路由失敗退回載入全部分類，不影響回答。理由見 [ideas-backlog.md](../ideas-backlog.md) 決策歷程。
+
+### 9.9 其他
+
+- 「清除本次對話」實作為「開新對話」：先前的對話留在畫面上，之後的提問從新的一輪開始，不帶舊歷史（[02-rest-api.md](02-rest-api.md) 1.1）。
+- 不引入 PrimeVue（第 7 節）。
+- 市場新聞 API 未做，只整合 TWSE OpenAPI（questions-for-manager M16）。

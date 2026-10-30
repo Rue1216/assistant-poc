@@ -1,6 +1,6 @@
 # 03 Tool Catalog
 
-> 版本：v0.10（POC）・2026-10-29（個人 360 內容重寫：顧客工具整併為 `getCustomer(sections)` 與 `getRealTimeCustomer`、`certNo`、新 mock 顧客；設計見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
+> 版本：v0.11（POC）・2026-10-30（1.4 釐清 `sections` 的檢查分工；v0.10 2026-10-29 為個人 360 內容重寫：顧客工具整併為 `getCustomer(sections)` 與 `getRealTimeCustomer`、`certNo`、新 mock 顧客；設計見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
 
 ## 1. 共通規則
 
@@ -72,7 +72,7 @@ public record CitationDetail(
 1. `ToolRegistry.toolsFor(context)`：只回傳 `requiredAccessLevel` 不高於 `CustomerContext.accessLevel` 的工具。
 2. 模型回傳 tool call 後，`ToolGuard` 依序檢查：
    1. 工具名稱存在，且在本次提供給模型的清單內，否則 `TOOL_NOT_ALLOWED`。
-   2. 參數是合法 JSON，總長不超過 1KB，能轉成參數 record，且通過 Bean Validation，否則 `TOOL_ARGUMENT_INVALID`。`getCustomer` 的 `sections` 必須是 1–6 個且值都在分組清單內，不在清單內的值同樣回 `TOOL_ARGUMENT_INVALID`。
+   2. 參數是合法 JSON，總長不超過 1KB，能轉成參數 record，且通過 Bean Validation，否則 `TOOL_ARGUMENT_INVALID`。`getCustomer` 的 `sections` 數量（1–6 個）由這裡的 Bean Validation 檢查；值是否在分組清單內由 `getCustomer` 自己檢查（2.2），同樣回 `TOOL_ARGUMENT_INVALID`。
    3. 參數中出現 schema 以外的欄位（例如模型自行加上 `certNo`）一律拒絕，同樣回 `TOOL_ARGUMENT_INVALID`。
 3. 在 virtual thread 上執行，超過 `timeout` 就中止，回傳 `TOOL_TIMEOUT`。
 4. 工具結果經過 `CustomerDeidentifier` 與 `PiiRedactor`（見 1.6），序列化後超過 4KB 就截斷清單並加上 `"truncated": true`。

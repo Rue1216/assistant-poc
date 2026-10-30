@@ -1,6 +1,6 @@
 # 02 REST API 規格
 
-> 版本：v1.1（POC）・2026-10-29（個人 360 內容重寫：員工帳號與業務角色碼、`scope`、`{certNo}` 路徑、三支 mock 端點、評測集 30 題；見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
+> 版本：v1.2（POC）・2026-10-30（評測集 34 題、`toolCalls` 不顯示的理由；v1.1 2026-10-29 為個人 360 內容重寫：員工帳號與業務角色碼、`scope`、`{certNo}` 路徑、三支 mock 端點，見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
 
 ## 1. 共通規則
 
@@ -169,7 +169,7 @@
 | `citations[].cited`       | boolean        | 回答是否引用了這筆；`false` 表示只是查過                                                             |
 | `queriedAt`               | string         | 本次提問的處理時間                                                                                   |
 | `disclaimer`              | string \| null | 用到市場工具時為「資訊僅供內部經營參考，不構成投資建議」                                             |
-| `toolCalls`               | array          | 本次的工具呼叫摘要，沒有呼叫工具時為空陣列。對話視窗不顯示，供除錯與驗收                             |
+| `toolCalls`               | array          | 本次的工具呼叫摘要，沒有呼叫工具時為空陣列。對話視窗不顯示（資料來源改由 `citations` 呈現，理由見 [01-architecture.md](01-architecture.md) 9.2），供除錯與驗收 |
 | `toolCalls[].name`        | string         | 工具名稱                                                                                             |
 | `toolCalls[].purpose`     | string         | 中文用途                                                                                             |
 | `toolCalls[].status`      | string         | `SUCCESS`、`ERROR`、`DENIED`、`TIMEOUT`                                                              |
@@ -706,7 +706,7 @@ Request：
 Response 202：
 
 ```json
-{ "runId": "6719f0c2a4b5e6f7a8b9c0d1", "status": "RUNNING", "totalCases": 30 }
+{ "runId": "6719f0c2a4b5e6f7a8b9c0d1", "status": "RUNNING", "totalCases": 34 }
 ```
 
 同步檢查依序為：
@@ -743,34 +743,34 @@ Response 202：
         "candidateUpdatedAt": "2026-10-24T14:58:03+08:00",
         "candidateDocVersion": 5,
         "datasetChanged": false,
-        "totalCases": 30,
-        "completedCases": 30,
+        "totalCases": 34,
+        "completedCases": 34,
         "summary": {
             "baseline": {
-                "correct": 14,
-                "total": 30,
-                "toolsOk": 16,
-                "routeOk": 13,
-                "routeCases": 13,
-                "refusedExpected": 6,
-                "expectedRefusals": 6,
+                "correct": 18,
+                "total": 34,
+                "toolsOk": 34,
+                "routeOk": 26,
+                "routeCases": 26,
+                "refusedExpected": 8,
+                "expectedRefusals": 8,
                 "refusedNormal": 0,
-                "normalCases": 11,
+                "normalCases": 26,
                 "avgTotalTokens": 7420,
                 "avgInputTokens": 7080,
                 "avgOutputTokens": 340,
                 "avgDurationMs": 6200
             },
             "candidate": {
-                "correct": 16,
-                "total": 30,
-                "toolsOk": 16,
-                "routeOk": 12,
-                "routeCases": 13,
-                "refusedExpected": 6,
-                "expectedRefusals": 6,
+                "correct": 20,
+                "total": 34,
+                "toolsOk": 34,
+                "routeOk": 25,
+                "routeCases": 26,
+                "refusedExpected": 8,
+                "expectedRefusals": 8,
                 "refusedNormal": 1,
-                "normalCases": 11,
+                "normalCases": 26,
                 "avgTotalTokens": 7610,
                 "avgInputTokens": 7230,
                 "avgOutputTokens": 380,
@@ -793,7 +793,7 @@ Response 202：
 目前執行中的評測（任何 key）。
 
 - **權限**：`AI_CONFIG_READ`
-- **200**：`{ "runId": "…", "configKey": "instruction.contact-prep", "triggeredBy": "EEE22222", "startedAt": "2026-10-24T15:02:11+08:00", "totalCases": 30, "completedCases": 7 }`
+- **200**：`{ "runId": "…", "configKey": "instruction.contact-prep", "triggeredBy": "EEE22222", "startedAt": "2026-10-24T15:02:11+08:00", "totalCases": 34, "completedCases": 7 }`
 - **204**：沒有執行中的評測。呼叫時會先處理陳舊紀錄：`RUNNING` 且 `heartbeatAt` 超過 10 分鐘者標為 `FAILED`（`AI_EVAL_INTERRUPTED`）。
 
 ### 3.15 `GET /api/ai-assistant/admin/evaluations/{runId}`
