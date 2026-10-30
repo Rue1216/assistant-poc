@@ -206,6 +206,7 @@
     已發布版本作答 → 規則判定 → 評審
     編輯中版本作答 → 規則判定 → 評審
     寫入該題結果、completedCases + 1、heartbeatAt
+    任一邊作答為 AI_LLM_UNAVAILABLE／AI_LLM_RATE_LIMITED → 停止，status=FAILED（AI_EVAL_LLM_UNAVAILABLE）
     超過 run-timeout → 停止，status=FAILED（AI_EVAL_TIMEOUT）
   計算指標 → status=COMPLETED
 ```
@@ -223,6 +224,7 @@
 - **同一題兩個版本緊接著執行**，盡量讓兩邊遇到相同的市場資料。
 - **只能同時有一個評測**：由 `UK_ICRM_AI_EVAL_1`（`status: "RUNNING"` 的 partial unique index）保證，多個後端實例也成立；插入時撞到唯一索引即回 `AI_EVAL_RUNNING`。
 - **陳舊的執行中紀錄**：`RUNNING` 且 `heartbeatAt` 超過 10 分鐘（後端重啟、執行緒異常中斷）視為中斷。在「開始評測」與「查詢目前評測」時檢查，標為 `FAILED`（`AI_EVAL_INTERRUPTED`）後再繼續。10 分鐘大於單題最長耗時（兩次作答各 60 秒、兩次評審各 30 秒）。
+- **模型無法使用時提前結束**：一題寫入後，若任一邊作答失敗的錯誤碼為 `AI_LLM_UNAVAILABLE`（含連線失敗、金鑰或模型名稱錯誤等無法分類的錯誤）或 `AI_LLM_RATE_LIMITED`，評測標為 `FAILED`（`AI_EVAL_LLM_UNAVAILABLE`），不再問下一題。否則後續每題都以同樣原因失敗，兩邊正確率同為 0，結論會誤顯示為「沒有差異」。`AI_LLM_TIMEOUT` 可能只是單題較慢，仍只算該題失敗。
 - **執行緒內的未預期例外**：該次評測標為 `FAILED`（`AI_INTERNAL_ERROR`），已完成的題目結果保留。
 - **交給執行緒失敗**：紀錄寫入後若執行緒池拒絕這次工作（`RejectedExecutionException`），立即把該筆紀錄標為 `FAILED`（`AI_INTERNAL_ERROR`），API 回 500 `AI_INTERNAL_ERROR`，避免留下無人執行的 `RUNNING` 紀錄擋住後續評測。
 - **執行緒進入與中斷**：`EvalRunner` 一開始先更新 `heartbeatAt`（排隊期間的心跳停在寫入紀錄那一刻）；更新失敗代表紀錄已被標為中斷，直接結束。每題開始前檢查執行緒中斷旗標（後端關閉時 executor 會中斷執行緒），有中斷即停止，不再寫入，紀錄由陳舊檢查標為 `AI_EVAL_INTERRUPTED`。
@@ -233,6 +235,7 @@
   - 另有只在異常時出現的行（同樣只含代號與錯誤類別）：
     - `eval run rejected runId=`（ERROR，執行緒池拒絕工作）
     - `eval run stopped runId= reason=interrupted`（WARN，執行緒被中斷）
+    - `eval run stopped runId= reason=llm-unavailable`（WARN，模型無法使用或被限流）
     - `eval run failed runId= error=`（ERROR，未預期例外，`error` 為例外類別名稱）
     - `eval run fail-write failed runId= error=`（ERROR，標記 `FAILED` 的寫入也失敗）
     - `eval judge failed code= error=`（WARN，評審呼叫失敗或格式不符，`code` 為 `AI_EVAL_JUDGE_FAILED`）
@@ -396,7 +399,7 @@ feedbackAt: { bsonType: ["date", "null"] }
 | `baselineVersions` | array | `[{ configKey, version }]`，已發布設定的快照 |
 | `datasetHash` | string | 資料集檔案的 SHA-256（64 字元） |
 | `status` | string | `RUNNING`、`COMPLETED`、`FAILED` |
-| `errorCode` | string \| null | `FAILED` 時的原因：`AI_EVAL_TIMEOUT`、`AI_EVAL_INTERRUPTED`、`AI_INTERNAL_ERROR` |
+| `errorCode` | string \| null | `FAILED` 時的原因：`AI_EVAL_TIMEOUT`、`AI_EVAL_INTERRUPTED`、`AI_EVAL_LLM_UNAVAILABLE`、`AI_INTERNAL_ERROR` |
 | `triggeredBy` | string | 觸發的管理者 |
 | `startedAt` | date | |
 | `heartbeatAt` | date | 每完成一題更新 |
@@ -550,6 +553,7 @@ Response 200：
 |---|---|---|
 | `AI_EVAL_TIMEOUT` | `errorCode` | 整次評測超過 `run-timeout` |
 | `AI_EVAL_INTERRUPTED` | `errorCode` | 執行中紀錄的 `heartbeatAt` 超過 10 分鐘 |
+| `AI_EVAL_LLM_UNAVAILABLE` | `errorCode` | 作答時模型無法使用（`AI_LLM_UNAVAILABLE`）或被限流（`AI_LLM_RATE_LIMITED`），提前結束 |
 | `AI_EVAL_JUDGE_FAILED` | `cases[].*.judge.error` | 評審呼叫失敗或回傳格式不符 |
 
 `AI_EVAL_RUNNING` 的 `details` 在兩個請求同時搶到唯一索引、而對方又恰好結束時可能是空陣列。各題作答失敗的 `errorCode` 沿用對話錯誤碼（05 第 2.2 節）與 `AI_CUSTOMER_NOT_FOUND`。

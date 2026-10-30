@@ -15,6 +15,8 @@ import com.example.copilot.aiassistant.privacy.PiiRedactor;
 import com.example.copilot.aiassistant.tool.ToolRegistry;
 import com.example.copilot.testsupport.LogCapture;
 import dev.langchain4j.agent.tool.ToolSpecification;
+import dev.langchain4j.exception.RateLimitException;
+import dev.langchain4j.exception.TimeoutException;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import java.time.Duration;
 import java.util.List;
@@ -151,7 +153,8 @@ class EvalRunnerTest extends EvalRunnerTestBase {
 
     @Test
     void failedAnswerIsNotJudged() {
-        scripted.fail(new IllegalStateException("boom"));
+        // A model timeout may be one slow case: it fails the case, not the run.
+        scripted.fail(new TimeoutException("slow"));
         answerStep();
         judgeStep();
         scriptFullCase();
@@ -164,11 +167,50 @@ class EvalRunnerTest extends EvalRunnerTestBase {
         assertThat(done.status()).isEqualTo(EvalStatus.COMPLETED);
         CaseResult baseline = done.cases().get(0).baseline();
         assertThat(baseline.outcome()).isEqualTo("FAILED");
+        assertThat(baseline.errorCode()).isEqualTo("AI_LLM_TIMEOUT");
         assertThat(baseline.judge()).isNull();
         assertThat(baseline.passed()).isFalse();
         assertThat(done.cases().get(0).candidate().judge()).isNotNull();
         assertThat(scripted.requests()).hasSize(11);
         assertThat(done.summary().judgeTokens()).isEqualTo(5L * JUDGE_TOKENS);
+    }
+
+    @Test
+    void unavailableModelStopsRun() {
+        // Unclassified model failures (connection refused, bad key, unknown model) map to AI_LLM_UNAVAILABLE.
+        scripted.fail(new IllegalStateException("connection refused"));
+        answerStep();
+        judgeStep();
+        EvalRun run = insertRun(3, Duration.ofSeconds(1));
+
+        runner.run(run, snapshot());
+
+        EvalRun done = reload(run);
+        assertThat(done.status()).isEqualTo(EvalStatus.FAILED);
+        assertThat(done.errorCode()).isEqualTo(EvalErrors.LLM_UNAVAILABLE);
+        assertThat(done.finishedAt()).isNotNull();
+        assertThat(done.summary()).isNull();
+        // The case that hit the failure is kept; case 2 is never asked.
+        assertThat(done.cases()).extracting(EvalCaseRecord::caseId).containsExactly("c1");
+        assertThat(done.cases().get(0).baseline().errorCode()).isEqualTo("AI_LLM_UNAVAILABLE");
+        assertThat(scripted.requests()).hasSize(3);
+    }
+
+    @Test
+    void rateLimitedModelStopsRun() {
+        answerStep();
+        judgeStep();
+        scripted.fail(new RateLimitException("429"));
+        EvalRun run = insertRun(3, Duration.ofSeconds(1));
+
+        runner.run(run, snapshot());
+
+        EvalRun done = reload(run);
+        assertThat(done.status()).isEqualTo(EvalStatus.FAILED);
+        assertThat(done.errorCode()).isEqualTo(EvalErrors.LLM_UNAVAILABLE);
+        assertThat(done.cases()).hasSize(1);
+        assertThat(done.cases().get(0).candidate().errorCode()).isEqualTo("AI_LLM_RATE_LIMITED");
+        assertThat(scripted.requests()).hasSize(3);
     }
 
     @Test

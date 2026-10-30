@@ -25,12 +25,14 @@ describe('EvaluationHistory', () => {
       runSummary({ runId: 'a', status: 'FAILED', errorCode: 'AI_EVAL_TIMEOUT', summary: null }),
       runSummary({ runId: 'b', status: 'FAILED', errorCode: 'AI_EVAL_INTERRUPTED', summary: null }),
       runSummary({ runId: 'c', status: 'FAILED', errorCode: 'AI_INTERNAL_ERROR', summary: null }),
+      runSummary({ runId: 'd', status: 'FAILED', errorCode: 'AI_EVAL_LLM_UNAVAILABLE', summary: null }),
     ]
     const w = mount(EvaluationHistory, { props: { runs, selectedId: null } })
     const rows = w.findAll('.ev-hist__row').map((r) => r.text())
     expect(rows[0]).toContain('逾時')
     expect(rows[1]).toContain('已中斷')
     expect(rows[2]).toContain('系統錯誤')
+    expect(rows[3]).toContain('模型無法使用')
   })
 
   it('emits select with the run id and marks the selected row', async () => {

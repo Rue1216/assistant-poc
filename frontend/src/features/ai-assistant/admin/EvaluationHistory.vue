@@ -9,6 +9,7 @@ defineEmits<{ select: [runId: string] }>()
 const FAILURE: Record<string, string> = {
   AI_EVAL_TIMEOUT: '逾時',
   AI_EVAL_INTERRUPTED: '已中斷',
+  AI_EVAL_LLM_UNAVAILABLE: '模型無法使用',
 }
 
 function outcome(r: EvalRunSummary): string {

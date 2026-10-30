@@ -3,6 +3,7 @@ package com.example.copilot.aiassistant.evaluation;
 import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.chat.ChatOrchestrator;
 import com.example.copilot.aiassistant.chat.EvaluationReport;
+import com.example.copilot.aiassistant.common.ErrorCode;
 import com.example.copilot.aiassistant.common.RequestIdFilter;
 import com.example.copilot.aiassistant.port.AccessLevel;
 import com.example.copilot.aiassistant.port.CustomerAccessPort;
@@ -33,6 +34,8 @@ public class EvalRunner {
     private static final Logger log = LoggerFactory.getLogger(EvalRunner.class);
     private static final String INTERNAL_ERROR = "AI_INTERNAL_ERROR";
     private static final String CUSTOMER_NOT_FOUND = "AI_CUSTOMER_NOT_FOUND";
+    private static final Set<String> LLM_DOWN = Set.of(ErrorCode.AI_LLM_UNAVAILABLE.name(),
+            ErrorCode.AI_LLM_RATE_LIMITED.name());
     private static final UserContext EVAL_USER = new UserContext("eval-runner", "評測", "EVAL", Set.of());
 
     private final ChatOrchestrator orchestrator;
@@ -93,7 +96,7 @@ public class EvalRunner {
     }
 
     /**
-     * Returns how the run ended: COMPLETED, FAILED (timeout) or INTERRUPTED (a conditional write was refused, or the
+     * Returns how the run ended: COMPLETED, FAILED (timeout, or the model unavailable after a case) or INTERRUPTED (a conditional write was refused, or the
      * thread was interrupted).
      */
     private String execute(EvalRun run, EvalRunService.EvalSnapshot snapshot, Progress progress) {
@@ -117,6 +120,11 @@ public class EvalRunner {
             }
             progress.docVersion++;
             records.add(record);
+            // Otherwise every later case fails the same way and the summary reads as "no difference".
+            if (modelUnavailable(baseline.report()) || modelUnavailable(candidate.report())) {
+                log.warn("eval run stopped runId={} reason=llm-unavailable", run.id());
+                return fail(run, progress, EvalErrors.LLM_UNAVAILABLE) ? "FAILED" : "INTERRUPTED";
+            }
         }
         EvalSummary summary = new EvalSummary(EvalMetrics.of(records, false), EvalMetrics.of(records, true),
                 progress.judgeTokens);
@@ -182,6 +190,12 @@ public class EvalRunner {
             return baseline.redactedQuestion();
         }
         return candidate.redactedQuestion() != null ? candidate.redactedQuestion() : c.question();
+    }
+
+    /** True when the turn failed because the model could not be reached or refused for load; a timeout may be one slow case. */
+    private static boolean modelUnavailable(EvaluationReport report) {
+        // Set.of rejects contains(null), and an answered turn has no error code.
+        return report.errorCode() != null && LLM_DOWN.contains(report.errorCode());
     }
 
     /** True when the runner thread was interrupted (executor shutdown); the stale check then ends the run. */
