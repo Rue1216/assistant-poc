@@ -91,12 +91,12 @@
       "totalCases": {
         "bsonType": "int",
         "minimum": 0,
-        "maximum": 30
+        "maximum": 40
       },
       "completedCases": {
         "bsonType": "int",
         "minimum": 0,
-        "maximum": 30
+        "maximum": 40
       },
       "summary": {
         "bsonType": [
@@ -279,7 +279,7 @@
       },
       "cases": {
         "bsonType": "array",
-        "maxItems": 30,
+        "maxItems": 40,
         "items": {
           "bsonType": "object",
           "required": [

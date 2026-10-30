@@ -473,7 +473,7 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_AUDIT", {
 
 ### 5.4 評測紀錄的資料量
 
-- 每次評測 1 份 document：最多 30 題 × 2 份回答，每份回答最多 8,000 字，單份最大約 1 MB，遠低於 16 MB 上限；一般情況（30 題、回答 500～1,500 字）約數百 KB。
+- 每次評測 1 份 document：最多 40 題（見第 6 節）× 2 份回答，每份回答最多 8,000 字，單份最大約 1.3 MB，遠低於 16 MB 上限；一般情況（三十多題、回答 500～1,500 字）約數百 KB。
 - 評測由管理者手動觸發、同時只有一個，即使每天多次，180 天內也只有數百筆，約數百 MB 以內，不需要 shard。
 - `question`、`answer` 是去識別化後的內容，與稽核紀錄同級敏感，只有 `AI_CONFIG_READ` 可讀；評測使用的是資料集指定的假測試顧客（見 [platform-setup-requests.md](../platform-setup-requests.md)）。
 
@@ -481,7 +481,11 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_AUDIT", {
 
 ## 6. `COLL_ICRM_AI_ASSISTANT_EVAL_RUN`
 
-每次 Prompt 評測寫入一份 document，記錄評測的設定、快照的版本、進度與每題兩個版本的結果。題目結果嵌入陣列：題數上限 30，是有界資料。設計見 [prompt-evaluation-design](../superpowers/specs/2026-10-24-prompt-evaluation-design.md) 第 5.2 節。
+每次 Prompt 評測寫入一份 document，記錄評測的設定、快照的版本、進度與每題兩個版本的結果。題目結果嵌入陣列，是有界資料。
+
+**題數上限 40**：程式常數 `EvalConfiguration.STORED_CASES_MAX`，validator 的 `cases` maxItems 與 `totalCases`／`completedCases` maximum 是同一個數字，由 `EvalRunValidatorLimitsTest` 確保兩邊一致；資料集超過上限時啟動失敗。調整上限時改常數、validator 與本段，其他文件只連結到這裡。
+
+設計見 [prompt-evaluation-design](../superpowers/specs/2026-10-24-prompt-evaluation-design.md) 第 5.2 節。
 
 ### 6.1 Document
 
@@ -500,9 +504,9 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_AUDIT", {
 | `startedAt` | date | |
 | `heartbeatAt` | date | 執行緒開始、每完成一題時更新；超過 `stale-after`（10 分鐘）視為中斷 |
 | `finishedAt` | date \| null | |
-| `totalCases` / `completedCases` | int | 進度，各 0–30 |
+| `totalCases` / `completedCases` | int | 進度，各 0–題數上限 |
 | `summary` | object \| null | `COMPLETED` 時寫入：`{ baseline: Metrics, candidate: Metrics, judgeTokens }` |
-| `cases` | array | 每題一筆，最多 30 筆，依資料集順序 |
+| `cases` | array | 每題一筆，最多題數上限筆，依資料集順序 |
 | `cases[].caseId`、`group`、`question`、`expectRefusal`、`expectCategory` | | 題目資訊（寫入當下的內容）。`expectCategory` 是 `expect.category`（`configKey` 或 `none`，未設定為 null，選填，最多 64 字）。`question` 是去識別化後送給模型的提問（已發布版本那次，其次編輯中版本那次，兩次都沒送到模型時才是資料集原題），最多 1000 字 |
 | `cases[].baseline`、`cases[].candidate` | object | `CaseResult`，見下表 |
 | `docVersion` | long | 樂觀鎖 |
@@ -584,7 +588,7 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_AUDIT", {
 
 `eval-run-validator.json`（`validationLevel: strict`、`validationAction: error`）：
 
-- 頂層必填：`configKey`、`candidateVersion`、`candidateDocVersion`、`candidateUpdatedAt`、`baselineVersions`、`datasetHash`、`status`、`triggeredBy`、`startedAt`、`heartbeatAt`、`totalCases`、`completedCases`、`cases`、`docVersion`；`status` 為 enum；`datasetHash` 固定 64 字元；`totalCases`／`completedCases` 0–30；`cases` 最多 30 筆。
+- 頂層必填：`configKey`、`candidateVersion`、`candidateDocVersion`、`candidateUpdatedAt`、`baselineVersions`、`datasetHash`、`status`、`triggeredBy`、`startedAt`、`heartbeatAt`、`totalCases`、`completedCases`、`cases`、`docVersion`；`status` 為 enum；`datasetHash` 固定 64 字元；`totalCases`／`completedCases` 0–40；`cases` 最多 40 筆（題數上限）。
 - `cases[]` 必填 `caseId`、`group`、`question`、`expectRefusal`、`baseline`、`candidate`；`baseline`／`candidate`（`CaseResult`）的每個子欄位（型別、長度、陣列上限、`judge` 與 `rubric` 的子欄位）和 `summary` 的 `Metrics` 每個計數欄位都在 validator 內強制，與 6.1 的上限一致。
 - 路由新增的欄位（`Metrics.routeOk`、`Metrics.routeCases`、`cases[].expectCategory`、`CaseResult.routeOk`、`routeSource`、`instructionKey`）都是選填，舊的評測紀錄仍合法；`routeSource` 為 enum（含 null），`instructionKey`、`expectCategory` 最多 64 字。
 - 寫入前 `CaseResult` 已先截斷到這些上限，所以不會因長度超限而寫入失敗。

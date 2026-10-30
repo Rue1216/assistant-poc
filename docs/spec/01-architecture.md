@@ -355,8 +355,7 @@ ai-assistant:
     audit:
         store-tool-results: false # true 時稽核文件才保存工具回傳資料（含顧客資料），預設關閉；開啟前需 M36 法遵同意
     eval:
-        dataset: classpath:eval/eval-cases.yml # 評測題目，啟動時驗證，不合格則啟動失敗
-        max-cases: 30 # 1–30
+        dataset: classpath:eval/eval-cases.yml # 評測題目，啟動時驗證，不合格則啟動失敗；題數上限為程式常數 EvalConfiguration.STORED_CASES_MAX（40）
         run-timeout: 30m # 整次評測上限
         stale-after: 10m # RUNNING 紀錄心跳超過此時間視為中斷
     market.twse:

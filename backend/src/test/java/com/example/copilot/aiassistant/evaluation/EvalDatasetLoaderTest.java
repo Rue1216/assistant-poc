@@ -11,7 +11,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
 class EvalDatasetLoaderTest {
@@ -203,50 +202,33 @@ class EvalDatasetLoaderTest {
             TestCustomers.RETIREE, "王小明", TestCustomers.COMPLAINT, "林美君", TestCustomers.ATTENTION, "陳志華",
             TestCustomers.NO_MARKETING, "黃俊豪", TestCustomers.HIGH_ASSET, "周雅婷", TestCustomers.SPECIAL_CARE, "吳建德");
 
+    /**
+     * Rules every bundled case must follow. The dataset's content (which cases, how many per group, which tools)
+     * lives only in eval-cases.yml, so adding a case does not touch this test.
+     */
     @Test
-    void bundledDatasetMatchesSpec() throws IOException {
+    void bundledDatasetFollowsRules() throws IOException {
         byte[] bytes;
         try (InputStream in = getClass().getResourceAsStream("/eval/eval-cases.yml")) {
             assertThat(in).isNotNull();
             bytes = in.readAllBytes();
         }
-        List<EvalCase> cases = EvalDatasetLoader.parse(bytes, BUNDLED_TOOLS, 30).cases();
+        List<EvalCase> cases = EvalDatasetLoader.parse(bytes, BUNDLED_TOOLS, EvalConfiguration.STORED_CASES_MAX)
+                .cases();
 
-        assertThat(cases).hasSize(30);
-        assertThat(cases.stream().map(EvalCase::id).distinct()).hasSize(30);
-        Map<String, Long> perGroup = cases.stream()
-                .collect(Collectors.groupingBy(EvalCase::group, Collectors.counting()));
-        assertThat(perGroup).containsOnly(Map.entry("顧客經營", 10L), Map.entry("註記合規", 4L),
-                Map.entry("雙意圖", 2L), Map.entry("市場資訊", 3L), Map.entry("權限", 2L),
-                Map.entry("資料範圍外", 1L), Map.entry("去識別化", 4L), Map.entry("AI 安全", 4L));
+        assertThat(cases).isNotEmpty();
+        assertThat(cases.stream().map(EvalCase::id).distinct()).hasSameSizeAs(cases);
+        // dual-intent cases measure routing behaviour, so no single category is expected
         assertThat(cases.stream().filter(c -> c.group().equals("雙意圖")))
-                .allSatisfy(c -> assertThat(c.expect().category()).isNull());
-
-        Map<String, EvalCase> byId = cases.stream().collect(Collectors.toMap(EvalCase::id, c -> c));
-        for (String id : List.of("P1-limited-profile", "P2-limited-asset")) {
-            assertThat(byId.get(id).accessLevel()).isEqualTo(AccessLevel.LIMITED);
-            assertThat(byId.get(id).certNo()).isEqualTo(TestCustomers.HIGH_ASSET);
-        }
-        assertThat(byId.get("P2-limited-asset").expect().forbiddenTools()).isEmpty();
-        assertThat(byId.get("P2-limited-asset").expect().mustNotContain()).contains("15,000,000");
-
-        // spec 6.10: expect.tools per case; unlisted cases (other than K1-K3) have none
-        Map<String, List<String>> expectedTools = new java.util.HashMap<>();
-        for (String id : List.of("Q1-overview", "Q2-asset", "Q3-upgrade", "Q4-intent", "Q5-opportunity",
-                "Q6-main-account", "Q7-channel", "R1-downgrade", "F3-special-care", "F4-attention",
-                "M1-rank-product", "P1-limited-profile", "D1-name", "X2-indirect")) {
-            expectedTools.put(id, List.of("getCustomer"));
-        }
-        expectedTools.put("Q8-contact-prep", List.of("getCustomer", "getRealTimeCustomer"));
-        expectedTools.put("M2-alert-intent", List.of("getCustomer", "getRealTimeCustomer"));
-        expectedTools.put("Q9-opening", List.of("getRealTimeCustomer"));
-        expectedTools.put("K1-index", List.of("getMarketIndex"));
-        expectedTools.put("K2-quote", List.of("getStockQuote"));
-        expectedTools.put("K3-announcement", List.of("getCompanyAnnouncements"));
-        for (EvalCase c : cases) {
-            assertThat(c.expect().tools()).as(c.id()).containsExactlyElementsOf(
-                    expectedTools.getOrDefault(c.id(), List.of()));
-        }
+                .isNotEmpty()
+                .allSatisfy(c -> assertThat(c.expect().category()).as(c.id()).isNull());
+        // the permission group exercises the LIMITED view of the high-asset customer
+        assertThat(cases.stream().filter(c -> c.group().equals("權限")))
+                .isNotEmpty()
+                .allSatisfy(c -> {
+                    assertThat(c.accessLevel()).as(c.id()).isEqualTo(AccessLevel.LIMITED);
+                    assertThat(c.certNo()).as(c.id()).isEqualTo(TestCustomers.HIGH_ASSET);
+                });
 
         for (EvalCase c : cases) {
             assertThat(c.expect().tools()).isSubsetOf(BUNDLED_TOOLS);

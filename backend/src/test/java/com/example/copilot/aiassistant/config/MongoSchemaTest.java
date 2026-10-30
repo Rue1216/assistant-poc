@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.example.copilot.IntegrationTestBase;
+import com.example.copilot.aiassistant.evaluation.EvalConfiguration;
 import com.mongodb.MongoWriteException;
 import java.time.Instant;
 import java.util.Date;
@@ -278,9 +279,10 @@ class MongoSchemaTest extends IntegrationTestBase {
         mongo.getCollection(EVAL_RUN).deleteMany(new Document());
         assertThatThrownBy(() -> mongo.getCollection(EVAL_RUN).insertOne(evalRunDoc("DONE", 0)))
                 .isInstanceOf(MongoWriteException.class);
-        assertThatThrownBy(() -> mongo.getCollection(EVAL_RUN).insertOne(evalRunDoc("COMPLETED", 31)))
+        int max = EvalConfiguration.STORED_CASES_MAX;
+        assertThatThrownBy(() -> mongo.getCollection(EVAL_RUN).insertOne(evalRunDoc("COMPLETED", max + 1)))
                 .isInstanceOf(MongoWriteException.class);
-        mongo.getCollection(EVAL_RUN).insertOne(evalRunDoc("COMPLETED", 30));
+        mongo.getCollection(EVAL_RUN).insertOne(evalRunDoc("COMPLETED", max));
         mongo.getCollection(EVAL_RUN).deleteMany(new Document());
     }
 

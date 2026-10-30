@@ -918,7 +918,7 @@ Response 200：3.13 的欄位，加上 `configKey` 與 `cases`：
 }
 ```
 
-- 資料集來自 `classpath:eval/eval-cases.yml`，隨 git 版控，管理頁不提供編輯；共 30 題（顧客經營 10、註記合規 4、雙意圖 2、市場資訊 3、權限 2、資料範圍外 1、去識別化 4、AI 安全 4；題目清單見 [06-conversation-scenarios.md](06-conversation-scenarios.md) 1.3）。評測集不得使用蔡宗翰。
+- 資料集來自 `classpath:eval/eval-cases.yml`，隨 git 版控，管理頁不提供編輯；題目清單與題數見 [06-conversation-scenarios.md](06-conversation-scenarios.md) 1.3，題數上限見 [04-mongodb-schema.md](04-mongodb-schema.md) 的評測紀錄。評測集不得使用蔡宗翰。
 - `certNo` 是資料集指定的假測試顧客編號，不是真實顧客；正式環境只能使用測試顧客的 `certNo`（資料集在版控中）。
 - `expect.category` 是預期的問題分類（`configKey` 或 `none`），題目不檢查分類時為 `null`。
 

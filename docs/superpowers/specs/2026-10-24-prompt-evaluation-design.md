@@ -157,12 +157,12 @@
 | `expect.category` | 選填。已發布分類的 `configKey`（`^instruction\.[a-z0-9-]{1,50}$`）或 `none`；格式由載入器驗證，鍵是否存在於執行時的快照不檢查。17 題中 13 題有預期分類，對照表見[路由設計](2026-10-27-instruction-routing-design.md) 4.1 |
 | `expect.mustContain`、`expect.mustNotContain` | 選填，每項 1–50 字，各最多 10 項 |
 | `rubric` | 1–5 項，每項 1–100 字 |
-| 題數 | 1–`max-cases`（預設 30）；`max-cases` 本身必須為 1–30 |
+| 題數 | 1–題數上限（程式常數 `EvalConfiguration.STORED_CASES_MAX`，見 [04-mongodb-schema.md](../../spec/04-mongodb-schema.md) 第 6 節） |
 | 其他欄位 | `case` 與 `expect` 層級出現上表以外的欄位一律不通過 |
 
 - 檔案在啟動時載入並驗證，不合格則啟動失敗（錯誤訊息列出題號與欄位）；同樣的驗證由單元測試先擋下。
 - **未知欄位與重複欄位**：題目層級與 `expect` 層級出現未列在上表的欄位，視為錯誤，訊息為 `eval-cases.yml: <id>.<key>: 未知的欄位`（`expect` 內為 `<id>.expect.<key>`），避免 `mustNotContian` 這類拼字錯誤讓檢查靜默失效。同一個物件內的重複欄位在解析時就失敗，訊息為 `eval-cases.yml: 第 N 行: 重複的欄位`（只有行號，沒有欄位名稱）。
-- **`max-cases`**：`ai-assistant.eval.max-cases` 必須介於 1 與 30 之間，否則啟動失敗；30 同時是評測紀錄 validator 的 `cases` 上限（5.2），設得更大會讓寫入失敗。
+- **題數上限**：2026-10-30 移除原本的 `ai-assistant.eval.max-cases` 設定（只能往下調，沒有實際用途），改由程式常數 `EvalConfiguration.STORED_CASES_MAX`（40）同時作為資料集上限與評測紀錄 validator 的 `cases` 上限（5.2）；兩邊由 `EvalRunValidatorLimitsTest` 確保一致。
 - 檔案內容的 SHA-256 為 `datasetHash`，記在每次評測紀錄上，用來判斷兩次評測的題目是否相同。
 
 題目取自 06 對答情境，共 17 題（應拒答 6 題、一般題 11 題；初版 16 題，第二輪新增 X2-indirect）：
@@ -647,7 +647,6 @@ Response 200：
 ai-assistant:
   eval:
     dataset: classpath:eval/eval-cases.yml
-    max-cases: 30
     run-timeout: 30m
     stale-after: 10m
 ```

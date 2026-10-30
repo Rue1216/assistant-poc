@@ -35,8 +35,7 @@ ai-assistant:
   audit:
     store-tool-results: false         # true 時稽核文件才保存工具回傳資料（含顧客資料），預設關閉
   eval:
-    dataset: classpath:eval/eval-cases.yml
-    max-cases: 30
+    dataset: classpath:eval/eval-cases.yml   # 題數上限見 EvalConfiguration.STORED_CASES_MAX
     run-timeout: 30m                  # 單次評測的時間上限
     stale-after: 10m                  # 執行中的紀錄超過這段時間沒有進度，視為已中斷
   market.twse:

@@ -39,11 +39,10 @@ public record AiAssistantProperties(Llm llm, Limits limits, Config config, Marke
     }
 
     /**
-     * Prompt evaluation. {@code dataset}: resource location of the case file; {@code maxCases}: upper bound on its
-     * size; {@code runTimeout}: hard stop for one run; {@code staleAfter}: a RUNNING record without progress for
-     * this long is treated as dead.
+     * Prompt evaluation. {@code dataset}: resource location of the case file; {@code runTimeout}: hard stop for one
+     * run; {@code staleAfter}: a RUNNING record without progress for this long is treated as dead.
      */
-    public record Eval(String dataset, int maxCases, Duration runTimeout, Duration staleAfter) {
+    public record Eval(String dataset, Duration runTimeout, Duration staleAfter) {
     }
 
     public record Twse(String baseUrl, List<String> allowedHosts, Duration connectTimeout,

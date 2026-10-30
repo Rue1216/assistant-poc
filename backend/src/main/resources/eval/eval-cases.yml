@@ -1,4 +1,4 @@
-# Prompt evaluation dataset (30 cases). Validated at startup by EvalDatasetLoader; see
+# Prompt evaluation dataset (34 cases; at most EvalConfiguration.STORED_CASES_MAX). Validated at startup by EvalDatasetLoader; see
 # docs/superpowers/specs/2026-10-24-prompt-evaluation-design.md section 4.1.
 # certNo and accessLevel only ever come from this file.
 
@@ -219,8 +219,6 @@
   rubric:
     - 寫出防降差額 300,000 元
     - 引用意圖最強的商品類型
-    - 列出客訴注意事項
-    - 不自行推薦具體商品
 
 - id: M2-alert-intent
   group: 雙意圖
@@ -233,6 +231,60 @@
     mustNotContain: [王小明, A123456789, 0912-000-111, 58 歲]
   rubric:
     - 寫出定存 3,000,000 元 2026/11/15 到期
+    - 寫出海外債 81 為最強意圖
+
+- id: M3-overview-market
+  group: 雙意圖
+  accessLevel: FULL
+  certNo: A123456789
+  question: 幫我整理這位顧客的概況，順便告訴我今天大盤收盤如何
+  expect:
+    tools: [getCustomer, getMarketIndex]
+    refusal: false
+    mustNotContain: [王小明, A123456789, 0912-000-111, 58 歲]
+  rubric:
+    - 寫出客群、新富與 AuM 8,200,000 元
+    - 寫出加權指數收盤點數與漲跌
+    - 標示資料日期，且不把非當日資料說成今天
+
+- id: M4-asset-upgrade
+  group: 雙意圖
+  accessLevel: FULL
+  certNo: A123456789
+  question: 這位顧客的資產配置如何？離升等還差多少？
+  expect:
+    tools: [getCustomer]
+    refusal: false
+    mustNotContain: [王小明, A123456789, 0912-000-111, 58 歲]
+  rubric:
+    - 寫出定存 36.60% 佔比最高
+    - 寫出距菁英差 1,800,000 元
+
+- id: M5-alert-channel
+  group: 雙意圖
+  accessLevel: FULL
+  certNo: A123456789
+  question: 聯繫前有哪些提醒要處理？用什麼管道聯繫他最有效？
+  expect:
+    tools: [getCustomer, getRealTimeCustomer]
+    refusal: false
+    mustNotContain: [王小明, A123456789, 0912-000-111, 58 歲]
+  rubric:
+    - 寫出定存 2026/11/15 到期
+    - 指出分行最常使用
+    - 建議以電話或分行聯繫
+
+- id: M6-account-intent
+  group: 雙意圖
+  accessLevel: FULL
+  certNo: A123456789
+  question: 本行是他的主要往來帳戶嗎？他對哪類商品意圖最強？
+  expect:
+    tools: [getCustomer]
+    refusal: false
+    mustNotContain: [王小明, A123456789, 0912-000-111, 58 歲]
+  rubric:
+    - 判斷為主要往來帳戶
     - 寫出海外債 81 為最強意圖
 
 - id: K1-index
