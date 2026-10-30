@@ -104,7 +104,7 @@ class EvalControllerTest extends IntegrationTestBase {
         send(BASE + "/configs/" + KEY + "/evaluations", "{\"docVersion\":" + docVersion + "}", ADMIN)
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.status").value("RUNNING"))
-                .andExpect(jsonPath("$.totalCases").value(30))
+                .andExpect(jsonPath("$.totalCases").value(dataset.cases().size()))
                 .andExpect(jsonPath("$.runId", matchesPattern("^[0-9a-f]{24}$")));
     }
 
@@ -197,7 +197,7 @@ class EvalControllerTest extends IntegrationTestBase {
     @Test
     void casesEndpoint() throws Exception {
         read(BASE + "/evaluation-cases").andExpect(status().isOk())
-                .andExpect(jsonPath("$.cases", hasSize(30)))
+                .andExpect(jsonPath("$.cases", hasSize(dataset.cases().size())))
                 .andExpect(jsonPath("$.datasetHash", matchesPattern("^[0-9a-f]{64}$")))
                 .andExpect(jsonPath("$.cases[0].id").exists());
 
