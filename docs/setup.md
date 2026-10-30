@@ -80,9 +80,9 @@ notepad C:\Users\user\Desktop\chat-boilerplate\backend\.env
 
 ```properties
 OPENAI_API_KEY=sk-...
-OPENAI_MODEL=<模型名稱>
 ```
 
+- `.env` 只放 key。模型名稱在 `backend/src/main/resources/application.yml` 的 `ai-assistant.llm.model-name` 設定。
 - `.env` 已列入 `.gitignore`，不會被 commit。可以用 `git status` 確認它沒有出現在清單裡。
 - 不要把這個檔案的內容貼到聊天、截圖或文件裡。
 

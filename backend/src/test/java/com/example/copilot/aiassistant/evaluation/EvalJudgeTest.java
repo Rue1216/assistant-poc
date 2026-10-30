@@ -66,7 +66,7 @@ class EvalJudgeTest {
         assertThat(user.get("today").asString()).isEqualTo("2026-10-27");
         assertThat(user.get("rubric")).hasSize(2);
         assertThat(user.get("rubric").get(1).asString()).isEqualTo("提到風險");
-        assertThat(request.temperature()).isEqualTo(0.0);
+        assertThat(request.temperature()).isNull(); // ai-assistant.llm.temperature applies
         assertThat(request.toolSpecifications()).isNullOrEmpty();
         assertThat(request.responseFormat().type()).isEqualTo(ResponseFormatType.JSON);
         JsonObjectSchema root = (JsonObjectSchema) request.responseFormat().jsonSchema().rootElement();

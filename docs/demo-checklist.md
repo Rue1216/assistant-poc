@@ -54,7 +54,7 @@
 | -------------------------- | ---- |
 | 執行日期                   |      |
 | 執行人                     |      |
-| 使用模型（`OPENAI_MODEL`） |      |
+| 使用模型（`ai-assistant.llm.model-name`） |      |
 | 未通過的步驟與原因         |      |
 
 ## 評測實測結果（2026-10-29）
@@ -62,7 +62,7 @@
 > 個人 360 內容重寫完成後，以使用者的 GPT key 跑一次評測（設計見 [customer360 內容重寫設計](superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) 9.3）。這是量測、不是過關門檻；雙意圖題（`M1-rank-product`、`M2-alert-intent`）的結果用於決定 router 的後續做法。
 
 - 執行：2026-10-29 13:12–13:17，`EEE22222`；候選為「聯繫準備」草稿 v2，基準為全部 seed v1（工具已整併為 `getCustomer`、`getRealTimeCustomer`）
-- 模型：`backend/.env` 的 `OPENAI_MODEL`（請填：＿＿＿＿）
+- 模型：`application.yml` 的 `ai-assistant.llm.model-name`（請填：＿＿＿＿）
 
 | 指標 | 基準（seed v1） | 候選（聯繫準備 v2） |
 |---|---|---|

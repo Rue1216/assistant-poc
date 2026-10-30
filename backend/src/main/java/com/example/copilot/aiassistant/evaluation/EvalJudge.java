@@ -77,7 +77,6 @@ public class EvalJudge {
         rubric.forEach(items::add);
         return ChatRequest.builder()
                 .messages(SystemMessage.from(EvalJudgePrompt.TEXT), UserMessage.from(mapper.writeValueAsString(user)))
-                .temperature(0.0)
                 .responseFormat(responseFormat())
                 .build();
     }

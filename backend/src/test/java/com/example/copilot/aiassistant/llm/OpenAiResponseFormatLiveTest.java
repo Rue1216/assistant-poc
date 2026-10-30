@@ -25,13 +25,15 @@ import java.util.Properties;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import org.springframework.beans.factory.config.YamlPropertiesFactoryBean;
+import org.springframework.core.io.ClassPathResource;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Real OpenAI calls that check strict JSON Schema output (with a dynamic enum) works together with tool
  * definitions. Costs money, so it only runs with {@code -Dlive-llm=true}. Reads the key from backend/.env
- * and never prints it.
+ * (never printed) and the model name from application.yml.
  */
 @EnabledIfSystemProperty(named = "live-llm", matches = "true")
 class OpenAiResponseFormatLiveTest {
@@ -49,8 +51,11 @@ class OpenAiResponseFormatLiveTest {
         try (Reader in = Files.newBufferedReader(Path.of(".env"), StandardCharsets.UTF_8)) {
             env.load(in);
         }
+        YamlPropertiesFactoryBean yaml = new YamlPropertiesFactoryBean();
+        yaml.setResources(new ClassPathResource("application.yml"));
+        String modelName = yaml.getObject().getProperty("ai-assistant.llm.model-name");
         AiAssistantProperties.Llm llm = new AiAssistantProperties.Llm("openai", env.getProperty("OPENAI_API_KEY"),
-                env.getProperty("OPENAI_MODEL"), 0.2, Duration.ofSeconds(30), 1500);
+                modelName, null, "none", Duration.ofSeconds(30), 1500);
         model = new LlmConfiguration().chatModel(new AiAssistantProperties(llm, null, null, null, null, null));
     }
 

@@ -27,9 +27,19 @@ class AiAssistantPropertiesTest extends IntegrationTestBase {
     }
 
     @Test
+    void blankTemperatureBindsToNull() {
+        assertThat(props.llm().temperature()).isNull();
+    }
+
+    @Test
+    void reasoningEffortBindsFromYaml() {
+        assertThat(props.llm().reasoningEffort()).isEqualTo("none");
+    }
+
+    @Test
     void llmToStringMasksApiKey() {
         AiAssistantProperties.Llm llm = new AiAssistantProperties.Llm("openai", "sk-secret-value-1234567890",
-                "model-x", 0.2, Duration.ofSeconds(30), 800);
+                "model-x", 0.2, "none", Duration.ofSeconds(30), 800);
 
         assertThat(llm.toString()).doesNotContain("sk-secret-value-1234567890").contains("apiKey=***")
                 .contains("model-x");

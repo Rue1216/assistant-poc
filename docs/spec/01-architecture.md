@@ -209,7 +209,7 @@ sequenceDiagram
 ```
 
 - `InstructionRouter.route(question, history, instructions)` 回傳 `RouteDecision(instructionKey, source, modelCalled, inputTokens, outputTokens, totalTokens)`，永不丟出例外；token 上限與整題期限由 `Turn` 檢查。已發布的分類為 0 個時不呼叫模型。
-- 路由使用同一個 `ChatModel` bean，`temperature` 0、不帶工具、strict JSON Schema（`category` 的 enum 為本次快照中已發布分類的 `configKey` 加上 `none`）。輸入是去識別化後的提問、最後 4 則歷史（每則最多 500 字）與各分類的 `configKey`、名稱、`## 適用問題` 內容。
+- 路由使用同一個 `ChatModel` bean，`temperature` 沿用 `ai-assistant.llm.temperature`、不帶工具、strict JSON Schema（`category` 的 enum 為本次快照中已發布分類的 `configKey` 加上 `none`）。輸入是去識別化後的提問、最後 4 則歷史（每則最多 500 字）與各分類的 `configKey`、名稱、`## 適用問題` 內容。
 - `RouterPrompt.TEXT`（路由的 system message）與安全規則一樣只存在程式碼，任何 API 都不回傳。
 - 稽核記錄 `routeSource`、`instructionKey`，回饋統計依此判斷哪些回答確定使用了某個分類（見 [04-mongodb-schema.md](04-mongodb-schema.md) 3.1）。
 - 評測（`evaluate()`）走同一套路由，沒有快捷按鈕。
@@ -332,8 +332,9 @@ ai-assistant:
     llm:
         provider: openai
         api-key: ${OPENAI_API_KEY} # 來自 backend/.env；不得寫死、不得進版控、不得寫入 log
-        model-name: ${OPENAI_MODEL}
-        temperature: 0.2
+        model-name: gpt-6-luna
+        temperature: # 留空＝不傳（gpt-6-luna 只接受預設值）；路由與評測裁判也用這個值
+        reasoning-effort: none # 留空＝不傳；gpt-6-luna 在 chat completions 帶工具時只接受 none
         timeout: 30s
         max-output-tokens: 1500 # 回答改為 JSON 輸出，比純 Markdown 多用 token；最終值依真實模型實測決定
     limits:
@@ -377,11 +378,10 @@ ai-assistant:
 | 程式防護 | 不寫入 log 與錯誤訊息；Actuator 只開放 `health`                                                      |
 | 正式環境 | 改用平台的 secret 管理機制（Vault、K8s Secret 等），見 questions-for-manager.md S14                  |
 
-`backend/.env` 格式：
+`backend/.env` 格式（只放 key；模型名稱在 `application.yml` 的 `ai-assistant.llm.model-name`）：
 
 ```properties
 OPENAI_API_KEY=sk-...
-OPENAI_MODEL=<模型名稱>
 ```
 
 ## 7. 執行環境

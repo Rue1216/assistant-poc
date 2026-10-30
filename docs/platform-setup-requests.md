@@ -58,7 +58,7 @@ LangChain4j 和它帶進來的間接依賴，放在 POC 的 `backend/lib-repo/`�
 |---|---|
 | `ai-assistant.*` 設定 | 照 POC 的 `application.yml` 放進平台各環境的設定檔（限制值、TWSE 連線設定、評測設定 `ai-assistant.eval.*` 等） |
 | `OPENAI_API_KEY` | 透過平台的 secret 機制（例如 K8s Secret）注入，不可寫進設定檔或版控。POC 用的 `spring.config.import` 讀 `.env` 要移除 |
-| `OPENAI_MODEL` | 各環境使用的模型名稱 |
+| `ai-assistant.llm.model-name` | 各環境使用的模型名稱，寫在各環境的設定檔 |
 | GPT 端點 | POC 直連 OpenAI。如果公司改用 Azure OpenAI 或內部 AI Gateway，需要提供端點與認證方式，後端要配合調整 `LlmConfiguration` |
 
 ## 4. 對外連線（K8s pod → 外部）

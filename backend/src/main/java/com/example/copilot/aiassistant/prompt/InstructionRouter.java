@@ -116,7 +116,6 @@ public class InstructionRouter {
         }
         return ChatRequest.builder()
                 .messages(SystemMessage.from(RouterPrompt.TEXT), UserMessage.from(mapper.writeValueAsString(user)))
-                .temperature(0.0)
                 .responseFormat(responseFormat(instructions))
                 .build();
     }

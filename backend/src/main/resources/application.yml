@@ -11,8 +11,9 @@ ai-assistant:
   llm:
     provider: openai
     api-key: ${OPENAI_API_KEY}        # 來自 backend/.env；不得寫死、不得進版控、不得寫入 log
-    model-name: ${OPENAI_MODEL}
-    temperature: 0.2
+    model-name: gpt-6-luna
+    temperature:                      # 留空＝不傳（gpt-6-luna 只接受預設值）；路由與評測裁判也用這個值
+    reasoning-effort: none            # 留空＝不傳；gpt-6-luna 在 chat completions 帶工具時只接受 none
     timeout: 30s
     max-output-tokens: 1500
   limits:

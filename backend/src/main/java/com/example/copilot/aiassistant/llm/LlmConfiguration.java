@@ -18,6 +18,7 @@ public class LlmConfiguration {
                 .apiKey(llm.apiKey())
                 .modelName(llm.modelName())
                 .temperature(llm.temperature())
+                .reasoningEffort(llm.reasoningEffort())
                 .timeout(llm.timeout())
                 .maxCompletionTokens(llm.maxOutputTokens())
                 .supportedCapabilities(Capability.RESPONSE_FORMAT_JSON_SCHEMA) // answers are JSON blocks (answer-citations 2.2)

@@ -62,7 +62,7 @@ class InstructionRouterTest {
         ChatRequest request = model.requests().getFirst();
         assertThat(request.messages()).hasSize(2);
         assertThat(((SystemMessage) request.messages().get(0)).text()).isEqualTo(RouterPrompt.TEXT);
-        assertThat(request.temperature()).isEqualTo(0.0);
+        assertThat(request.temperature()).isNull(); // ai-assistant.llm.temperature applies
         assertThat(request.toolSpecifications()).isNullOrEmpty();
 
         JsonNode user = mapper.readTree(((UserMessage) request.messages().get(1)).singleText());

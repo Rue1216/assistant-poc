@@ -8,14 +8,18 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record AiAssistantProperties(Llm llm, Limits limits, Config config, Market market,
                                     Audit audit, Eval eval) {
 
-    public record Llm(String provider, String apiKey, String modelName, double temperature,
-                      Duration timeout, int maxOutputTokens) {
+    /**
+     * {@code temperature}, {@code reasoningEffort}: null (blank in yaml) leaves the field out of the request, for
+     * models that only accept the default.
+     */
+    public record Llm(String provider, String apiKey, String modelName, Double temperature,
+                      String reasoningEffort, Duration timeout, int maxOutputTokens) {
 
         /** The API key must never reach a log line or an error message. */
         @Override
         public String toString() {
             return "Llm[provider=" + provider + ", apiKey=***, modelName=" + modelName
-                    + ", temperature=" + temperature + ", timeout=" + timeout
+                    + ", temperature=" + temperature + ", reasoningEffort=" + reasoningEffort + ", timeout=" + timeout
                     + ", maxOutputTokens=" + maxOutputTokens + "]";
         }
     }
