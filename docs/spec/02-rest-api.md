@@ -115,7 +115,7 @@
 
 1. 驗證路徑參數格式，不符 → 400 `AI_INPUT_INVALID`。
 2. `CustomerAccessPort` 判斷存取等級，`NONE` 或顧客不存在 → 404 `AI_CUSTOMER_NOT_FOUND`（兩者回應相同，不透露顧客是否存在）。
-3. 建立 `CustomerContext`，以 `PiiRedactor` 處理提問和歷史。
+3. 建立 `CustomerContext`，以 `PiiRedactor` 處理提問、歷史和帶入的摘要。歷史超出保留範圍時，較早的訊息與帶入的摘要由一次模型呼叫整理成新摘要（失敗則捨棄超出的訊息，照常回答；設計見 [history-summary-design](../superpowers/specs/2026-10-30-history-summary-design.md)）。
 4. 決定載入哪個問題分類：request 帶有效的 `categoryKey` 時直接載入（`CHIP`），否則先以一次模型呼叫路由（`ROUTER`，失敗則 `FALLBACK` 載入全部），再進入 tool calling 迴圈（設計見 [instruction-routing-design](../superpowers/specs/2026-10-27-instruction-routing-design.md)）。
 
 #### Request
@@ -123,9 +123,10 @@
 | 欄位                | 型別   | 必填 | 規則                                                                                                                                                                                                                                                                                                                                   |
 | ------------------- | ------ | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `message`           | string | ✓    | 去除前後空白後 1–1000 字                                                                                                                                                                                                                                                                                                               |
-| `history`           | array  |      | 最多 20 則（10 輪），內容總長最多 8000 字；超過時後端從最舊的開始截掉。前端只帶目前這一輪（按「開新對話」之後）的訊息，見 1.1                                                                                                                                                                                                          |
+| `history`           | array  |      | 最多 20 則（10 輪）；後端保留最近的最多 18 則、合計 `history-max-chars`（8000）字，且第一則必須是 user，超出時較早的訊息併入摘要（見 `historySummary`）。前端只帶目前這一輪（按「開新對話」之後）的訊息，見 1.1                                                                                                                                                                                                          |
 | `history[].role`    | string | ✓    | `user` 或 `assistant`                                                                                                                                                                                                                                                                                                                  |
 | `history[].content` | string | ✓    | 1–4000 字                                                                                                                                                                                                                                                                                                                              |
+| `historySummary`    | string |      | 前端保存的摘要（上一題回應的 `historySummary.text`）。去掉前後空白後為空字串視同沒有帶；超過 1000 字（`summary-max-chars`）→ 400 `AI_INPUT_INVALID`（`details: [{field: "historySummary"}]`） |
 | `categoryKey`       | string |      | 選填。快捷按鈕所屬問題分類的 `configKey`，格式 `^instruction\.[a-z0-9-]{1,50}$`，格式不符 → 400 `AI_INPUT_INVALID`。格式正確但不是本次快照中已發布的問題分類（例如按鈕在分類下架前載入、之後才被點）時**忽略**，改走路由，不回錯誤。輸入框上方「快捷問題」清單的按鈕同樣帶所屬分類的 `configKey`；自行輸入的提問不帶此欄位，一律走路由 |
 
 ```json
@@ -143,7 +144,7 @@
 
 > 這個範例中，送給 LLM 的提問是「【本顧客】最近有什麼提醒？幫我準備下次聯繫重點」。
 
-> 對話預設不保存：後端不儲存對話歷史供使用者回看，由前端每次帶回；歷史每次都會重新經過 `PiiRedactor`。工具結果不會回傳給前端，也不會跨輪保留。
+> 對話預設不保存：後端不儲存對話歷史或摘要供使用者回看，由前端每次帶回；歷史與摘要每次都會重新經過 `PiiRedactor`。工具結果不會回傳給前端，也不會跨輪保留。
 
 #### Response 200
 
@@ -154,6 +155,9 @@
 | `blocks[].type`           | string         | `heading`、`paragraph`、`bullet`、`numbered`                                                         |
 | `blocks[].text`           | string         | 區塊文字，只含行內格式（粗體、連結），不含標題或清單符號，也不含 `[S1]` 這類標註                     |
 | `blocks[].citations`      | number[]       | 支持這個區塊的引用編號（1 起算），對應 `citations[].id`；`heading` 或沒有依據時為空陣列              |
+| `historySummary`          | object \| null | 本題產生了新摘要時才有值，沒有觸發或摘要失敗時為 `null`                                              |
+| `historySummary.text`     | string         | 新摘要（已去識別化，最多 1000 字）。前端保存，下一題帶回                                             |
+| `historySummary.summarizedCount` | number  | 本次請求的 `history` 中，從最舊算起併入摘要的則數                                                    |
 | `answer`                  | string         | 由 `blocks` 扁平化的 Markdown（不含引用編號），供對話歷史與複製使用；前端不直接渲染它                |
 | `citations`               | array          | 本次每一次成功的工具呼叫各一筆；被回答引用的在前（依首次出現順序），未被引用的依呼叫順序接在後面     |
 | `citations[].id`          | number         | 引用編號，1 起算                                                                                     |

@@ -283,11 +283,15 @@ stateDiagram-v2
 | `promptVersions` | array | `[{ configKey, version }]`，本次組裝 system message **實際載入**的已發布版本（`system.main` 加上路由選出的 0 或 1 個問題分類；路由失敗時為全部），依 `configKey` 排序，與 system message 出自同一份快照；最多 100 筆，超過時截斷並記 WARN log（只含 `requestId` 與筆數）。用陣列是因為 `system.main` 含 `.`，不適合當欄位名稱 |
 | `routeSource` | string \| null | 問題分類的決定方式：`ROUTER`（路由）、`CHIP`（快捷按鈕）、`FALLBACK`（路由失敗，載入全部分類）；選填，舊紀錄沒有此欄位，路由前就失敗的提問為 null。回饋統計用它判斷問題分類是否確定被使用（見 02 3.11） |
 | `instructionKey` | string \| null | 實際載入的問題分類 `configKey`；路由為 `none` 與 `FALLBACK` 時為 null；選填，最多 64 字 |
+| `summaryIn` | bool | 本次請求是否帶了摘要（選填；舊紀錄沒有此欄位） |
+| `summaryStatus` | string \| null | `SUMMARIZED`、`FAILED`；`null` 表示沒有觸發摘要（歷史沒有超出保留範圍）。選填 |
+| `summarizedMessages` | int | 超出保留範圍、交給摘要的訊息則數；沒有觸發時為 0。選填 |
+| `summaryTokens` | int | 摘要呼叫的 total token，已含在 `totalTokens` 內；沒有呼叫時為 0。選填 |
 | `feedback` | string \| null | `UP`、`DOWN`；使用者回饋（`PUT /chat/{requestId}/feedback`，見 02 2.3）。寫入稽核時為 null |
 | `feedbackAt` | date \| null | 最後一次變更回饋（含取消）的時間；寫入稽核時為 null |
 | `createdAt` | date | |
 
-**不記錄**：工具參數（只記錄工具自行宣告的非敏感查詢對象 `target`）、先前的對話歷史、API key。工具結果只在 `ai-assistant.audit.store-tool-results: true` 時記錄，預設為 `false`，開啟前需 M36 法遵同意；平時只留 `resultHash` 供事後核對。
+**不記錄**：工具參數（只記錄工具自行宣告的非敏感查詢對象 `target`）、先前的對話歷史、摘要本文（只記上述四個摘要欄位的數字與狀態）、API key。工具結果只在 `ai-assistant.audit.store-tool-results: true` 時記錄，預設為 `false`，開啟前需 M36 法遵同意；平時只留 `resultHash` 供事後核對。
 
 處理規則：
 
@@ -333,6 +337,10 @@ stateDiagram-v2
   ],
   "routeSource": "ROUTER",
   "instructionKey": "instruction.contact-prep",
+  "summaryIn": false,
+  "summaryStatus": null,
+  "summarizedMessages": 0,
+  "summaryTokens": 0,
   "feedback": "UP",
   "feedbackAt": { "$date": "2026-10-19T06:04:10Z" },
   "durationMs": 2840,
@@ -388,7 +396,7 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_AUDIT", {
           }
         },
         unverifiedNumbers: { bsonType: "array", maxItems: 20, items: { bsonType: "string", maxLength: 32 } },
-        // 以下 9 個欄位為選填，舊紀錄仍合法
+        // 以下 13 個欄位為選填，舊紀錄仍合法
         modelCalls:     { bsonType: "int", minimum: 0 },
         inputTokens:    { bsonType: "int", minimum: 0 },
         outputTokens:   { bsonType: "int", minimum: 0 },
@@ -405,6 +413,10 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_AUDIT", {
         },
         routeSource:    { enum: ["ROUTER", "CHIP", "FALLBACK", null] },
         instructionKey: { bsonType: ["string", "null"], maxLength: 64 },
+        summaryIn:          { bsonType: "bool" },
+        summaryStatus:      { enum: ["SUMMARIZED", "FAILED", null] },
+        summarizedMessages: { bsonType: "int", minimum: 0 },
+        summaryTokens:      { bsonType: "int", minimum: 0 },
         feedback:   { enum: ["UP", "DOWN", null] },
         feedbackAt: { bsonType: ["date", "null"] },
         durationMs: { bsonType: "int", minimum: 0 },
