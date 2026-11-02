@@ -20,6 +20,16 @@
       "preLaunchTask": "POC：全部啟動"
     },
     {
+      // 以 Java 偵錯器啟動後端，才能用中斷點與 logpoint；先停掉「後端：啟動」工作（8090 會衝突）
+      "name": "後端：偵錯（Java）",
+      "type": "java",
+      "request": "launch",
+      "mainClass": "com.example.copilot.CopilotApplication",
+      "projectName": "copilot",
+      "cwd": "${workspaceFolder}/backend",
+      "preLaunchTask": "MongoDB：啟動"
+    },
+    {
       "name": "開啟 Edge（服務已在執行）",
       "type": "msedge",
       "request": "launch",
