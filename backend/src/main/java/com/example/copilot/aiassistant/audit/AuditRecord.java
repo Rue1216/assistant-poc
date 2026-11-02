@@ -21,7 +21,7 @@ public record AuditRecord(@Id String id, String requestId, String userId, String
                           int inputTokens, int outputTokens, int totalTokens,
                           List<PromptVersion> promptVersions, String routeSource,
                           String instructionKey, boolean summaryIn, String summaryStatus,
-                          int summarizedMessages, int summaryTokens) {
+                          int summarizedMessages, int summaryTokens, String modelName) {
 
     public static final String COLLECTION = "COLL_ICRM_AI_ASSISTANT_AUDIT";
 
@@ -59,6 +59,7 @@ public record AuditRecord(@Id String id, String requestId, String userId, String
                 .append("summaryStatus", summaryStatus)
                 .append("summarizedMessages", summarizedMessages)
                 .append("summaryTokens", summaryTokens)
+                .append("modelName", modelName)
                 // Filled in later by the feedback API; explicit nulls keep the field present.
                 .append("feedback", null)
                 .append("feedbackAt", null);

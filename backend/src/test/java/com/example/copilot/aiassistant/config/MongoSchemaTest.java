@@ -178,6 +178,20 @@ class MongoSchemaTest extends IntegrationTestBase {
     }
 
     @Test
+    void auditValidatorChecksModelName() {
+        mongo.getCollection(AUDIT).insertOne(auditDocWithFeedback("schema-model-ok", null)
+                .append("modelName", "m".repeat(64)));
+        mongo.getCollection(AUDIT).insertOne(auditDocWithFeedback("schema-model-null", null)
+                .append("modelName", null));
+        assertThatThrownBy(() -> mongo.getCollection(AUDIT).insertOne(
+                auditDocWithFeedback("schema-model-long", null).append("modelName", "m".repeat(65))))
+                .isInstanceOf(MongoWriteException.class);
+        assertThatThrownBy(() -> mongo.getCollection(AUDIT).insertOne(
+                auditDocWithFeedback("schema-model-type", null).append("modelName", 1)))
+                .isInstanceOf(MongoWriteException.class);
+    }
+
+    @Test
     void auditValidatorRejectsBadFeedback() {
         assertThatThrownBy(() -> mongo.getCollection(AUDIT).insertOne(auditDocWithFeedback("schema-bad-2", "MAYBE")))
                 .isInstanceOf(MongoWriteException.class);

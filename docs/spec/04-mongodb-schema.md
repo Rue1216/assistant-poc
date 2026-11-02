@@ -287,6 +287,7 @@ stateDiagram-v2
 | `summaryStatus` | string \| null | `SUMMARIZED`、`FAILED`；`null` 表示沒有觸發摘要（歷史沒有超出保留範圍）。選填 |
 | `summarizedMessages` | int | 超出保留範圍、交給摘要的訊息則數；沒有觸發時為 0。選填 |
 | `summaryTokens` | int | 摘要呼叫的 total token，已含在 `totalTokens` 內；沒有呼叫時為 0。選填 |
+| `modelName` | string \| null | 回答回合中最後一次由供應商回報的模型名稱（OpenAI 回應的 `model`；有些模型回傳帶日期的版本，`gpt-6-luna` 目前回傳 `gpt-6-luna`，與設定值相同）；沒有回答回合回報時（例如路由前就失敗）改記設定的 `ai-assistant.llm.model-name`。路由與摘要呼叫不列入。選填，舊紀錄沒有此欄位，最多 64 字 |
 | `feedback` | string \| null | `UP`、`DOWN`；使用者回饋（`PUT /chat/{requestId}/feedback`，見 02 2.3）。寫入稽核時為 null |
 | `feedbackAt` | date \| null | 最後一次變更回饋（含取消）的時間；寫入稽核時為 null |
 | `createdAt` | date | |
@@ -341,6 +342,7 @@ stateDiagram-v2
   "summaryStatus": null,
   "summarizedMessages": 0,
   "summaryTokens": 0,
+  "modelName": "gpt-6-luna",
   "feedback": "UP",
   "feedbackAt": { "$date": "2026-10-19T06:04:10Z" },
   "durationMs": 2840,
@@ -417,6 +419,7 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_AUDIT", {
         summaryStatus:      { enum: ["SUMMARIZED", "FAILED", null] },
         summarizedMessages: { bsonType: "int", minimum: 0 },
         summaryTokens:      { bsonType: "int", minimum: 0 },
+        modelName:          { bsonType: ["string", "null"], maxLength: 64 },
         feedback:   { enum: ["UP", "DOWN", null] },
         feedbackAt: { bsonType: ["date", "null"] },
         durationMs: { bsonType: "int", minimum: 0 },

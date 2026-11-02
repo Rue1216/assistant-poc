@@ -14,6 +14,8 @@ import java.util.Map;
  * {@code routeSource} (ROUTER, CHIP or FALLBACK) and {@code instructionKey} are null when routing never happened.
  * The summary fields are false, null, 0 and 0 when no summary was brought in or made; {@code summaryTokens} is
  * already part of {@code totalTokens}.
+ * {@code modelName} is the model the provider reported for the last answer round, or the configured model name
+ * when no answer round reported one.
  */
 public record AuditEntry(String requestId, UserContext user, CustomerContext customer, String redactedQuestion,
                          String answer, boolean answerTruncated, String outcome, String errorCode,
@@ -23,5 +25,5 @@ public record AuditEntry(String requestId, UserContext user, CustomerContext cus
                          List<PromptVersion> promptVersions, String routeSource,
                          String instructionKey,
                          boolean summaryIn, String summaryStatus, int summarizedMessages,
-                         long summaryTokens) {
+                         long summaryTokens, String modelName) {
 }

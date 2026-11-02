@@ -101,6 +101,8 @@ public class ChatOrchestrator {
     private final AuditLogger auditLogger;
     private final LlmErrorMapper errorMapper;
     private final AiAssistantProperties.Limits limits;
+    /** The audit's model name until an answer round reports the one the provider used. */
+    private final String configuredModelName;
     private final Clock clock;
 
     public ChatOrchestrator(ChatModel chatModel, ToolRegistry registry, ToolExecutor executor, PiiRedactor redactor,
@@ -121,6 +123,7 @@ public class ChatOrchestrator {
         this.auditLogger = auditLogger;
         this.errorMapper = errorMapper;
         this.limits = props.limits();
+        this.configuredModelName = props.llm() == null ? null : props.llm().modelName();
         this.clock = clock;
     }
 
@@ -207,6 +210,7 @@ public class ChatOrchestrator {
         private long inputTokens;
         private long outputTokens;
         private int peakOutputTokens;
+        private String modelName = configuredModelName;
         /** The redacted summary of earlier turns this turn works with; replaced by a newly made one. */
         private String currentSummary;
         private boolean summaryIn;
@@ -374,6 +378,9 @@ public class ChatOrchestrator {
                 log.error("LLM call failed requestId={} code={} error={}", requestId, code, e.getClass().getName());
                 throw new AssistantException(code);
             }
+            if (response.modelName() != null) {
+                modelName = response.modelName();
+            }
             totalTokens += tokens(response.tokenUsage());
             inputTokens += inputTokens(response.tokenUsage());
             outputTokens += outputTokens(response.tokenUsage());
@@ -502,12 +509,12 @@ public class ChatOrchestrator {
                     ? new AuditEntry(requestId, user, customer, redactedQuestion, null, false, outcome, errorCode,
                             outcomes, Map.of(), List.of(), elapsedMs(), modelCalls, inputTokens,
                             outputTokens, totalTokens, versions, routeSource, instructionKey, summaryIn, summaryStatus, summarizedMessages,
-                            summaryTokens)
+                            summaryTokens, modelName)
                     : new AuditEntry(requestId, user, customer, redactedQuestion, answer.annotatedAnswer(),
                             answer.truncated(), outcome, errorCode, outcomes, answer.citationNumbers(),
                             answer.unverifiedNumbers(), elapsedMs(), modelCalls, inputTokens, outputTokens, totalTokens,
                             versions, routeSource, instructionKey, summaryIn, summaryStatus, summarizedMessages,
-                            summaryTokens));
+                            summaryTokens, modelName));
         }
 
         long elapsedMs() {

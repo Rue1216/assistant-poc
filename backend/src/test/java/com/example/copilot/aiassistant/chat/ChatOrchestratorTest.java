@@ -1211,6 +1211,41 @@ class ChatOrchestratorTest {
         assertThat(audit.promptVersions()).containsExactly(new PromptVersion("system.main", 1));
     }
 
+    /** The same response as the provider reports it with a model snapshot name. */
+    private static ChatResponse reportedBy(String modelName, ChatResponse response) {
+        return ChatResponse.builder().aiMessage(response.aiMessage()).tokenUsage(response.tokenUsage())
+                .modelName(modelName).build();
+    }
+
+    @Test
+    void auditCarriesModelNameOfLastAnswerRound() {
+        model.reply(reportedBy("snapshot-a", toolCalls(0, call("c1", "standInAssets", "{}"))))
+                .reply(reportedBy("snapshot-b", answer(0, "本顧客持有台積電。")));
+
+        ask("持有什麼？");
+
+        assertThat(singleAudit().modelName()).isEqualTo("snapshot-b");
+    }
+
+    @Test
+    void failedQuestionKeepsLastReportedModelName() {
+        model.reply(reportedBy("snapshot-a", toolCalls(0, call("c1", "standInAssets", "{}"))))
+                .fail(new IllegalStateException("boom"));
+
+        assertThatThrownBy(() -> ask("持有什麼？")).isInstanceOf(AssistantException.class);
+
+        assertThat(singleAudit().modelName()).isEqualTo("snapshot-a");
+    }
+
+    @Test
+    void auditFallsBackToConfiguredModelName() {
+        model.reply(answer(0, "好"));
+
+        ask("持有什麼？");
+
+        assertThat(singleAudit().modelName()).isEqualTo("test-model");
+    }
+
     @Test
     void failedQuestionStillRecordsTokens() {
         model.reply(usage(toolCalls(0, call("c1", "standInAssets", "{}")), 1000, 20))
