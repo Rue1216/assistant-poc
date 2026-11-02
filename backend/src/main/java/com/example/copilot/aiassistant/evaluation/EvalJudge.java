@@ -1,5 +1,7 @@
 package com.example.copilot.aiassistant.evaluation;
 
+import com.example.copilot.aiassistant.AiAssistantProperties;
+import com.example.copilot.aiassistant.llm.LlmRequestParameters;
 import com.example.copilot.aiassistant.privacy.CustomerContext;
 import com.example.copilot.aiassistant.privacy.CustomerDeidentifier;
 import com.example.copilot.aiassistant.privacy.PiiRedactor;
@@ -47,12 +49,15 @@ public class EvalJudge {
 
     private final JsonMapper mapper;
     private final Clock clock;
+    private final String reasoningEffort;
 
-    public EvalJudge(ChatModel chatModel, PiiRedactor redactor, JsonMapper mapper, Clock clock) {
+    public EvalJudge(ChatModel chatModel, PiiRedactor redactor, JsonMapper mapper, Clock clock,
+                     AiAssistantProperties props) {
         this.chatModel = chatModel;
         this.redactor = redactor;
         this.mapper = mapper;
         this.clock = clock;
+        this.reasoningEffort = props.llm().judgeReasoningEffort();
     }
 
     public JudgeVerdict judge(String question, String answer, List<String> rubric, CustomerContext customer) {
@@ -77,7 +82,7 @@ public class EvalJudge {
         rubric.forEach(items::add);
         return ChatRequest.builder()
                 .messages(SystemMessage.from(EvalJudgePrompt.TEXT), UserMessage.from(mapper.writeValueAsString(user)))
-                .responseFormat(responseFormat())
+                .parameters(LlmRequestParameters.of(responseFormat(), reasoningEffort))
                 .build();
     }
 

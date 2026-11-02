@@ -9,17 +9,22 @@ public record AiAssistantProperties(Llm llm, Limits limits, Config config, Marke
                                     Audit audit, Eval eval) {
 
     /**
-     * {@code temperature}, {@code reasoningEffort}: null (blank in yaml) leaves the field out of the request, for
-     * models that only accept the default.
+     * {@code baseUrl}: null (blank in yaml) uses the provider's public endpoint. {@code temperature},
+     * {@code reasoningEffort}: null leaves the field out of the request, for models that only accept the default.
+     * {@code routerReasoningEffort}, {@code judgeReasoningEffort}: for the router and the evaluation judge, which send
+     * no tools; null keeps {@code reasoningEffort}.
      */
-    public record Llm(String provider, String apiKey, String modelName, Double temperature,
-                      String reasoningEffort, Duration timeout, int maxOutputTokens) {
+    public record Llm(String provider, String apiKey, String baseUrl, String modelName, Double temperature,
+                      String reasoningEffort, String routerReasoningEffort, String judgeReasoningEffort,
+                      Duration timeout, int maxOutputTokens) {
 
         /** The API key must never reach a log line or an error message. */
         @Override
         public String toString() {
-            return "Llm[provider=" + provider + ", apiKey=***, modelName=" + modelName
-                    + ", temperature=" + temperature + ", reasoningEffort=" + reasoningEffort + ", timeout=" + timeout
+            return "Llm[provider=" + provider + ", apiKey=***, baseUrl=" + baseUrl + ", modelName=" + modelName
+                    + ", temperature=" + temperature + ", reasoningEffort=" + reasoningEffort
+                    + ", routerReasoningEffort=" + routerReasoningEffort
+                    + ", judgeReasoningEffort=" + judgeReasoningEffort + ", timeout=" + timeout
                     + ", maxOutputTokens=" + maxOutputTokens + "]";
         }
     }

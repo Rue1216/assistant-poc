@@ -54,6 +54,24 @@ public class AuditLogger {
         this.masker = masker;
         this.redactor = redactor;
         this.storeToolResults = props != null && props.audit() != null && props.audit().storeToolResults();
+        if (props != null && props.limits() != null) {
+            checkFitsSchema(props.limits());
+        }
+    }
+
+    /**
+     * The audit limits follow audit-validator.json, not application.yml. A chat limit above them would silently drop
+     * audit data, so startup fails instead; raise the validator and the constant together.
+     */
+    private static void checkFitsSchema(AiAssistantProperties.Limits limits) {
+        if (limits.maxToolCalls() > MAX_TOOL_CALLS) {
+            throw new IllegalStateException("ai-assistant.limits.max-tool-calls (" + limits.maxToolCalls()
+                    + ") exceeds the audit toolCalls limit (" + MAX_TOOL_CALLS + ")");
+        }
+        if (limits.messageMaxChars() > MAX_QUESTION) {
+            throw new IllegalStateException("ai-assistant.limits.message-max-chars (" + limits.messageMaxChars()
+                    + ") exceeds the audit question limit (" + MAX_QUESTION + ")");
+        }
     }
 
     public void record(AuditEntry entry) {

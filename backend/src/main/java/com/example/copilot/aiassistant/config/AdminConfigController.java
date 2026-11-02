@@ -41,7 +41,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/ai-assistant/admin/configs")
 public class AdminConfigController {
 
-    private static final int MAX_CONTENT_BYTES = 65_536;
     private static final String READ = "hasAuthority('AI_CONFIG_READ')";
     private static final String EDIT = "hasAuthority('AI_CONFIG_EDIT')";
     private static final String PUBLISH = "hasAuthority('AI_CONFIG_PUBLISH')";
@@ -94,7 +93,7 @@ public class AdminConfigController {
     @PreAuthorize(EDIT)
     public ConfigVersionView save(@PathVariable @Pattern(regexp = ConfigKeys.PATTERN) String configKey,
                                   @Valid @RequestBody SaveDraftRequest request) {
-        if (request.content().getBytes(StandardCharsets.UTF_8).length > MAX_CONTENT_BYTES) {
+        if (request.content().getBytes(StandardCharsets.UTF_8).length > ConfigValidator.MAX_BYTES) {
             throw invalidInput("content");
         }
         SaveCommand command = new SaveCommand(request.name(), request.content(), request.changeNote(),

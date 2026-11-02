@@ -211,7 +211,7 @@ sequenceDiagram
 ```
 
 - `InstructionRouter.route(question, history, summary, instructions)` 回傳 `RouteDecision(instructionKey, source, modelCalled, inputTokens, outputTokens, totalTokens)`，永不丟出例外；token 上限與整題期限由 `Turn` 檢查。已發布的分類為 0 個時不呼叫模型。
-- 路由使用同一個 `ChatModel` bean，`temperature` 沿用 `ai-assistant.llm.temperature`、不帶工具、strict JSON Schema（`category` 的 enum 為本次快照中已發布分類的 `configKey` 加上 `none`）。輸入是去識別化後的提問、目前摘要（最多 1,000 字）、最後 4 則歷史（每則最多 500 字）與各分類的 `configKey`、名稱、`## 適用問題` 內容。
+- 路由使用同一個 `ChatModel` bean，`temperature` 沿用 `ai-assistant.llm.temperature`、`reasoning-effort` 可用 `router-reasoning-effort` 單獨設定（留空沿用預設）、不帶工具、strict JSON Schema（`category` 的 enum 為本次快照中已發布分類的 `configKey` 加上 `none`）。輸入是去識別化後的提問、目前摘要（最多 `summary-max-chars` 字）、最後 4 則歷史（每則最多 500 字）與各分類的 `configKey`、名稱、`## 適用問題` 內容。
 - 對話歷史超出保留範圍（最多 18 則、合計 `history-max-chars` 字，且第一則必須是 user）時，`HistorySummarizer` 把帶入的摘要與超出的較早訊息整理成新的滾動摘要，回應的 `historySummary` 帶回前端保存，後端不保存。這一題多一次模型呼叫，算進 `modelCalls` 與 `token-budget`；失敗時不讓整題失敗，捨棄超出的訊息、舊摘要照用。`temperature` 沿用 `ai-assistant.llm.temperature`（與路由相同）、不帶工具、strict JSON Schema。設計見 [history-summary-design](../superpowers/specs/2026-10-30-history-summary-design.md)。
 - `RouterPrompt.TEXT`（路由的 system message）與安全規則一樣只存在程式碼，任何 API 都不回傳。
 - 稽核記錄 `routeSource`、`instructionKey`，回饋統計依此判斷哪些回答確定使用了某個分類（見 [04-mongodb-schema.md](04-mongodb-schema.md) 3.1）。
@@ -347,13 +347,16 @@ ai-assistant:
     llm:
         provider: openai
         api-key: ${OPENAI_API_KEY} # 來自 backend/.env；不得寫死、不得進版控、不得寫入 log
+        base-url: # 留空＝OpenAI 公開端點；改走 OpenAI 相容的 AI Gateway 時填入
         model-name: gpt-6-luna
         temperature: # 留空＝不傳（gpt-6-luna 只接受預設值）；路由與評測裁判也用這個值
         reasoning-effort: none # 留空＝不傳；gpt-6-luna 在 chat completions 帶工具時只接受 none
+        router-reasoning-effort: # 問題分類（不帶工具）；留空＝沿用 reasoning-effort。推理 token 計入 max-output-tokens 與 token-budget
+        judge-reasoning-effort: # 評測裁判（不帶工具）；留空＝沿用 reasoning-effort。改這個值後評分與之前的評測不能直接比較
         timeout: 30s
-        max-output-tokens: 1500 # 回答改為 JSON 輸出，比純 Markdown 多用 token；最終值依真實模型實測決定
+        max-output-tokens: 1500 # 回答改為 JSON 輸出，比純 Markdown 多用 token；10/29–10/30 實測單題 output 最多 816
     limits:
-        message-max-chars: 1000
+        message-max-chars: 1000 # 不可超過稽核 question 上限 1000；max-tool-calls 不可超過稽核 toolCalls 上限 5（AuditLogger 啟動時檢查）
         history-max-turns: 10
         history-max-chars: 8000 # 保留的歷史字數；超出的較早訊息併入摘要。手動測試摘要時可暫改為 200，測完改回
         summary-max-chars: 1000 # 摘要本身的上限（請求驗證與輸出截斷），不計入 history-max-chars

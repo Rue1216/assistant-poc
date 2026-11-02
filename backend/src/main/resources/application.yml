@@ -11,9 +11,12 @@ ai-assistant:
   llm:
     provider: openai
     api-key: ${OPENAI_API_KEY}        # 來自 backend/.env；不得寫死、不得進版控、不得寫入 log
+    base-url:                         # 留空＝OpenAI 公開端點；改走 OpenAI 相容的 AI Gateway 時填入，例如 https://gateway.example/v1
     model-name: gpt-6-luna
     temperature:                      # 留空＝不傳（gpt-6-luna 只接受預設值）；路由與評測裁判也用這個值
     reasoning-effort: none            # 留空＝不傳；gpt-6-luna 在 chat completions 帶工具時只接受 none
+    router-reasoning-effort:          # 問題分類（不帶工具）；留空＝沿用 reasoning-effort。推理 token 計入 max-output-tokens 與 token-budget
+    judge-reasoning-effort:           # 評測裁判（不帶工具）；留空＝沿用 reasoning-effort。改這個值後評分與之前的評測不能直接比較
     timeout: 30s
     max-output-tokens: 1500
   limits:

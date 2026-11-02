@@ -1,9 +1,11 @@
 package com.example.copilot.aiassistant.prompt;
 
+import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.common.ErrorCode;
 import com.example.copilot.aiassistant.common.RequestIdFilter;
 import com.example.copilot.aiassistant.config.AssistantConfig;
 import com.example.copilot.aiassistant.llm.LlmErrorMapper;
+import com.example.copilot.aiassistant.llm.LlmRequestParameters;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
@@ -41,16 +43,20 @@ public class InstructionRouter {
     private static final String SCOPE_HEADING = "## 適用問題";
     private static final int MAX_HISTORY = 4;
     private static final int MAX_HISTORY_CODE_POINTS = 500;
-    private static final int MAX_SUMMARY_CODE_POINTS = 1000;
 
     private final ChatModel chatModel;
     private final LlmErrorMapper errorMapper;
     private final JsonMapper mapper;
+    private final int summaryMaxChars;
+    private final String reasoningEffort;
 
-    public InstructionRouter(ChatModel chatModel, LlmErrorMapper errorMapper, JsonMapper mapper) {
+    public InstructionRouter(ChatModel chatModel, LlmErrorMapper errorMapper, JsonMapper mapper,
+                             AiAssistantProperties props) {
         this.chatModel = chatModel;
         this.errorMapper = errorMapper;
         this.mapper = mapper;
+        this.summaryMaxChars = props.limits().summaryMaxChars();
+        this.reasoningEffort = props.llm().routerReasoningEffort();
     }
 
     /**
@@ -106,7 +112,7 @@ public class InstructionRouter {
         if (summary == null) {
             user.putNull("summary");
         } else {
-            user.put("summary", clip(summary, MAX_SUMMARY_CODE_POINTS));
+            user.put("summary", clip(summary, summaryMaxChars));
         }
         ArrayNode historyNode = user.putArray("history");
         List<ChatMessage> recent = history.subList(Math.max(0, history.size() - MAX_HISTORY), history.size());
@@ -126,7 +132,7 @@ public class InstructionRouter {
         }
         return ChatRequest.builder()
                 .messages(SystemMessage.from(RouterPrompt.TEXT), UserMessage.from(mapper.writeValueAsString(user)))
-                .responseFormat(responseFormat(instructions))
+                .parameters(LlmRequestParameters.of(responseFormat(instructions), reasoningEffort))
                 .build();
     }
 

@@ -2,6 +2,7 @@ package com.example.copilot.aiassistant.prompt;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.chat.ScriptedChatModel;
 import com.example.copilot.aiassistant.config.AssistantConfig;
 import com.example.copilot.aiassistant.llm.LlmErrorMapper;
@@ -14,6 +15,8 @@ import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.request.ResponseFormatType;
 import dev.langchain4j.model.chat.request.json.JsonEnumSchema;
 import dev.langchain4j.model.chat.request.json.JsonObjectSchema;
+import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.logging.log4j.Level;
@@ -39,7 +42,16 @@ class InstructionRouterTest {
     }
 
     private InstructionRouter router(ScriptedChatModel model) {
-        return new InstructionRouter(model, new LlmErrorMapper(), mapper);
+        return router(model, 1000, null);
+    }
+
+    private InstructionRouter router(ScriptedChatModel model, int summaryMaxChars, String reasoningEffort) {
+        AiAssistantProperties props = new AiAssistantProperties(
+                new AiAssistantProperties.Llm("openai", "test-key", null, "test-model", null, "none",
+                        reasoningEffort, null, Duration.ofSeconds(30), 1500),
+                new AiAssistantProperties.Limits(1000, 10, 8000, 5, 3, Duration.ofSeconds(60), 16000,
+                        Duration.ofSeconds(5), 4096, 10, summaryMaxChars), null, null, null, null);
+        return new InstructionRouter(model, new LlmErrorMapper(), mapper, props);
     }
 
     private RouteDecision route(ScriptedChatModel model) {
@@ -116,6 +128,40 @@ class InstructionRouterTest {
         JsonNode user = mapper.readTree(((UserMessage) model.requests().getFirst().messages().get(1)).singleText());
         String summary = user.get("summary").asString();
         assertThat(summary.codePointCount(0, summary.length())).isEqualTo(1000);
+    }
+
+    @Test
+    void summaryTruncatedToConfiguredLimit() {
+        ScriptedChatModel model = new ScriptedChatModel()
+                .reply(ScriptedChatModel.text("{\"category\":\"none\"}", 30));
+
+        router(model, 50, null).route("問題", List.of(), "字".repeat(80), INSTRUCTIONS);
+
+        JsonNode user = mapper.readTree(((UserMessage) model.requests().getFirst().messages().get(1)).singleText());
+        String summary = user.get("summary").asString();
+        assertThat(summary.codePointCount(0, summary.length())).isEqualTo(50);
+    }
+
+    @Test
+    void sendsConfiguredReasoningEffort() {
+        ScriptedChatModel model = new ScriptedChatModel()
+                .reply(ScriptedChatModel.text("{\"category\":\"none\"}", 30));
+
+        router(model, 1000, "medium").route("問題", List.of(), null, INSTRUCTIONS);
+
+        ChatRequest request = model.requests().getFirst();
+        assertThat(((OpenAiChatRequestParameters) request.parameters()).reasoningEffort()).isEqualTo("medium");
+        assertThat(request.responseFormat().type()).isEqualTo(ResponseFormatType.JSON);
+    }
+
+    @Test
+    void blankReasoningEffortKeepsModelDefault() {
+        ScriptedChatModel model = new ScriptedChatModel()
+                .reply(ScriptedChatModel.text("{\"category\":\"none\"}", 30));
+
+        router(model, 1000, " ").route("問題", List.of(), null, INSTRUCTIONS);
+
+        assertThat(model.requests().getFirst().parameters()).isNotInstanceOf(OpenAiChatRequestParameters.class);
     }
 
     @Test

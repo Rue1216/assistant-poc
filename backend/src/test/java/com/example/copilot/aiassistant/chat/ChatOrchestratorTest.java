@@ -123,7 +123,9 @@ class ChatOrchestratorTest {
     private final MutableClock clock = new MutableClock(NOW);
     private final JsonMapper mapper = JsonMapper.builder().build();
     private final PiiRedactor redactor = new PiiRedactor();
-    private final AiAssistantProperties props = new AiAssistantProperties(null,
+    private static final AiAssistantProperties.Llm LLM = new AiAssistantProperties.Llm("openai", "test-key", null,
+            "test-model", null, "none", null, null, Duration.ofSeconds(30), 1500);
+    private final AiAssistantProperties props = new AiAssistantProperties(LLM,
             new AiAssistantProperties.Limits(1000, 10, 8000, 5, 3, Duration.ofSeconds(60), 16000,
                     Duration.ofSeconds(5), 4096, 10, 1000), null, null, null, null);
     private final ScriptedChatModel model = new ScriptedChatModel();
@@ -194,7 +196,7 @@ class ChatOrchestratorTest {
             }
         };
         return new ChatOrchestrator(model, registry, executor, redactor, assembler, new CustomerNotes(), port,
-                new InstructionRouter(model, new LlmErrorMapper(), mapper),
+                new InstructionRouter(model, new LlmErrorMapper(), mapper, props),
                 new HistorySummarizer(model, new LlmErrorMapper(), mapper, redactor, props),
                 new AnswerAssembler(redactor, mapper), auditLogger, new LlmErrorMapper(), props, clock);
     }
@@ -988,7 +990,7 @@ class ChatOrchestratorTest {
 
     @Test
     void everythingOverflowsWhenOneMessageExceedsLimit() {
-        AiAssistantProperties small = new AiAssistantProperties(null,
+        AiAssistantProperties small = new AiAssistantProperties(LLM,
                 new AiAssistantProperties.Limits(1000, 10, 200, 5, 3, Duration.ofSeconds(60), 16000,
                         Duration.ofSeconds(5), 4096, 10, 1000), null, null, null, null);
         ChatOrchestrator target = orchestrator(new ToolRegistry(List.of()), new PromptAssembler(null, clock) {
@@ -1072,7 +1074,7 @@ class ChatOrchestratorTest {
 
     @Test
     void budgetExceededBySummaryIsAuditedWithSummaryFields() {
-        AiAssistantProperties tiny = new AiAssistantProperties(null,
+        AiAssistantProperties tiny = new AiAssistantProperties(LLM,
                 new AiAssistantProperties.Limits(1000, 10, 8000, 5, 3, Duration.ofSeconds(60), 20,
                         Duration.ofSeconds(5), 4096, 10, 1000), null, null, null, null);
         ChatOrchestrator target = orchestrator(new ToolRegistry(List.of()), new PromptAssembler(null, clock) {

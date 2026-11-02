@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.copilot.aiassistant.AiAssistantProperties;
 import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.chat.request.ChatRequestParameters;
+import dev.langchain4j.model.chat.request.ResponseFormat;
 import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
@@ -26,8 +28,43 @@ class LlmConfigurationTest {
     }
 
     @Test
+    void blankReasoningEffortIsNotSent() {
+        assertThat(parameters(model(null, " ")).reasoningEffort()).isNull();
+    }
+
+    @Test
     void configuredReasoningEffortIsSent() {
         assertThat(parameters(model(null, "none")).reasoningEffort()).isEqualTo("none");
+    }
+
+    @Test
+    void blankBaseUrlUsesTheDefaultEndpoint() {
+        assertThat(model(null, null, " ")).isNotNull();
+        assertThat(model(null, null, "https://gateway.example/v1")).isNotNull();
+    }
+
+    @Test
+    void requestReasoningEffortOverridesTheDefaultOnly() {
+        ChatModel model = model(null, "none");
+
+        ChatRequestParameters merged = model.defaultRequestParameters()
+                .overrideWith(LlmRequestParameters.of(ResponseFormat.JSON, "medium"));
+
+        assertThat(((OpenAiChatRequestParameters) merged).reasoningEffort()).isEqualTo("medium");
+        assertThat(merged.modelName()).isEqualTo("test-model");
+        assertThat(((OpenAiChatRequestParameters) merged).maxCompletionTokens()).isEqualTo(1500);
+        assertThat(merged.responseFormat()).isEqualTo(ResponseFormat.JSON);
+    }
+
+    @Test
+    void blankRequestReasoningEffortKeepsTheDefault() {
+        ChatModel model = model(null, "none");
+
+        ChatRequestParameters merged = model.defaultRequestParameters()
+                .overrideWith(LlmRequestParameters.of(ResponseFormat.JSON, ""));
+
+        assertThat(((OpenAiChatRequestParameters) merged).reasoningEffort()).isEqualTo("none");
+        assertThat(merged.responseFormat()).isEqualTo(ResponseFormat.JSON);
     }
 
     private static OpenAiChatRequestParameters parameters(ChatModel model) {
@@ -35,8 +72,12 @@ class LlmConfigurationTest {
     }
 
     private static ChatModel model(Double temperature, String reasoningEffort) {
-        AiAssistantProperties.Llm llm = new AiAssistantProperties.Llm("openai", "test-key", "test-model",
-                temperature, reasoningEffort, Duration.ofSeconds(30), 1500);
+        return model(temperature, reasoningEffort, null);
+    }
+
+    private static ChatModel model(Double temperature, String reasoningEffort, String baseUrl) {
+        AiAssistantProperties.Llm llm = new AiAssistantProperties.Llm("openai", "test-key", baseUrl, "test-model",
+                temperature, reasoningEffort, null, null, Duration.ofSeconds(30), 1500);
         return new LlmConfiguration().chatModel(new AiAssistantProperties(llm, null, null, null, null, null));
     }
 }

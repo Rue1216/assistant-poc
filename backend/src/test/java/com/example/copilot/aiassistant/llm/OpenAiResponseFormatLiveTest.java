@@ -55,7 +55,7 @@ class OpenAiResponseFormatLiveTest {
         yaml.setResources(new ClassPathResource("application.yml"));
         String modelName = yaml.getObject().getProperty("ai-assistant.llm.model-name");
         AiAssistantProperties.Llm llm = new AiAssistantProperties.Llm("openai", env.getProperty("OPENAI_API_KEY"),
-                modelName, null, "none", Duration.ofSeconds(30), 1500);
+                null, modelName, null, "none", null, null, Duration.ofSeconds(30), 1500);
         model = new LlmConfiguration().chatModel(new AiAssistantProperties(llm, null, null, null, null, null));
     }
 

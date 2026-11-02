@@ -3,6 +3,7 @@ package com.example.copilot.aiassistant.evaluation;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.copilot.TestCustomers;
+import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.chat.ScriptedChatModel;
 import com.example.copilot.aiassistant.port.AccessLevel;
 import com.example.copilot.aiassistant.privacy.CustomerContext;
@@ -12,7 +13,9 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.request.ResponseFormatType;
 import dev.langchain4j.model.chat.request.json.JsonObjectSchema;
+import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -33,8 +36,26 @@ class EvalJudgeTest {
             new CustomerContext(TestCustomers.RETIREE, AccessLevel.FULL, Set.of("王小明"), Set.of());
 
     private EvalJudge judge(ScriptedChatModel model) {
+        return judge(model, null);
+    }
+
+    private EvalJudge judge(ScriptedChatModel model, String reasoningEffort) {
+        AiAssistantProperties props = new AiAssistantProperties(
+                new AiAssistantProperties.Llm("openai", "test-key", null, "test-model", null, "none", null,
+                        reasoningEffort, Duration.ofSeconds(30), 1500), null, null, null, null, null);
         return new EvalJudge(model, new PiiRedactor(), mapper,
-                Clock.fixed(Instant.parse("2026-10-26T17:30:00Z"), ZoneOffset.UTC));
+                Clock.fixed(Instant.parse("2026-10-26T17:30:00Z"), ZoneOffset.UTC), props);
+    }
+
+    @Test
+    void sendsConfiguredReasoningEffort() {
+        ScriptedChatModel model = new ScriptedChatModel().reply(ScriptedChatModel.text(VALID, 40));
+
+        judge(model, "high").judge("q", "a", RUBRIC, customer);
+
+        ChatRequest request = model.requests().getFirst();
+        assertThat(((OpenAiChatRequestParameters) request.parameters()).reasoningEffort()).isEqualTo("high");
+        assertThat(request.responseFormat().type()).isEqualTo(ResponseFormatType.JSON);
     }
 
     private static void assertFailed(JudgeVerdict v) {

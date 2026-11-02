@@ -15,10 +15,11 @@ public class LlmConfiguration {
     ChatModel chatModel(AiAssistantProperties props) {
         AiAssistantProperties.Llm llm = props.llm();
         return OpenAiChatModel.builder()
+                .baseUrl(blankToNull(llm.baseUrl())) // null: the public OpenAI endpoint
                 .apiKey(llm.apiKey())
                 .modelName(llm.modelName())
                 .temperature(llm.temperature())
-                .reasoningEffort(llm.reasoningEffort())
+                .reasoningEffort(blankToNull(llm.reasoningEffort()))
                 .timeout(llm.timeout())
                 .maxCompletionTokens(llm.maxOutputTokens())
                 .supportedCapabilities(Capability.RESPONSE_FORMAT_JSON_SCHEMA) // answers are JSON blocks (answer-citations 2.2)
@@ -27,5 +28,9 @@ public class LlmConfiguration {
                 .logRequests(false) // request/response bodies hold prompts and tool results
                 .logResponses(false)
                 .build();
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.strip();
     }
 }
