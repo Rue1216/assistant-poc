@@ -3,7 +3,7 @@ package com.example.copilot.mockplatform.customer;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.copilot.TestCustomers;
-import com.example.copilot.aiassistant.port.CustomerRecord;
+import com.example.copilot.aiassistant.domain.customer.CustomerRecord;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;

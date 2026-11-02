@@ -1,9 +1,9 @@
 package com.example.copilot.mockplatform;
 
-import com.example.copilot.aiassistant.common.AssistantException;
-import com.example.copilot.aiassistant.common.ErrorCode;
-import com.example.copilot.aiassistant.port.CurrentUserPort;
-import com.example.copilot.aiassistant.port.UserContext;
+import com.example.copilot.aiassistant.domain.exception.AssistantException;
+import com.example.copilot.aiassistant.domain.exception.ErrorCode;
+import com.example.copilot.aiassistant.application.port.CurrentUserPort;
+import com.example.copilot.aiassistant.domain.user.UserContext;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;

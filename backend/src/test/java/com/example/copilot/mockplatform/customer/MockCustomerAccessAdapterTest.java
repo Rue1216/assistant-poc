@@ -3,8 +3,8 @@ package com.example.copilot.mockplatform.customer;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.copilot.TestCustomers;
-import com.example.copilot.aiassistant.port.AccessLevel;
-import com.example.copilot.aiassistant.port.UserContext;
+import com.example.copilot.aiassistant.domain.customer.AccessLevel;
+import com.example.copilot.aiassistant.domain.user.UserContext;
 import com.example.copilot.mockplatform.MockUser;
 import com.example.copilot.mockplatform.MockUserDirectory;
 import com.example.copilot.testsupport.MockCustomerPorts;

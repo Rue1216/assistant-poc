@@ -1,9 +1,9 @@
 package com.example.copilot.mockplatform.customer;
 
-import com.example.copilot.aiassistant.port.CustomerDataPort;
-import com.example.copilot.aiassistant.port.CustomerRecord;
-import com.example.copilot.aiassistant.port.c360.Customer360Record;
-import com.example.copilot.aiassistant.port.c360.RealTimeStatusRecord;
+import com.example.copilot.aiassistant.application.port.CustomerDataPort;
+import com.example.copilot.aiassistant.domain.customer.CustomerRecord;
+import com.example.copilot.aiassistant.domain.customer.c360.Customer360Record;
+import com.example.copilot.aiassistant.domain.customer.c360.RealTimeStatusRecord;
 import java.util.Optional;
 import org.springframework.stereotype.Component;
 

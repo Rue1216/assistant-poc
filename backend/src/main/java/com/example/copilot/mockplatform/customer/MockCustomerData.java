@@ -1,6 +1,6 @@
 package com.example.copilot.mockplatform.customer;
 
-import com.example.copilot.aiassistant.port.CustomerRecord;
+import com.example.copilot.aiassistant.domain.customer.CustomerRecord;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;

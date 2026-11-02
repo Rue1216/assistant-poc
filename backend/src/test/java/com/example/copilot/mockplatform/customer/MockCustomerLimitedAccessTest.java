@@ -8,7 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.example.copilot.IntegrationTestBase;
 import com.example.copilot.TestCustomers;
 import com.example.copilot.TestUsers;
-import com.example.copilot.aiassistant.port.AccessLevel;
+import com.example.copilot.aiassistant.domain.customer.AccessLevel;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;

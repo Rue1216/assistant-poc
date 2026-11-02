@@ -1,7 +1,7 @@
 package com.example.copilot.mockplatform;
 
-import com.example.copilot.aiassistant.common.ApiError;
-import com.example.copilot.aiassistant.common.ErrorCode;
+import com.example.copilot.aiassistant.interfaces.rest.ApiError;
+import com.example.copilot.aiassistant.domain.exception.ErrorCode;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -55,7 +55,7 @@ public class SecurityConfig {
     @Bean
     AuthenticationEntryPoint apiAuthenticationEntryPoint(JsonMapper mapper) {
         return (request, response, e) -> {
-            response.setStatus(ErrorCode.AI_UNAUTHENTICATED.status().value());
+            response.setStatus(ErrorCode.AI_UNAUTHENTICATED.status());
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
             response.setCharacterEncoding("UTF-8");
             response.getWriter().write(

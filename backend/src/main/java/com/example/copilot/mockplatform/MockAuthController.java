@@ -1,7 +1,7 @@
 package com.example.copilot.mockplatform;
 
-import com.example.copilot.aiassistant.common.ApiError;
-import com.example.copilot.aiassistant.common.ErrorCode;
+import com.example.copilot.aiassistant.interfaces.rest.ApiError;
+import com.example.copilot.aiassistant.domain.exception.ErrorCode;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;

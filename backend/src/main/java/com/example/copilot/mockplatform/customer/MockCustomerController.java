@@ -1,12 +1,12 @@
 package com.example.copilot.mockplatform.customer;
 
-import com.example.copilot.aiassistant.common.ApiError;
-import com.example.copilot.aiassistant.common.ErrorCode;
-import com.example.copilot.aiassistant.port.AccessLevel;
-import com.example.copilot.aiassistant.port.CurrentUserPort;
-import com.example.copilot.aiassistant.port.CustomerDataPort;
-import com.example.copilot.aiassistant.port.CustomerRecord;
-import com.example.copilot.aiassistant.port.UserContext;
+import com.example.copilot.aiassistant.interfaces.rest.ApiError;
+import com.example.copilot.aiassistant.domain.exception.ErrorCode;
+import com.example.copilot.aiassistant.domain.customer.AccessLevel;
+import com.example.copilot.aiassistant.application.port.CurrentUserPort;
+import com.example.copilot.aiassistant.application.port.CustomerDataPort;
+import com.example.copilot.aiassistant.domain.customer.CustomerRecord;
+import com.example.copilot.aiassistant.domain.user.UserContext;
 import java.util.List;
 import java.util.function.Function;
 import org.springframework.http.ResponseEntity;
