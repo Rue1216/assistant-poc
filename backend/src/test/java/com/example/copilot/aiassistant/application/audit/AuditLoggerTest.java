@@ -3,15 +3,16 @@ package com.example.copilot.aiassistant.application.audit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 import com.example.copilot.IntegrationTestBase;
 import com.example.copilot.TestCustomers;
 import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.domain.audit.AuditEntry;
+import com.example.copilot.aiassistant.domain.audit.AuditRecord;
 import com.example.copilot.aiassistant.domain.audit.CredentialMasker;
+import com.example.copilot.aiassistant.domain.repository.AuditRepository;
 import com.example.copilot.aiassistant.domain.customer.AccessLevel;
 import com.example.copilot.aiassistant.domain.user.UserContext;
 import com.example.copilot.aiassistant.domain.privacy.CustomerContext;
@@ -49,6 +50,7 @@ class AuditLoggerTest extends IntegrationTestBase {
 
     @Autowired AuditLogger auditLogger;
     @Autowired MongoTemplate mongo;
+    @Autowired AuditRepository repository;
 
     private static final UserContext USER = new UserContext("ICRM00028", "Officer", "RM", Set.of());
     private static final CustomerContext CUSTOMER =
@@ -183,13 +185,29 @@ class AuditLoggerTest extends IntegrationTestBase {
 
     @Test
     void toolResultStoredOnlyWhenEnabled() {
-        AuditLogger enabled = new AuditLogger(mongo, Clock.systemUTC(), new CredentialMasker(), propsWith(true), new PiiRedactor());
+        AuditLogger enabled = new AuditLogger(repository, Clock.systemUTC(), new CredentialMasker(), propsWith(true), new PiiRedactor());
         enabled.record(citedEntry("req-cite-3", false, "a", List.of()));
         Document call = find("req-cite-3").getList("toolCalls", Document.class).get(0);
         assertThat(call.get("result", Document.class).getInteger("close")).isEqualTo(2420);
 
         auditLogger.record(citedEntry("req-cite-4", false, "a", List.of()));
         assertThat(find("req-cite-4").getList("toolCalls", Document.class).get(0).containsKey("result")).isFalse();
+    }
+
+    @Test
+    void bigIntegerToolResultIsOmittedButRecordIsWritten() {
+        String payload = "{\"untrustedData\":true,\"status\":\"SUCCESS\",\"citationId\":\"S1\","
+                + "\"data\":{\"big\":12345678901234567890123,\"close\":2420}}";
+        ToolResult result = ToolResult.success(java.util.Map.of("close", 2420),
+                List.of(new Source("TWSE", "https://openapi.twse.com.tw", "2026-10-16")),
+                new CitationDetail("t", "台積電 2330", "e", null, 1));
+        ToolOutcome o = new ToolOutcome("getStockQuote", "p", result, payload, 7, "S1");
+        AuditLogger enabled = new AuditLogger(repository, Clock.systemUTC(), new CredentialMasker(), propsWith(true), new PiiRedactor());
+        enabled.record(new AuditEntry("req-big-1", USER, CUSTOMER, "q", "a", false, "ANSWERED", null,
+                List.of(o), java.util.Map.of("S1", 1), List.of(), 10, 1, 0, 0, 0, List.of(), null, null, false, null, 0, 0, null));
+        Document doc = find("req-big-1");
+        assertThat(doc).isNotNull();
+        assertThat(doc.getList("toolCalls", Document.class).get(0).containsKey("result")).isFalse();
     }
 
     @Test
@@ -408,8 +426,8 @@ class AuditLoggerTest extends IntegrationTestBase {
     }
     @Test
     void writeFailureDoesNotThrow() {
-        MongoTemplate broken = mock(MongoTemplate.class);
-        when(broken.insert(any(Document.class), anyString())).thenThrow(new IllegalStateException("db down: secret"));
+        AuditRepository broken = mock(AuditRepository.class);
+        doThrow(new IllegalStateException("db down: secret")).when(broken).insert(any(AuditRecord.class));
         AuditLogger logger = new AuditLogger(broken, Clock.systemUTC(), new CredentialMasker(), propsWith(false), new PiiRedactor());
 
         List<LogEvent> events;

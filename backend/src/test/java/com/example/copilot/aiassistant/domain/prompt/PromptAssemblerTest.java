@@ -7,7 +7,6 @@ import com.example.copilot.aiassistant.application.config.PublishedConfigCache;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
 import com.example.copilot.aiassistant.domain.config.PromptVersion;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
-import com.example.copilot.aiassistant.domain.config.ConfigStatus;
 import com.example.copilot.aiassistant.domain.config.PublishedConfigs;
 import java.time.Clock;
 import java.time.Instant;
@@ -32,10 +31,8 @@ class PromptAssemblerTest extends IntegrationTestBase {
     @AfterEach
     void restoreSystemMain() {
         if (originalContent != null) {
-            AssistantConfig main = repository.findByConfigKeyAndStatus("system.main", ConfigStatus.PUBLISHED)
-                    .orElseThrow();
-            main.setContent(originalContent);
-            repository.save(main);
+            AssistantConfig main = repository.findPublished("system.main").orElseThrow();
+            repository.save(main.withContent(main.name(), originalContent, main.changeNote()));
             originalContent = null;
         }
         cache.invalidate();
@@ -65,11 +62,10 @@ class PromptAssemblerTest extends IntegrationTestBase {
 
     @Test
     void safetyRulesAreLastEvenIfSystemMainIsEdited() {
-        AssistantConfig main = repository.findByConfigKeyAndStatus("system.main", ConfigStatus.PUBLISHED)
-                .orElseThrow();
-        originalContent = main.getContent();
-        main.setContent(originalContent.replaceAll("(?s)## 安全規則.*?(?=\n## |\\z)", ""));
-        repository.save(main);
+        AssistantConfig main = repository.findPublished("system.main").orElseThrow();
+        originalContent = main.content();
+        repository.save(main.withContent(main.name(), originalContent.replaceAll("(?s)## 安全規則.*?(?=\n## |\\z)", ""),
+                main.changeNote()));
         cache.invalidate();
 
         String message = assembler.assemble(cache.current(), InstructionSelection.all(), null).text();
@@ -185,7 +181,7 @@ class PromptAssemblerTest extends IntegrationTestBase {
                 Stream.concat(Stream.of(replaced), fresh.instructions().stream().skip(1)).toList());
         AssembledPrompt prompt = assembler.assemble(given, InstructionSelection.all(), null);
         assertThat(prompt.text()).contains("替換後內容").contains("# 不可覆寫的安全規則");
-        assertThat(prompt.versions()).contains(new PromptVersion(replaced.getConfigKey(), 99));
+        assertThat(prompt.versions()).contains(new PromptVersion(replaced.configKey(), 99));
     }
 
     @Test
@@ -225,13 +221,7 @@ class PromptAssemblerTest extends IntegrationTestBase {
     }
 
     private static AssistantConfig copyOf(AssistantConfig source) {
-        AssistantConfig copy = new AssistantConfig();
-        copy.setConfigKey(source.getConfigKey());
-        copy.setConfigType(source.getConfigType());
-        copy.setName(source.getName());
-        copy.setStatus(source.getStatus());
-        copy.setContent("## 適用問題\n替換後內容");
-        copy.setVersion(99);
-        return copy;
+        return new AssistantConfig(null, source.configKey(), source.configType(), source.name(),
+                "## 適用問題\n替換後內容", source.status(), 99, null, null, null, null, null, null, null, null);
     }
 }

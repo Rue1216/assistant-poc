@@ -14,8 +14,8 @@ public record ConfigSummary(String configKey, ConfigType configType, String name
                               String updatedBy, Instant updatedAt) {
 
         static VersionInfo of(AssistantConfig c) {
-            return c == null ? null : new VersionInfo(c.getVersion(), c.getStatus(), c.getScheduledAt(),
-                    c.getUpdatedBy(), c.getUpdatedAt());
+            return c == null ? null : new VersionInfo(c.version(), c.status(), c.scheduledAt(),
+                    c.updatedBy(), c.updatedAt());
         }
     }
 }

@@ -45,8 +45,8 @@ public class PromptAssembler {
         StringBuilder sb = new StringBuilder();
         AssistantConfig main = configs.systemPrompt();
         if (main != null) {
-            sb.append(main.getContent().strip()).append("\n\n");
-            versions.add(new PromptVersion(main.getConfigKey(), main.getVersion()));
+            sb.append(main.content().strip()).append("\n\n");
+            versions.add(new PromptVersion(main.configKey(), main.version()));
         } else if (warnedMissingMain.compareAndSet(false, true)) {
             log.warn("No published system.main found; continuing with instructions, safety rules and "
                     + "answer-format rules only");
@@ -56,16 +56,16 @@ public class PromptAssembler {
                 .filter(i -> switch (selection.kind()) {
                     case ALL -> true;
                     case NONE -> false;
-                    case ONLY -> i.getConfigKey().equals(selection.configKey());
+                    case ONLY -> i.configKey().equals(selection.configKey());
                 })
-                .sorted(Comparator.comparing(AssistantConfig::getConfigKey)).toList();
+                .sorted(Comparator.comparing(AssistantConfig::configKey)).toList();
         if (selection.kind() == InstructionSelection.Kind.NONE) {
             sb.append(NO_INSTRUCTION).append("\n\n");
         }
         for (AssistantConfig instruction : instructions) {
-            sb.append("## ").append(instruction.getName()).append('\n')
-                    .append(instruction.getContent().strip()).append("\n\n");
-            versions.add(new PromptVersion(instruction.getConfigKey(), instruction.getVersion()));
+            sb.append("## ").append(instruction.name()).append('\n')
+                    .append(instruction.content().strip()).append("\n\n");
+            versions.add(new PromptVersion(instruction.configKey(), instruction.version()));
         }
         if (customerNotes != null) {
             sb.append(customerNotes).append("\n\n");

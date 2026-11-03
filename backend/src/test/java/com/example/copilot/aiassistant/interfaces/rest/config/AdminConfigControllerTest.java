@@ -18,7 +18,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.example.copilot.IntegrationTestBase;
 import com.example.copilot.TestUsers;
-import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
+import com.example.copilot.aiassistant.infrastructure.mongo.AssistantConfigMongoRepository;
 import com.example.copilot.aiassistant.infrastructure.seed.SeedLoader;
 import com.jayway.jsonpath.JsonPath;
 import java.time.Clock;
@@ -43,7 +43,7 @@ class AdminConfigControllerTest extends IntegrationTestBase {
     private static final String ADMIN = "EEE22222";
     private static final String WORKING_COPY_PATH = "$[?(@.configKey=='" + KEY + "')].workingCopy";
 
-    @Autowired AssistantConfigRepository repository;
+    @Autowired AssistantConfigMongoRepository repository;
     @Autowired SeedLoader seedLoader;
     @Autowired Clock clock;
 

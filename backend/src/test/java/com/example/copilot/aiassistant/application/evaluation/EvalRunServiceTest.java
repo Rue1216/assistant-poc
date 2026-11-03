@@ -24,6 +24,7 @@ import com.example.copilot.aiassistant.domain.exception.AssistantException;
 import com.example.copilot.aiassistant.domain.exception.ErrorCode;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
+import com.example.copilot.aiassistant.infrastructure.mongo.AssistantConfigMongoRepository;
 import com.example.copilot.aiassistant.application.config.ConfigService;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
 import com.example.copilot.aiassistant.domain.config.PublishedConfigs;
@@ -70,6 +71,7 @@ class EvalRunServiceTest extends IntegrationTestBase {
     @Autowired EvalRunRepository runs;
     @Autowired ConfigService configService;
     @Autowired AssistantConfigRepository configs;
+    @Autowired AssistantConfigMongoRepository configDocuments;
     @Autowired SeedLoader seedLoader;
     @Autowired EvalDataset dataset;
     @Autowired MongoTemplate mongo;
@@ -88,14 +90,14 @@ class EvalRunServiceTest extends IntegrationTestBase {
     @AfterEach
     void tearDown() {
         mongo.remove(new org.springframework.data.mongodb.core.query.Query(), EvalRun.COLLECTION);
-        configs.deleteAll();
+        configDocuments.deleteAll();
         seedLoader.run(new DefaultApplicationArguments());
     }
 
     private AssistantConfig draftWithMarker(String key, String marker) {
         AssistantConfig draft = configService.createDraft(key, ACTOR);
-        return configService.saveWorkingCopy(key, new SaveCommand(draft.getName(),
-                draft.getContent() + "\n- " + marker + "\n", "note", SaveMode.KEEP_STATUS, draft.getDocVersion()),
+        return configService.saveWorkingCopy(key, new SaveCommand(draft.name(),
+                draft.content() + "\n- " + marker + "\n", "note", SaveMode.KEEP_STATUS, draft.docVersion()),
                 ACTOR);
     }
 
@@ -133,16 +135,16 @@ class EvalRunServiceTest extends IntegrationTestBase {
     @Test
     void startCreatesRunningRunWithSnapshot() {
         AssistantConfig draft = draftWithMarker(KEY, "marker-draft-text");
-        EvalRun run = service.start(KEY, draft.getDocVersion(), ACTOR);
+        EvalRun run = service.start(KEY, draft.docVersion(), ACTOR);
 
         assertThat(run.id()).isNotBlank();
         assertThat(run.status()).isEqualTo(EvalStatus.RUNNING);
         assertThat(run.totalCases()).isEqualTo(dataset.cases().size());
         assertThat(run.completedCases()).isZero();
         assertThat(run.triggeredBy()).isEqualTo(ACTOR);
-        assertThat(run.candidateVersion()).isEqualTo(draft.getVersion());
-        assertThat(run.candidateDocVersion()).isEqualTo(draft.getDocVersion());
-        assertThat(run.candidateUpdatedAt().toEpochMilli()).isEqualTo(draft.getUpdatedAt().toEpochMilli());
+        assertThat(run.candidateVersion()).isEqualTo(draft.version());
+        assertThat(run.candidateDocVersion()).isEqualTo(draft.docVersion());
+        assertThat(run.candidateUpdatedAt().toEpochMilli()).isEqualTo(draft.updatedAt().toEpochMilli());
         assertThat(run.baselineVersions()).hasSize(8);
         assertThat(run.datasetHash()).isEqualTo(dataset.hash());
 
@@ -157,9 +159,9 @@ class EvalRunServiceTest extends IntegrationTestBase {
     @Test
     void snapshotIgnoresLaterEdits() {
         AssistantConfig draft = draftWithMarker(KEY, "marker-old");
-        service.start(KEY, draft.getDocVersion(), ACTOR);
-        configService.saveWorkingCopy(KEY, new SaveCommand(draft.getName(),
-                draft.getContent() + "\n- marker-new\n", "note", SaveMode.KEEP_STATUS, draft.getDocVersion()),
+        service.start(KEY, draft.docVersion(), ACTOR);
+        configService.saveWorkingCopy(KEY, new SaveCommand(draft.name(),
+                draft.content() + "\n- marker-new\n", "note", SaveMode.KEEP_STATUS, draft.docVersion()),
                 ACTOR);
 
         EvalRunService.EvalSnapshot snapshot = capturedSnapshot();
@@ -169,13 +171,12 @@ class EvalRunServiceTest extends IntegrationTestBase {
     @Test
     void newKeyIsAddedToCandidate() {
         String key = "instruction.eval-new";
-        AssistantConfig base = configs.findByConfigKeyAndStatus(KEY,
-                com.example.copilot.aiassistant.domain.config.ConfigStatus.PUBLISHED).orElseThrow();
+        AssistantConfig base = configs.findPublished(KEY).orElseThrow();
         AssistantConfig created = configService.createKey(key, ConfigType.SYSTEM_INSTRUCTION, "新分類", ACTOR);
-        AssistantConfig saved = configService.saveWorkingCopy(key, new SaveCommand("新分類", base.getContent(),
-                "note", SaveMode.KEEP_STATUS, created.getDocVersion()), ACTOR);
+        AssistantConfig saved = configService.saveWorkingCopy(key, new SaveCommand("新分類", base.content(),
+                "note", SaveMode.KEEP_STATUS, created.docVersion()), ACTOR);
 
-        EvalRun run = service.start(key, saved.getDocVersion(), ACTOR);
+        EvalRun run = service.start(key, saved.docVersion(), ACTOR);
 
         EvalRunService.EvalSnapshot snapshot = capturedSnapshot();
         assertThat(versionsOf(snapshot.baseline())).hasSize(8).noneMatch(v -> v.configKey().equals(key));
@@ -186,14 +187,14 @@ class EvalRunServiceTest extends IntegrationTestBase {
     @Test
     void systemMainWorkingCopyReplacesSystemPrompt() {
         AssistantConfig draft = draftWithMarker("system.main", "marker-main-draft");
-        service.start("system.main", draft.getDocVersion(), ACTOR);
+        service.start("system.main", draft.docVersion(), ACTOR);
 
         EvalRunService.EvalSnapshot snapshot = capturedSnapshot();
         assertThat(textOf(snapshot.candidate())).contains("marker-main-draft");
         assertThat(textOf(snapshot.baseline())).doesNotContain("marker-main-draft");
         assertThat(versionsOf(snapshot.candidate())).hasSize(8);
         assertThat(versionsOf(snapshot.candidate())).anyMatch(v -> v.configKey().equals("system.main")
-                && v.version() == draft.getVersion());
+                && v.version() == draft.version());
     }
 
     @Test
@@ -211,14 +212,14 @@ class EvalRunServiceTest extends IntegrationTestBase {
     @Test
     void staleDocVersionIsConflict() {
         AssistantConfig draft = draftWithMarker(KEY, "m");
-        assertThat(thrown(() -> service.start(KEY, draft.getDocVersion() + 1, ACTOR)).code())
+        assertThat(thrown(() -> service.start(KEY, draft.docVersion() + 1, ACTOR)).code())
                 .isEqualTo(ErrorCode.AI_CONFIG_CONFLICT);
     }
 
     @Test
     void forbiddenContentFailsValidation() {
         AssistantConfig draft = draftWithMarker(KEY, "key sk-abcdefghijklmnopqrstuvwxyz0123456789");
-        AssistantException e = thrown(() -> service.start(KEY, draft.getDocVersion(), ACTOR));
+        AssistantException e = thrown(() -> service.start(KEY, draft.docVersion(), ACTOR));
         assertThat(e.code()).isEqualTo(ErrorCode.AI_CONFIG_VALIDATION_FAILED);
         assertThat(e.details()).anyMatch(d -> d instanceof ValidationError v && v.rule().equals("FORBIDDEN_CONTENT"));
         verify(runner, never()).run(any(), any());
@@ -227,9 +228,9 @@ class EvalRunServiceTest extends IntegrationTestBase {
     @Test
     void secondStartIsRejectedWhileRunning() {
         AssistantConfig draft = draftWithMarker(KEY, "m");
-        EvalRun first = service.start(KEY, draft.getDocVersion(), ACTOR);
+        EvalRun first = service.start(KEY, draft.docVersion(), ACTOR);
 
-        AssistantException e = thrown(() -> service.start(KEY, draft.getDocVersion(), "other.admin"));
+        AssistantException e = thrown(() -> service.start(KEY, draft.docVersion(), "other.admin"));
 
         assertThat(e.code()).isEqualTo(ErrorCode.AI_EVAL_RUNNING);
         assertThat(e.details()).hasSize(1);
@@ -254,7 +255,7 @@ class EvalRunServiceTest extends IntegrationTestBase {
                     ready.countDown();
                     go.await();
                     try {
-                        return service.start(KEY, draft.getDocVersion(), actor);
+                        return service.start(KEY, draft.docVersion(), actor);
                     } catch (AssistantException e) {
                         return e;
                     }
@@ -280,13 +281,13 @@ class EvalRunServiceTest extends IntegrationTestBase {
     void rejectedSubmitFailsRunAndFreesTheSlot() {
         ExecutorService rejecting = Executors.newSingleThreadExecutor();
         rejecting.shutdown();
-        EvalRunService rejectingService = new EvalRunService(runs, configService, configs, validator, cache,
+        EvalRunService rejectingService = new EvalRunService(runs, configs, validator, cache,
                 assembler, dataset, runner, rejecting, clock, properties);
         AssistantConfig draft = draftWithMarker(KEY, "m");
         List<LogEvent> events;
         AssistantException e;
         try (LogCapture capture = LogCapture.of(EvalRunService.class, Level.INFO)) {
-            e = thrown(() -> rejectingService.start(KEY, draft.getDocVersion(), ACTOR));
+            e = thrown(() -> rejectingService.start(KEY, draft.docVersion(), ACTOR));
             events = capture.events();
         }
 
@@ -300,7 +301,7 @@ class EvalRunServiceTest extends IntegrationTestBase {
         assertThat(lines).containsExactly("eval run rejected runId=" + stored.get(0).id());
         verify(runner, never()).run(any(), any());
         // The slot is free again: the next start is accepted.
-        assertThat(service.start(KEY, draft.getDocVersion(), ACTOR).status()).isEqualTo(EvalStatus.RUNNING);
+        assertThat(service.start(KEY, draft.docVersion(), ACTOR).status()).isEqualTo(EvalStatus.RUNNING);
     }
 
     @Test
@@ -314,7 +315,7 @@ class EvalRunServiceTest extends IntegrationTestBase {
         assertThat(after.finishedAt()).isNotNull();
 
         AssistantConfig draft = draftWithMarker(KEY, "m");
-        assertThat(service.start(KEY, draft.getDocVersion(), ACTOR).status()).isEqualTo(EvalStatus.RUNNING);
+        assertThat(service.start(KEY, draft.docVersion(), ACTOR).status()).isEqualTo(EvalStatus.RUNNING);
     }
 
     @Test

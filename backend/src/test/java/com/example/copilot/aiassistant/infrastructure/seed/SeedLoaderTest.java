@@ -4,10 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.copilot.IntegrationTestBase;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
-import com.example.copilot.aiassistant.domain.config.ConfigStatus;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
 import com.example.copilot.aiassistant.domain.config.ConfigValidator;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
+import com.example.copilot.aiassistant.infrastructure.mongo.AssistantConfigMongoRepository;
 import java.util.Comparator;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
@@ -19,6 +19,7 @@ import org.springframework.boot.DefaultApplicationArguments;
 class SeedLoaderTest extends IntegrationTestBase {
 
     @Autowired AssistantConfigRepository repository;
+    @Autowired AssistantConfigMongoRepository documents;
     @Autowired SeedLoader seedLoader;
     @Autowired ConfigValidator validator;
 
@@ -28,42 +29,42 @@ class SeedLoaderTest extends IntegrationTestBase {
 
     @BeforeEach
     void cleanAndSeed() {
-        repository.deleteAll();
+        documents.deleteAll();
         seedLoader.run(new DefaultApplicationArguments());
     }
 
     @AfterEach
     void restoreSeed() {
-        repository.deleteAll();
+        documents.deleteAll();
         seedLoader.run(new DefaultApplicationArguments());
     }
 
     @Test
     void seedsEightPublishedConfigs() {
-        List<AssistantConfig> published = repository.findByStatus(ConfigStatus.PUBLISHED);
+        List<AssistantConfig> published = repository.findPublished();
         assertThat(published).hasSize(8);
         assertThat(published).allSatisfy(c -> {
-            assertThat(c.getVersion()).isEqualTo(1);
-            assertThat(c.getUpdatedBy()).isEqualTo("system");
-            assertThat(c.getCreatedBy()).isEqualTo("system");
-            assertThat(c.getContent()).isNotBlank();
+            assertThat(c.version()).isEqualTo(1);
+            assertThat(c.updatedBy()).isEqualTo("system");
+            assertThat(c.createdBy()).isEqualTo("system");
+            assertThat(c.content()).isNotBlank();
         });
-        assertThat(published).extracting(AssistantConfig::getConfigKey).containsExactlyInAnyOrder(
+        assertThat(published).extracting(AssistantConfig::configKey).containsExactlyInAnyOrder(
                 "system.main", "instruction.customer-overview", "instruction.asset-liability",
                 "instruction.member-rank", "instruction.opportunity", "instruction.engagement",
                 "instruction.contact-prep", "instruction.market-brief");
-        assertThat(repository.findByConfigKeyAndStatus("instruction.contact-topic", ConfigStatus.PUBLISHED))
+        assertThat(repository.findPublished("instruction.contact-topic"))
                 .isEmpty();
     }
 
     @Test
     void sevenCategoriesInManifestOrderWithNames() {
-        List<AssistantConfig> instructions = repository.findByStatus(ConfigStatus.PUBLISHED).stream()
-                .filter(c -> c.getConfigType() == ConfigType.SYSTEM_INSTRUCTION)
-                .sorted(Comparator.comparing(AssistantConfig::getId))
+        List<AssistantConfig> instructions = repository.findPublished().stream()
+                .filter(c -> c.configType() == ConfigType.SYSTEM_INSTRUCTION)
+                .sorted(Comparator.comparing(AssistantConfig::id))
                 .toList();
-        assertThat(instructions).extracting(AssistantConfig::getConfigKey).containsExactlyElementsOf(MANIFEST_ORDER);
-        assertThat(instructions).extracting(c -> c.getConfigKey() + "=" + c.getName()).containsExactly(
+        assertThat(instructions).extracting(AssistantConfig::configKey).containsExactlyElementsOf(MANIFEST_ORDER);
+        assertThat(instructions).extracting(c -> c.configKey() + "=" + c.name()).containsExactly(
                 "instruction.customer-overview=顧客概況", "instruction.asset-liability=資產負債",
                 "instruction.member-rank=會員等級", "instruction.opportunity=商品機會",
                 "instruction.engagement=往來與通路", "instruction.contact-prep=聯繫準備",
@@ -72,9 +73,9 @@ class SeedLoaderTest extends IntegrationTestBase {
 
     @Test
     void everySeedPassesTheValidator() {
-        assertThat(repository.findByStatus(ConfigStatus.PUBLISHED)).allSatisfy(c ->
-                assertThat(validator.validate(c.getConfigType(), c.getConfigKey(), c.getContent()))
-                        .as(c.getConfigKey()).isEmpty());
+        assertThat(repository.findPublished()).allSatisfy(c ->
+                assertThat(validator.validate(c.configType(), c.configKey(), c.content()))
+                        .as(c.configKey()).isEmpty());
     }
 
     @Test
@@ -92,13 +93,13 @@ class SeedLoaderTest extends IntegrationTestBase {
     }
 
     private String content(String key) {
-        return repository.findByConfigKeyAndStatus(key, ConfigStatus.PUBLISHED).orElseThrow().getContent();
+        return repository.findPublished(key).orElseThrow().content();
     }
 
     @Test
     void seedIsIdempotent() {
         seedLoader.run(new DefaultApplicationArguments());
-        assertThat(repository.findByStatus(ConfigStatus.PUBLISHED)).hasSize(8);
+        assertThat(repository.findPublished()).hasSize(8);
         assertThat(repository.count()).isEqualTo(8);
     }
 }

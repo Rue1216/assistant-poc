@@ -26,7 +26,7 @@ import com.example.copilot.aiassistant.domain.eval.EvalRun;
 import com.example.copilot.aiassistant.domain.eval.EvalStatus;
 import com.example.copilot.aiassistant.domain.eval.EvalSummary;
 import com.example.copilot.aiassistant.domain.eval.JudgeVerdict;
-import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
+import com.example.copilot.aiassistant.infrastructure.mongo.AssistantConfigMongoRepository;
 import com.example.copilot.aiassistant.application.config.ConfigService;
 import com.example.copilot.aiassistant.domain.repository.EvalRunRepository;
 import com.example.copilot.aiassistant.infrastructure.seed.SeedLoader;
@@ -58,7 +58,7 @@ class EvalControllerTest extends IntegrationTestBase {
 
     @Autowired EvalRunRepository runs;
     @Autowired ConfigService configService;
-    @Autowired AssistantConfigRepository configs;
+    @Autowired AssistantConfigMongoRepository configs;
     @Autowired SeedLoader seedLoader;
     @Autowired MongoTemplate mongo;
     @Autowired Clock clock;
@@ -89,7 +89,7 @@ class EvalControllerTest extends IntegrationTestBase {
     }
 
     private long draftDocVersion() {
-        return configService.createDraft(KEY, ADMIN).getDocVersion();
+        return configService.createDraft(KEY, ADMIN).docVersion();
     }
 
     private static EvalCaseRecord caseRecord(String id) {

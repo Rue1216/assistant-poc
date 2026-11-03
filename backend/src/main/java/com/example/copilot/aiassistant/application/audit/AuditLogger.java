@@ -7,22 +7,25 @@ import com.example.copilot.aiassistant.domain.audit.CredentialMasker;
 import com.example.copilot.aiassistant.domain.privacy.CustomerContext;
 import com.example.copilot.aiassistant.domain.privacy.CustomerDeidentifier;
 import com.example.copilot.aiassistant.domain.privacy.PiiRedactor;
+import com.example.copilot.aiassistant.domain.repository.AuditRepository;
 import com.example.copilot.aiassistant.domain.config.PromptVersion;
 import com.example.copilot.aiassistant.domain.tool.CitationDetail;
 import com.example.copilot.aiassistant.domain.tool.Source;
 import com.example.copilot.aiassistant.domain.tool.ToolOutcome;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
+import java.util.Collections;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
-import org.bson.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -44,15 +47,15 @@ public class AuditLogger {
 
     private static final Logger log = LoggerFactory.getLogger(AuditLogger.class);
 
-    private final MongoTemplate mongo;
+    private final AuditRepository repository;
     private final Clock clock;
     private final CredentialMasker masker;
     private final PiiRedactor redactor;
     private final boolean storeToolResults;
 
-    public AuditLogger(MongoTemplate mongo, Clock clock, CredentialMasker masker, AiAssistantProperties props,
+    public AuditLogger(AuditRepository repository, Clock clock, CredentialMasker masker, AiAssistantProperties props,
                        PiiRedactor redactor) {
-        this.mongo = mongo;
+        this.repository = repository;
         this.clock = clock;
         this.masker = masker;
         this.redactor = redactor;
@@ -79,7 +82,7 @@ public class AuditLogger {
 
     public void record(AuditEntry entry) {
         try {
-            mongo.insert(toRecord(entry).toDocument(), AuditRecord.COLLECTION);
+            repository.insert(toRecord(entry));
         } catch (Exception e) {
             // Class name only: messages and the entry may contain question/answer text.
             log.error("Audit write failed requestId={} error={}", entry == null ? null : entry.requestId(),
@@ -158,16 +161,30 @@ public class AuditLogger {
     }
 
     /** The "data" node of the payload sent to the model; null when it cannot be parsed (never logged). */
-    private static Document resultDocument(String payload) {
+    private static Map<String, Object> resultDocument(String payload) {
         try {
             JsonNode data = JSON.readTree(payload).get("data");
             if (data == null) {
                 return null;
             }
-            return Document.parse(data.isObject() ? data.toString() : "{\"value\":" + data + "}");
+            Map<String, Object> result = data.isObject()
+                    ? JSON.convertValue(data, new TypeReference<Map<String, Object>>() { })
+                    : Collections.singletonMap("value", JSON.convertValue(data, Object.class));
+            // The store has no codec for these; omit the result rather than lose the whole record.
+            return hasBigNumber(result) ? null : result;
         } catch (RuntimeException e) {
             return null;
         }
+    }
+
+    private static boolean hasBigNumber(Object v) {
+        if (v instanceof BigInteger || v instanceof BigDecimal) {
+            return true;
+        }
+        if (v instanceof Map<?, ?> m) {
+            return m.values().stream().anyMatch(AuditLogger::hasBigNumber);
+        }
+        return v instanceof List<?> l && l.stream().anyMatch(AuditLogger::hasBigNumber);
     }
 
     /** Clips to {@code max} code points so a surrogate pair is never split. */

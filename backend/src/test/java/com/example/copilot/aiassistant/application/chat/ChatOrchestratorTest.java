@@ -1288,12 +1288,8 @@ class ChatOrchestratorTest {
     }
 
     private static AssistantConfig config(String key, int version, String name, String content) {
-        AssistantConfig c = new AssistantConfig();
-        c.setConfigKey(key);
-        c.setVersion(version);
-        c.setName(name);
-        c.setContent(content);
-        return c;
+        return new AssistantConfig(null, key, null, name, content, null, version, null, null, null, null, null,
+                null, null, null);
     }
 
     private static final PublishedConfigs EVAL_CONFIGS = new PublishedConfigs(

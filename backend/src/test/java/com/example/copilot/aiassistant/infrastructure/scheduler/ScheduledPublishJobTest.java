@@ -22,6 +22,9 @@ import com.example.copilot.aiassistant.domain.exception.AssistantException;
 import com.example.copilot.aiassistant.domain.exception.ErrorCode;
 import com.example.copilot.aiassistant.application.config.PublishedConfigCache;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
+import com.example.copilot.aiassistant.infrastructure.mongo.AssistantConfigDocument;
+import com.example.copilot.aiassistant.infrastructure.mongo.AssistantConfigMongoRepository;
+import com.example.copilot.aiassistant.infrastructure.mongo.AssistantConfigRepositoryImpl;
 import com.example.copilot.aiassistant.infrastructure.seed.SeedLoader;
 import com.example.copilot.testsupport.LogCapture;
 import com.mongodb.MongoException;
@@ -30,6 +33,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -59,6 +63,7 @@ class ScheduledPublishJobTest extends IntegrationTestBase {
     private static final String ACTOR = "EEE22222";
 
     @Autowired AssistantConfigRepository repository;
+    @Autowired AssistantConfigMongoRepository mongoRepository;
     @Autowired MongoTemplate mongo;
     @Autowired ConfigValidator validator;
     @Autowired MongoTransactionManager transactionManager;
@@ -74,24 +79,28 @@ class ScheduledPublishJobTest extends IntegrationTestBase {
     @BeforeEach
     void setUp() {
         clock = new MutableClock(NOW);
-        service = new ConfigService(repository, mongo, validator, cache, transactionManager, clock, properties);
+        service = newService(repository);
         job = new ScheduledPublishJob(service);
     }
 
     @AfterEach
     void restoreSeed() {
-        repository.deleteAll();
+        mongoRepository.deleteAll();
         seedLoader.run(new DefaultApplicationArguments());
         cache.invalidate();
     }
 
+    private ConfigService newService(AssistantConfigRepository repo) {
+        return new ConfigService(repo, validator, cache, clock, properties);
+    }
+
     private AssistantConfig reload(int version) {
-        return repository.findByConfigKeyAndVersion(KEY, version).orElseThrow();
+        return repository.findVersion(KEY, version).orElseThrow();
     }
 
     private AssistantConfig schedule(Instant at) {
         AssistantConfig draft = service.createDraft(KEY, ACTOR);
-        return service.publish(KEY, new PublishCommand(PublishMode.SCHEDULED, at, draft.getDocVersion()), ACTOR);
+        return service.publish(KEY, new PublishCommand(PublishMode.SCHEDULED, at, draft.docVersion()), ACTOR);
     }
 
     @Test
@@ -109,14 +118,14 @@ class ScheduledPublishJobTest extends IntegrationTestBase {
         job.run();
 
         AssistantConfig v2 = reload(2);
-        assertThat(v2.getStatus()).isEqualTo(ConfigStatus.PUBLISHED);
-        assertThat(v2.getUpdatedBy()).isEqualTo(ACTOR);
-        assertThat(v2.getUpdatedAt()).isEqualTo(NOW.plus(Duration.ofMinutes(3)));
-        assertThat(v2.getScheduledAt()).isEqualTo(at);
+        assertThat(v2.status()).isEqualTo(ConfigStatus.PUBLISHED);
+        assertThat(v2.updatedBy()).isEqualTo(ACTOR);
+        assertThat(v2.updatedAt()).isEqualTo(NOW.plus(Duration.ofMinutes(3)));
+        assertThat(v2.scheduledAt()).isEqualTo(at);
         AssistantConfig v1 = reload(1);
-        assertThat(v1.getStatus()).isEqualTo(ConfigStatus.ARCHIVED);
-        assertThat(v1.getUpdatedBy()).isEqualTo(v1Before.getUpdatedBy());
-        assertThat(v1.getUpdatedAt()).isEqualTo(v1Before.getUpdatedAt());
+        assertThat(v1.status()).isEqualTo(ConfigStatus.ARCHIVED);
+        assertThat(v1.updatedBy()).isEqualTo(v1Before.updatedBy());
+        assertThat(v1.updatedAt()).isEqualTo(v1Before.updatedAt());
     }
 
     @Test
@@ -128,10 +137,10 @@ class ScheduledPublishJobTest extends IntegrationTestBase {
         job.run();
 
         AssistantConfig after = reload(2);
-        assertThat(after.getStatus()).isEqualTo(ConfigStatus.SCHEDULED);
-        assertThat(after.getDocVersion()).isEqualTo(before.getDocVersion());
-        assertThat(after.getUpdatedAt()).isEqualTo(before.getUpdatedAt());
-        assertThat(reload(1).getStatus()).isEqualTo(ConfigStatus.PUBLISHED);
+        assertThat(after.status()).isEqualTo(ConfigStatus.SCHEDULED);
+        assertThat(after.docVersion()).isEqualTo(before.docVersion());
+        assertThat(after.updatedAt()).isEqualTo(before.updatedAt());
+        assertThat(reload(1).status()).isEqualTo(ConfigStatus.PUBLISHED);
     }
 
     @Test
@@ -161,10 +170,10 @@ class ScheduledPublishJobTest extends IntegrationTestBase {
             pool.shutdownNow();
         }
 
-        assertThat(repository.findByConfigKeyOrderByVersionDesc(KEY))
+        assertThat(mongoRepository.findByConfigKeyOrderByVersionDesc(KEY))
                 .filteredOn(c -> c.getStatus() == ConfigStatus.PUBLISHED)
-                .extracting(AssistantConfig::getVersion).containsExactly(2);
-        assertThat(reload(1).getStatus()).isEqualTo(ConfigStatus.ARCHIVED);
+                .extracting(AssistantConfigDocument::getVersion).containsExactly(2);
+        assertThat(reload(1).status()).isEqualTo(ConfigStatus.ARCHIVED);
     }
 
     @Test
@@ -172,18 +181,18 @@ class ScheduledPublishJobTest extends IntegrationTestBase {
         AssistantConfig scheduled = schedule(NOW.plus(Duration.ofMinutes(2)));
         clock.advance(Duration.ofMinutes(3));
         job.run();
-        String published = reload(2).getContent();
+        String published = reload(2).content();
 
         SaveCommand stale = new SaveCommand("late save", published + "\n- late edit\n", "note", SaveMode.KEEP_STATUS,
-                scheduled.getDocVersion());
+                scheduled.docVersion());
         assertThatThrownBy(() -> service.saveWorkingCopy(KEY, stale, "EEE11111"))
                 .isInstanceOfSatisfying(AssistantException.class, e -> assertThat(e.code())
                         .isEqualTo(ErrorCode.AI_CONFIG_CONFLICT));
 
         AssistantConfig after = reload(2);
-        assertThat(after.getStatus()).isEqualTo(ConfigStatus.PUBLISHED);
-        assertThat(after.getContent()).isEqualTo(published);
-        assertThat(after.getName()).isNotEqualTo("late save");
+        assertThat(after.status()).isEqualTo(ConfigStatus.PUBLISHED);
+        assertThat(after.content()).isEqualTo(published);
+        assertThat(after.name()).isNotEqualTo("late save");
     }
 
     @Test
@@ -192,32 +201,32 @@ class ScheduledPublishJobTest extends IntegrationTestBase {
         clock.advance(Duration.ofMinutes(3));
         job.run();
 
-        assertThatThrownBy(() -> service.discardDraft(KEY, scheduled.getDocVersion(), ACTOR))
+        assertThatThrownBy(() -> service.discardDraft(KEY, scheduled.docVersion(), ACTOR))
                 .isInstanceOfSatisfying(AssistantException.class, e -> assertThat(e.code())
                         .isEqualTo(ErrorCode.AI_CONFIG_CONFLICT));
-        assertThat(reload(2).getStatus()).isEqualTo(ConfigStatus.PUBLISHED);
+        assertThat(reload(2).status()).isEqualTo(ConfigStatus.PUBLISHED);
     }
 
     @Test
     void publishAfterOtherAdminPublishedReturnsConflict() {
         AssistantConfig draft = service.createDraft(KEY, ACTOR);
-        service.publish(KEY, new PublishCommand(PublishMode.IMMEDIATE, null, draft.getDocVersion()), "admin.a");
+        service.publish(KEY, new PublishCommand(PublishMode.IMMEDIATE, null, draft.docVersion()), "admin.a");
 
         assertThatThrownBy(() -> service.publish(KEY,
-                new PublishCommand(PublishMode.IMMEDIATE, null, draft.getDocVersion()), "admin.b"))
+                new PublishCommand(PublishMode.IMMEDIATE, null, draft.docVersion()), "admin.b"))
                 .isInstanceOfSatisfying(AssistantException.class, e -> assertThat(e.code())
                         .isEqualTo(ErrorCode.AI_CONFIG_CONFLICT));
-        assertThat(reload(2).getUpdatedBy()).isEqualTo("admin.a");
+        assertThat(reload(2).updatedBy()).isEqualTo("admin.a");
     }
 
     @Test
     void cacheInvalidatedAfterPublish() {
         AssistantConfig draft = service.createDraft(KEY, ACTOR);
         AssistantConfig saved = service.saveWorkingCopy(KEY,
-                new SaveCommand("renamed v2", draft.getContent(), "note", SaveMode.KEEP_STATUS,
-                        draft.getDocVersion()), ACTOR);
+                new SaveCommand("renamed v2", draft.content(), "note", SaveMode.KEEP_STATUS,
+                        draft.docVersion()), ACTOR);
         service.publish(KEY, new PublishCommand(PublishMode.SCHEDULED, NOW.plus(Duration.ofMinutes(2)),
-                saved.getDocVersion()), ACTOR);
+                saved.docVersion()), ACTOR);
         String before = nameInCache();
         assertThat(before).isNotEqualTo("renamed v2");
         clock.advance(Duration.ofMinutes(3));
@@ -227,20 +236,25 @@ class ScheduledPublishJobTest extends IntegrationTestBase {
         assertThat(nameInCache()).isEqualTo("renamed v2");
     }
 
+    /**
+     * Runs the service over a repository whose archive read fails, and returns what the service and the
+     * repository logged (a lost race is logged by the repository, any other failure by the service).
+     */
     private List<LogEvent> publishDueWithFindFailure(RuntimeException failure) {
         schedule(NOW.plus(Duration.ofMinutes(2)));
         clock.advance(Duration.ofMinutes(3));
-        AssistantConfigRepository failing = mock(AssistantConfigRepository.class,
-                withSettings().defaultAnswer(AdditionalAnswers.delegatesTo(repository)));
+        AssistantConfigMongoRepository failing = mock(AssistantConfigMongoRepository.class,
+                withSettings().defaultAnswer(AdditionalAnswers.delegatesTo(mongoRepository)));
         doThrow(failure).when(failing).findByConfigKeyAndStatus(any(), any());
-        ConfigService racing = new ConfigService(failing, mongo, validator, cache, transactionManager, clock,
-                properties);
-        List<LogEvent> events;
-        try (LogCapture capture = LogCapture.of(ConfigService.class, Level.DEBUG)) {
+        ConfigService racing = newService(new AssistantConfigRepositoryImpl(failing, mongo, transactionManager));
+        List<LogEvent> events = new ArrayList<>();
+        try (LogCapture serviceLog = LogCapture.of(ConfigService.class, Level.DEBUG);
+             LogCapture repositoryLog = LogCapture.of(AssistantConfigRepositoryImpl.class, Level.DEBUG)) {
             assertThat(racing.publishDue()).isZero();
-            events = capture.events();
+            events.addAll(serviceLog.events());
+            events.addAll(repositoryLog.events());
         }
-        assertThat(reload(2).getStatus()).isEqualTo(ConfigStatus.SCHEDULED);
+        assertThat(reload(2).status()).isEqualTo(ConfigStatus.SCHEDULED);
         return events;
     }
 
@@ -269,38 +283,23 @@ class ScheduledPublishJobTest extends IntegrationTestBase {
     }
 
     @Test
-    void lostRaceClassification() {
-        assertThat(ConfigService.isLostRace(new AssistantException(ErrorCode.AI_CONFIG_CONFLICT))).isTrue();
-        assertThat(ConfigService.isLostRace(new AssistantException(ErrorCode.AI_CONFIG_NOT_FOUND))).isFalse();
-        assertThat(ConfigService.isLostRace(new RuntimeException(new MongoException(112, "w")))).isTrue();
-        assertThat(ConfigService.isLostRace(new RuntimeException(new MongoException(11000, "d")))).isTrue();
-        assertThat(ConfigService.isLostRace(new RuntimeException(
-                labelled(91, MongoException.TRANSIENT_TRANSACTION_ERROR_LABEL)))).isFalse();
-        assertThat(ConfigService.isLostRace(new RuntimeException(
-                labelled(1, MongoException.UNKNOWN_TRANSACTION_COMMIT_RESULT_LABEL)))).isFalse();
-        assertThat(ConfigService.isLostRace(new RuntimeException("other"))).isFalse();
-    }
-
-    @Test
     void staleClaimReturnsZeroWithoutPublishing() {
         AssistantConfig scheduled = schedule(NOW.plus(Duration.ofMinutes(2)));
         clock.advance(Duration.ofMinutes(3));
         AssistantConfigRepository stale = mock(AssistantConfigRepository.class,
                 withSettings().defaultAnswer(AdditionalAnswers.delegatesTo(repository)));
         doAnswer(inv -> {
-            List<AssistantConfig> due = repository.findByStatusAndScheduledAtLessThanEqual(
-                    inv.getArgument(0), inv.getArgument(1));
+            List<AssistantConfig> due = repository.findScheduledDue(inv.getArgument(0));
             service.publishDue();
             return due;
-        }).when(stale).findByStatusAndScheduledAtLessThanEqual(any(), any());
+        }).when(stale).findScheduledDue(any());
 
-        int second = new ConfigService(stale, mongo, validator, cache, transactionManager, clock, properties)
-                .publishDue();
+        int second = newService(stale).publishDue();
 
         assertThat(second).isZero();
-        assertThat(reload(2).getStatus()).isEqualTo(ConfigStatus.PUBLISHED);
-        assertThat(reload(1).getStatus()).isEqualTo(ConfigStatus.ARCHIVED);
-        assertThat(scheduled.getVersion()).isEqualTo(2);
+        assertThat(reload(2).status()).isEqualTo(ConfigStatus.PUBLISHED);
+        assertThat(reload(1).status()).isEqualTo(ConfigStatus.ARCHIVED);
+        assertThat(scheduled.version()).isEqualTo(2);
     }
 
     @Test
@@ -313,7 +312,7 @@ class ScheduledPublishJobTest extends IntegrationTestBase {
 
     private String nameInCache() {
         return cache.current().instructions().stream()
-                .filter(c -> c.getConfigKey().equals(KEY)).findFirst().orElseThrow().getName();
+                .filter(c -> c.configKey().equals(KEY)).findFirst().orElseThrow().name();
     }
 
     private static final class MutableClock extends Clock {

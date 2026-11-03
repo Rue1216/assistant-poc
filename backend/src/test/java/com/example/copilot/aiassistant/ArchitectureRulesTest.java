@@ -7,8 +7,11 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -18,12 +21,11 @@ class ArchitectureRulesTest {
 
     private static final Path ROOT = Path.of("src/main/java/com/example/copilot/aiassistant");
 
-    /** Temporary Phase 2 exemptions (relative to the domain layer); Task 7 deletes this. */
-    private static final Set<String> PHASE2_EXEMPT = Set.of(
-            "config/AssistantConfig.java",
-            "repository/AssistantConfigRepository.java",
-            "repository/EvalRunRepository.java",
-            "audit/AuditRecord.java");
+    private static final String BASE = "com.example.copilot.aiassistant.";
+
+    private static final Pattern PACKAGE_DECL =
+            Pattern.compile("^\\s*package\\s+([\\w.]+)\\s*;", Pattern.MULTILINE);
+    private static final Pattern IMPLEMENTS_CLAUSE = Pattern.compile("\\bimplements\\s+([^{]+)\\{");
 
     private static final List<String> DOMAIN_FORBIDDEN = List.of(
             "org.springframework.",
@@ -33,6 +35,16 @@ class ArchitectureRulesTest {
             "jakarta.annotation.",
             "com.example.copilot.aiassistant.AiAssistantProperties",
             "com.example.copilot.aiassistant.application.",
+            "com.example.copilot.aiassistant.interfaces.",
+            "com.example.copilot.aiassistant.infrastructure.",
+            "com.example.copilot.mockplatform.");
+
+    private static final List<String> APPLICATION_FORBIDDEN = List.of(
+            "org.springframework.data.",
+            "org.springframework.transaction.",
+            "com.mongodb.",
+            "org.bson.",
+            "jakarta.servlet.",
             "com.example.copilot.aiassistant.interfaces.",
             "com.example.copilot.aiassistant.infrastructure.",
             "com.example.copilot.mockplatform.");
@@ -51,7 +63,12 @@ class ArchitectureRulesTest {
 
     @Test
     void domainHasNoFrameworkImports() {
-        assertThat(violations("domain", DOMAIN_FORBIDDEN, PHASE2_EXEMPT)).isEmpty();
+        assertThat(violations("domain", DOMAIN_FORBIDDEN, Set.of())).isEmpty();
+    }
+
+    @Test
+    void applicationHasNoSpringDataOrMongoImports() {
+        assertThat(violations("application", APPLICATION_FORBIDDEN, Set.of())).isEmpty();
     }
 
     @Test
@@ -62,6 +79,17 @@ class ArchitectureRulesTest {
     @Test
     void infrastructureDoesNotDependOnInterfaces() {
         assertThat(violations("infrastructure", INFRASTRUCTURE_FORBIDDEN, Set.of())).isEmpty();
+    }
+
+    @Test
+    void implementationsEndWithImpl() {
+        List<PersistenceImpl> found = persistenceImplementations();
+        assertThat(found).as("persistence implementations found").isNotEmpty();
+        assertThat(found.stream()
+                        .filter(impl -> !impl.path().endsWith("Impl.java"))
+                        .map(impl -> impl.path() + " implements " + impl.interfaceName())
+                        .toList())
+                .isEmpty();
     }
 
     @Test
@@ -99,6 +127,67 @@ class ArchitectureRulesTest {
                 .toList();
     }
 
+    private record PersistenceImpl(String path, String interfaceName) {}
+
+    /**
+     * Infrastructure classes implementing a domain.repository interface or an application interface
+     * named *QueryRepository. Interface names are resolved via the file's imports, else same package.
+     */
+    private static List<PersistenceImpl> persistenceImplementations() {
+        Path dir = ROOT.resolve("infrastructure");
+        assertThat(dir).isDirectory();
+        List<PersistenceImpl> result = new ArrayList<>();
+        for (Path file : javaFiles(dir)) {
+            String source = read(file);
+            Matcher implementsClause = IMPLEMENTS_CLAUSE.matcher(source);
+            if (!implementsClause.find()) {
+                continue;
+            }
+            Matcher pkg = PACKAGE_DECL.matcher(source);
+            String pkgName = pkg.find() ? pkg.group(1) : "";
+            List<String> imports = importLines(file).stream()
+                    .map(ArchitectureRulesTest::importedName)
+                    .map(name -> name.endsWith(";") ? name.substring(0, name.length() - 1).trim() : name)
+                    .toList();
+            for (String simple : simpleInterfaceNames(implementsClause.group(1))) {
+                String fqcn = imports.stream()
+                        .filter(name -> name.endsWith("." + simple))
+                        .findFirst()
+                        .orElse(pkgName + "." + simple);
+                boolean repository = fqcn.startsWith(BASE + "domain.repository.");
+                boolean queryRepository = fqcn.startsWith(BASE + "application.") && simple.endsWith("QueryRepository");
+                if (repository || queryRepository) {
+                    result.add(new PersistenceImpl(relative(ROOT, file), fqcn));
+                }
+            }
+        }
+        return result;
+    }
+
+    /** Splits an implements clause on top-level commas and strips generic arguments. */
+    private static List<String> simpleInterfaceNames(String clause) {
+        List<String> names = new ArrayList<>();
+        int depth = 0;
+        StringBuilder current = new StringBuilder();
+        for (char c : clause.toCharArray()) {
+            if (c == '<') {
+                depth++;
+            } else if (c == '>') {
+                depth--;
+            } else if (c == ',' && depth == 0) {
+                names.add(current.toString().trim());
+                current.setLength(0);
+            } else if (depth == 0) {
+                current.append(c);
+            }
+        }
+        names.add(current.toString().trim());
+        return names.stream()
+                .filter(name -> !name.isEmpty())
+                .map(name -> name.substring(name.lastIndexOf('.') + 1))
+                .toList();
+    }
+
     private static String importedName(String importLine) {
         String name = importLine.substring("import ".length()).trim();
         if (name.startsWith("static ")) {
@@ -109,6 +198,14 @@ class ArchitectureRulesTest {
 
     private static String relative(Path base, Path file) {
         return base.relativize(file).toString().replace(File.separatorChar, '/');
+    }
+
+    private static String read(Path file) {
+        try {
+            return Files.readString(file);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     private static List<String> importLines(Path file) {

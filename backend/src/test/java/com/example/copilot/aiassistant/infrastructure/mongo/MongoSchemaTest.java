@@ -4,10 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.example.copilot.IntegrationTestBase;
-import com.example.copilot.aiassistant.domain.config.AssistantConfig;
 import com.example.copilot.aiassistant.domain.config.ConfigStatus;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
-import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
 import com.example.copilot.aiassistant.infrastructure.config.EvalConfiguration;
 import com.example.copilot.aiassistant.infrastructure.seed.SeedLoader;
 import com.mongodb.MongoWriteException;
@@ -31,7 +29,7 @@ class MongoSchemaTest extends IntegrationTestBase {
     private static final String AUDIT = "COLL_ICRM_AI_ASSISTANT_AUDIT";
 
     @Autowired MongoTemplate mongo;
-    @Autowired AssistantConfigRepository repository;
+    @Autowired AssistantConfigMongoRepository repository;
     @Autowired SeedLoader seedLoader;
 
     @BeforeEach
@@ -60,8 +58,8 @@ class MongoSchemaTest extends IntegrationTestBase {
                 .append("docVersion", 0L);
     }
 
-    private AssistantConfig config(String key, int version, ConfigStatus status) {
-        AssistantConfig c = new AssistantConfig();
+    private AssistantConfigDocument config(String key, int version, ConfigStatus status) {
+        AssistantConfigDocument c = new AssistantConfigDocument();
         c.setConfigKey(key);
         c.setConfigType(ConfigType.SYSTEM_INSTRUCTION);
         c.setName("n");

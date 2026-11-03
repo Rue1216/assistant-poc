@@ -37,11 +37,8 @@ class InstructionRouterTest {
             config("instruction.market-brief", "市場快訊", "## 回答方式\n只列重點"));
 
     private static AssistantConfig config(String key, String name, String content) {
-        AssistantConfig c = new AssistantConfig();
-        c.setConfigKey(key);
-        c.setName(name);
-        c.setContent(content);
-        return c;
+        return new AssistantConfig(null, key, null, name, content, null, 0, null, null, null, null, null, null, null,
+                null);
     }
 
     private InstructionRouter router(ScriptedChatModel model) {

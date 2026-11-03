@@ -4,10 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.example.copilot.IntegrationTestBase;
-import com.example.copilot.aiassistant.domain.config.AssistantConfig;
 import com.example.copilot.aiassistant.domain.config.ConfigStatus;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
-import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
 import java.time.Instant;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -18,7 +16,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 class MongoConfigurationTest extends IntegrationTestBase {
 
     @Autowired MongoTransactionManager transactionManager;
-    @Autowired AssistantConfigRepository repository;
+    @Autowired AssistantConfigMongoRepository repository;
 
     @AfterEach
     void cleanup() {
@@ -26,8 +24,8 @@ class MongoConfigurationTest extends IntegrationTestBase {
                 .filter(c -> c.getConfigKey().startsWith("instruction.tx-")).toList());
     }
 
-    private AssistantConfig config(String key) {
-        AssistantConfig c = new AssistantConfig();
+    private AssistantConfigDocument config(String key) {
+        AssistantConfigDocument c = new AssistantConfigDocument();
         c.setConfigKey(key);
         c.setConfigType(ConfigType.SYSTEM_INSTRUCTION);
         c.setName("n");

@@ -1,7 +1,5 @@
 package com.example.copilot.aiassistant.application.config;
 
-import static org.springframework.data.mongodb.core.query.Criteria.where;
-
 import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.application.support.ClasspathText;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
@@ -12,7 +10,6 @@ import com.example.copilot.aiassistant.domain.config.ValidationError;
 import com.example.copilot.aiassistant.domain.exception.AssistantException;
 import com.example.copilot.aiassistant.domain.exception.ErrorCode;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
-import com.mongodb.MongoException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Comparator;
@@ -23,56 +20,36 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.dao.DuplicateKeyException;
-import org.springframework.dao.OptimisticLockingFailureException;
-import org.springframework.data.mongodb.MongoTransactionManager;
-import org.springframework.data.mongodb.TransientClientSessionException;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.TransactionStatus;
-import org.springframework.transaction.TransactionSystemException;
-import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Prompt config lifecycle (04 section 2.4, 02 sections 3.1-3.10). Every write is conditional on
- * {@code docVersion}; publishing and applying run in a Mongo transaction. No operation deletes a document.
+ * {@code docVersion}; publishing and applying are atomic in the repository. No operation deletes a document.
  */
 @Service
 public class ConfigService {
 
     private static final Logger log = LoggerFactory.getLogger(ConfigService.class);
 
-    private static final List<ConfigStatus> WORKING_COPY = List.of(ConfigStatus.DRAFT, ConfigStatus.SCHEDULED);
     private static final Set<ConfigStatus> APPLICABLE =
             EnumSet.of(ConfigStatus.PUBLISHED, ConfigStatus.ARCHIVED, ConfigStatus.DISCARDED);
     private static final String INSTRUCTION_TEMPLATE = "seed/instruction-template.md";
-    private static final int WRITE_CONFLICT = 112;
-    private static final int DUPLICATE_KEY = 11000;
 
     private final AssistantConfigRepository repository;
-    private final MongoTemplate mongo;
     private final ConfigValidator validator;
     private final PublishedConfigCache cache;
-    private final TransactionTemplate tx;
     private final Clock clock;
     private final AiAssistantProperties.Config limits;
     private final String instructionTemplate;
 
-    public ConfigService(AssistantConfigRepository repository, MongoTemplate mongo, ConfigValidator validator,
-                         PublishedConfigCache cache, MongoTransactionManager transactionManager, Clock clock,
-                         AiAssistantProperties properties) {
+    public ConfigService(AssistantConfigRepository repository, ConfigValidator validator, PublishedConfigCache cache,
+                         Clock clock, AiAssistantProperties properties) {
         this.repository = repository;
-        this.mongo = mongo;
         this.validator = validator;
         this.cache = cache;
-        this.tx = new TransactionTemplate(transactionManager);
         this.clock = clock;
         this.limits = properties.config();
         this.instructionTemplate = ClasspathText.read(INSTRUCTION_TEMPLATE);
@@ -84,13 +61,12 @@ public class ConfigService {
         if (!configKey.startsWith(prefix)) {
             throw invalidInput("configType");
         }
-        if (repository.findTopByConfigKeyOrderByVersionDesc(configKey).isPresent()
+        if (repository.findLatest(configKey).isPresent()
                 || (type == ConfigType.SYSTEM_PROMPT && repository.existsByConfigType(ConfigType.SYSTEM_PROMPT))) {
             throw new AssistantException(ErrorCode.AI_CONFIG_INVALID_STATE);
         }
         String content = type == ConfigType.SYSTEM_INSTRUCTION ? instructionTemplate : "";
-        AssistantConfig draft = newVersion(configKey, type, name, content, 1, actor, clock.instant());
-        return write(() -> repository.insert(draft));
+        return repository.insert(AssistantConfig.newDraft(configKey, type, name, content, 1, actor, clock.instant()));
     }
 
     /** Copies the published version (or, if none, the latest one) into a new DRAFT. */
@@ -98,42 +74,35 @@ public class ConfigService {
         if (workingCopy(configKey).isPresent()) {
             throw new AssistantException(ErrorCode.AI_CONFIG_INVALID_STATE);
         }
-        AssistantConfig base = repository.findByConfigKeyAndStatus(configKey, ConfigStatus.PUBLISHED)
-                .or(() -> repository.findTopByConfigKeyOrderByVersionDesc(configKey))
+        AssistantConfig base = repository.findPublished(configKey)
+                .or(() -> repository.findLatest(configKey))
                 .orElseThrow(ConfigService::notFound);
-        AssistantConfig draft = newVersion(configKey, base.getConfigType(), base.getName(), base.getContent(),
-                nextVersion(configKey), actor, clock.instant());
-        return write(() -> repository.insert(draft));
+        return repository.insert(AssistantConfig.newDraft(configKey, base.configType(), base.name(), base.content(),
+                nextVersion(configKey), actor, clock.instant()));
     }
 
     public AssistantConfig saveWorkingCopy(String configKey, SaveCommand cmd, String actor) {
         AssistantConfig wc = requireWorkingCopy(configKey, cmd.docVersion());
-        if (wc.getStatus() == ConfigStatus.SCHEDULED) {
+        if (wc.status() == ConfigStatus.SCHEDULED) {
             if (cmd.saveMode() == SaveMode.KEEP_STATUS) {
                 // The schedule stays, so the new content must still be publishable when it falls due.
-                requireValid(wc.getConfigType(), cmd.name(), cmd.content());
+                requireValid(wc.configType(), cmd.name(), cmd.content());
             } else {
-                wc.setStatus(ConfigStatus.DRAFT);
-                wc.setScheduledAt(null);
+                wc = wc.withStatus(ConfigStatus.DRAFT, null);
             }
         }
-        wc.setName(cmd.name());
-        wc.setContent(cmd.content());
-        wc.setChangeNote(cmd.changeNote());
-        touch(wc, actor, clock.instant());
-        return write(() -> repository.save(wc));
+        return repository.save(wc.withContent(cmd.name(), cmd.content(), cmd.changeNote())
+                .touched(actor, clock.instant()));
     }
 
     /** Soft delete: the DRAFT becomes DISCARDED and stays in the history. */
     public void discardDraft(String configKey, long docVersion, String actor) {
         AssistantConfig wc = existingWorkingCopy(configKey);
-        if (wc.getStatus() != ConfigStatus.DRAFT) {
+        if (wc.status() != ConfigStatus.DRAFT) {
             throw new AssistantException(ErrorCode.AI_CONFIG_INVALID_STATE);
         }
         requireDocVersion(wc, docVersion);
-        wc.setStatus(ConfigStatus.DISCARDED);
-        touch(wc, actor, clock.instant());
-        write(() -> repository.save(wc));
+        repository.save(wc.withStatus(ConfigStatus.DISCARDED, wc.scheduledAt()).touched(actor, clock.instant()));
     }
 
     public AssistantConfig publish(String configKey, PublishCommand cmd, String actor) {
@@ -142,18 +111,13 @@ public class ConfigService {
             requireScheduleWindow(cmd.scheduledAt(), now);
         }
         AssistantConfig wc = requireWorkingCopy(configKey, cmd.docVersion());
-        requireValid(wc.getConfigType(), wc.getName(), wc.getContent());
-        touch(wc, actor, now);
+        requireValid(wc.configType(), wc.name(), wc.content());
+        wc = wc.touched(actor, now);
         if (cmd.mode() == PublishMode.SCHEDULED) {
-            wc.setStatus(ConfigStatus.SCHEDULED);
-            wc.setScheduledAt(cmd.scheduledAt());
-            return write(() -> repository.save(wc));
+            return repository.save(wc.withStatus(ConfigStatus.SCHEDULED, cmd.scheduledAt()));
         }
-        AssistantConfig published = write(() -> tx.execute(status -> {
-            archivePublished(configKey);
-            wc.setStatus(ConfigStatus.PUBLISHED);
-            return repository.save(wc);
-        }));
+        // scheduledAt is kept as it was: publishing a SCHEDULED copy right away does not clear it.
+        AssistantConfig published = repository.publish(wc.withStatus(ConfigStatus.PUBLISHED, wc.scheduledAt()));
         cache.invalidate();
         return published;
     }
@@ -164,9 +128,9 @@ public class ConfigService {
      * Nothing is published, so the prompt cache is left alone.
      */
     public AssistantConfig applyVersion(String configKey, ApplyCommand cmd, String actor) {
-        AssistantConfig source = repository.findByConfigKeyAndVersion(configKey, cmd.sourceVersion())
+        AssistantConfig source = repository.findVersion(configKey, cmd.sourceVersion())
                 .orElseThrow(ConfigService::notFound);
-        if (!APPLICABLE.contains(source.getStatus())) {
+        if (!APPLICABLE.contains(source.status())) {
             throw new AssistantException(ErrorCode.AI_CONFIG_INVALID_STATE);
         }
         Optional<AssistantConfig> replaced = workingCopy(configKey);
@@ -181,41 +145,29 @@ public class ConfigService {
             throw new AssistantException(ErrorCode.AI_CONFIG_CONFLICT);
         }
         Instant now = clock.instant();
-        return write(() -> tx.execute(status -> {
-            replaced.ifPresent(old -> {
-                old.setStatus(ConfigStatus.DISCARDED);
-                touch(old, actor, now);
-                repository.save(old);
-            });
-            AssistantConfig draft = newVersion(configKey, source.getConfigType(), source.getName(),
-                    source.getContent(), nextVersion(configKey), actor, now);
-            draft.setBasedOnVersion(source.getVersion());
-            return repository.insert(draft);
-        }));
+        AssistantConfig discarded = replaced
+                .map(old -> old.withStatus(ConfigStatus.DISCARDED, old.scheduledAt()).touched(actor, now))
+                .orElse(null);
+        AssistantConfig draft = AssistantConfig.newDraft(configKey, source.configType(), source.name(),
+                source.content(), nextVersion(configKey), actor, now).withBasedOnVersion(source.version());
+        return repository.replaceWorkingCopy(discarded, draft);
     }
 
     /**
-     * Publishes every SCHEDULED version whose time has come and returns how many were published. Each one
-     * is claimed with a conditional update (still SCHEDULED, same docVersion) so that concurrent runs
-     * publish it once; {@code updatedBy} stays the person who scheduled it.
+     * Publishes every SCHEDULED version whose time has come and returns how many were published. A version
+     * changed since it was read (or published by another instance) is skipped by the repository.
      */
     public int publishDue() {
         Instant now = clock.instant();
         int published = 0;
-        for (AssistantConfig due : repository.findByStatusAndScheduledAtLessThanEqual(ConfigStatus.SCHEDULED, now)) {
+        for (AssistantConfig due : repository.findScheduledDue(now)) {
             try {
-                if (Boolean.TRUE.equals(tx.execute(status -> publishScheduled(due, now, status)))) {
+                if (repository.publishScheduled(due, now)) {
                     published++;
                 }
             } catch (RuntimeException e) {
-                if (isLostRace(e)) {
-                    // Expected when several instances run the job: the other one won.
-                    log.debug("scheduled publish lost race configKey={} version={}",
-                            due.getConfigKey(), due.getVersion());
-                    continue;
-                }
                 log.warn("scheduled publish failed configKey={} version={} error={}",
-                        due.getConfigKey(), due.getVersion(), e.getClass().getName());
+                        due.configKey(), due.version(), e.getClass().getName());
             }
         }
         if (published > 0) {
@@ -225,19 +177,20 @@ public class ConfigService {
     }
 
     public List<ConfigSummary> list() {
-        Query withoutContent = new Query();
-        withoutContent.fields().exclude("content");
-        return mongo.find(withoutContent, AssistantConfig.class).stream()
-                .collect(Collectors.groupingBy(AssistantConfig::getConfigKey))
+        return repository.findAllWithoutContent().stream()
+                .collect(Collectors.groupingBy(AssistantConfig::configKey))
                 .values().stream()
                 .map(ConfigService::summarize)
                 .sorted(Comparator.comparing(ConfigSummary::configType).thenComparing(ConfigSummary::configKey))
                 .toList();
     }
 
-    /** All versions of a key, newest first. */
+    /** All versions of a key, newest first, without their content (the history view does not show it). */
     public List<AssistantConfig> versions(String configKey) {
-        List<AssistantConfig> versions = repository.findByConfigKeyOrderByVersionDesc(configKey);
+        List<AssistantConfig> versions = repository.findAllWithoutContent().stream()
+                .filter(c -> c.configKey().equals(configKey))
+                .sorted(Comparator.comparingInt(AssistantConfig::version).reversed())
+                .toList();
         if (versions.isEmpty()) {
             throw notFound();
         }
@@ -245,45 +198,12 @@ public class ConfigService {
     }
 
     public AssistantConfig version(String configKey, int version) {
-        return repository.findByConfigKeyAndVersion(configKey, version).orElseThrow(ConfigService::notFound);
+        return repository.findVersion(configKey, version).orElseThrow(ConfigService::notFound);
     }
 
     public List<ValidationError> validateWorkingCopy(String configKey) {
         AssistantConfig wc = existingWorkingCopy(configKey);
-        return validator.validate(wc.getConfigType(), wc.getName(), wc.getContent());
-    }
-
-    private boolean publishScheduled(AssistantConfig due, Instant now, TransactionStatus status) {
-        archivePublished(due.getConfigKey());
-        Query claim = Query.query(where("id").is(due.getId())
-                .and("status").is(ConfigStatus.SCHEDULED)
-                .and("docVersion").is(due.getDocVersion()));
-        Update publish = new Update()
-                .set("status", ConfigStatus.PUBLISHED)
-                .set("updatedAt", now)
-                .inc("docVersion", 1L);
-        if (mongo.updateFirst(claim, publish, AssistantConfig.class).getModifiedCount() == 1) {
-            return true;
-        }
-        // Changed since it was read (saved, applied over, or published by another instance): undo the archive.
-        status.setRollbackOnly();
-        return false;
-    }
-
-    /**
-     * Targeted update of the status only: the archived version keeps its updatedBy / updatedAt (= when it
-     * went live). Must run inside the publishing transaction.
-     */
-    private void archivePublished(String configKey) {
-        repository.findByConfigKeyAndStatus(configKey, ConfigStatus.PUBLISHED).ifPresent(old -> {
-            Query current = Query.query(where("id").is(old.getId())
-                    .and("status").is(ConfigStatus.PUBLISHED)
-                    .and("docVersion").is(old.getDocVersion()));
-            Update archive = new Update().set("status", ConfigStatus.ARCHIVED).inc("docVersion", 1L);
-            if (mongo.updateFirst(current, archive, AssistantConfig.class).getModifiedCount() != 1) {
-                throw new AssistantException(ErrorCode.AI_CONFIG_CONFLICT);
-            }
-        });
+        return validator.validate(wc.configType(), wc.name(), wc.content());
     }
 
     /** The DRAFT or SCHEDULED version of the key, if any. */
@@ -292,7 +212,7 @@ public class ConfigService {
     }
 
     private Optional<AssistantConfig> workingCopy(String configKey) {
-        return repository.findByConfigKeyAndStatusIn(configKey, WORKING_COPY).stream().findFirst();
+        return repository.findWorkingCopy(configKey);
     }
 
     private AssistantConfig requireWorkingCopy(String configKey, long docVersion) {
@@ -310,14 +230,14 @@ public class ConfigService {
         if (wc.isPresent()) {
             return wc.get();
         }
-        if (repository.findTopByConfigKeyOrderByVersionDesc(configKey).isPresent()) {
+        if (repository.findLatest(configKey).isPresent()) {
             throw new AssistantException(ErrorCode.AI_CONFIG_CONFLICT);
         }
         throw notFound();
     }
 
     private static void requireDocVersion(AssistantConfig config, Long expected) {
-        if (!Objects.equals(config.getDocVersion(), expected)) {
+        if (!Objects.equals(config.docVersion(), expected)) {
             throw new AssistantException(ErrorCode.AI_CONFIG_CONFLICT);
         }
     }
@@ -338,91 +258,28 @@ public class ConfigService {
     }
 
     private int nextVersion(String configKey) {
-        return repository.findTopByConfigKeyOrderByVersionDesc(configKey).map(c -> c.getVersion() + 1).orElse(1);
+        return repository.findLatest(configKey).map(c -> c.version() + 1).orElse(1);
     }
 
     private static Map<String, Object> pendingDetail(AssistantConfig wc) {
         Map<String, Object> detail = new LinkedHashMap<>();
-        detail.put("status", wc.getStatus().name());
-        detail.put("scheduledAt", wc.getScheduledAt());
-        detail.put("updatedAt", wc.getUpdatedAt());
-        detail.put("docVersion", wc.getDocVersion());
+        detail.put("status", wc.status().name());
+        detail.put("scheduledAt", wc.scheduledAt());
+        detail.put("updatedAt", wc.updatedAt());
+        detail.put("docVersion", wc.docVersion());
         return detail;
     }
 
     private static ConfigSummary summarize(List<AssistantConfig> versions) {
-        AssistantConfig latest = versions.stream().max(Comparator.comparingInt(AssistantConfig::getVersion))
+        AssistantConfig latest = versions.stream().max(Comparator.comparingInt(AssistantConfig::version))
                 .orElseThrow();
         AssistantConfig published = versions.stream()
-                .filter(c -> c.getStatus() == ConfigStatus.PUBLISHED).findFirst().orElse(null);
+                .filter(c -> c.status() == ConfigStatus.PUBLISHED).findFirst().orElse(null);
         AssistantConfig wc = versions.stream()
-                .filter(c -> WORKING_COPY.contains(c.getStatus())).findFirst().orElse(null);
-        String name = published != null ? published.getName() : wc != null ? wc.getName() : latest.getName();
-        return new ConfigSummary(latest.getConfigKey(), latest.getConfigType(), name,
+                .filter(AssistantConfig::isWorkingCopy).findFirst().orElse(null);
+        String name = published != null ? published.name() : wc != null ? wc.name() : latest.name();
+        return new ConfigSummary(latest.configKey(), latest.configType(), name,
                 ConfigSummary.VersionInfo.of(published), ConfigSummary.VersionInfo.of(wc));
-    }
-
-    private static AssistantConfig newVersion(String configKey, ConfigType type, String name, String content,
-                                              int version, String actor, Instant now) {
-        AssistantConfig c = new AssistantConfig();
-        c.setConfigKey(configKey);
-        c.setConfigType(type);
-        c.setName(name);
-        c.setContent(content);
-        c.setStatus(ConfigStatus.DRAFT);
-        c.setVersion(version);
-        c.setCreatedBy(actor);
-        c.setCreatedAt(now);
-        touch(c, actor, now);
-        return c;
-    }
-
-    private static void touch(AssistantConfig c, String actor, Instant now) {
-        c.setUpdatedBy(actor);
-        c.setUpdatedAt(now);
-    }
-
-    /**
-     * Lost optimistic locks, unique-index violations and transaction write conflicts all mean "reload".
-     * Spring Data MongoDB translates a WriteConflict (112) into a DataIntegrityViolationException and a failed
-     * commit into a TransactionSystemException, so those are mapped only when the Mongo cause is a conflict;
-     * anything else (e.g. 121 document validation failure) keeps propagating.
-     */
-    private static <T> T write(Supplier<T> operation) {
-        try {
-            return operation.get();
-        } catch (OptimisticLockingFailureException | DuplicateKeyException | TransientClientSessionException e) {
-            throw new AssistantException(ErrorCode.AI_CONFIG_CONFLICT);
-        } catch (DataIntegrityViolationException | TransactionSystemException e) {
-            if (isMongoConflict(e)) {
-                throw new AssistantException(ErrorCode.AI_CONFIG_CONFLICT);
-            }
-            throw e;
-        }
-    }
-
-    /** Log-level decision only (the HTTP mapping is write()): code 112, duplicate key or an explicit conflict. */
-    public static boolean isLostRace(RuntimeException e) {
-        if (e instanceof AssistantException a) {
-            return a.code() == ErrorCode.AI_CONFIG_CONFLICT;
-        }
-        for (Throwable t = e; t != null; t = t.getCause()) {
-            if (t instanceof MongoException m && (m.getCode() == WRITE_CONFLICT || m.getCode() == DUPLICATE_KEY)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static boolean isMongoConflict(Throwable e) {
-        for (Throwable t = e; t != null; t = t.getCause()) {
-            if (t instanceof MongoException m && (m.getCode() == WRITE_CONFLICT || m.getCode() == DUPLICATE_KEY
-                    || m.hasErrorLabel(MongoException.TRANSIENT_TRANSACTION_ERROR_LABEL)
-                    || m.hasErrorLabel(MongoException.UNKNOWN_TRANSACTION_COMMIT_RESULT_LABEL))) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private static AssistantException notFound() {

@@ -153,8 +153,8 @@ public class AdminConfigController {
     }
 
     private ConfigVersionView view(AssistantConfig config) {
-        List<String> questions = config.getConfigType() == ConfigType.SYSTEM_INSTRUCTION
-                ? exampleQuestions.parse(config.getContent()) : List.of();
+        List<String> questions = config.configType() == ConfigType.SYSTEM_INSTRUCTION
+                ? exampleQuestions.parse(config.content()) : List.of();
         return ConfigVersionView.of(config, questions);
     }
 

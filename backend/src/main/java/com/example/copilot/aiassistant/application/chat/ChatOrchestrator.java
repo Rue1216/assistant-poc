@@ -288,7 +288,7 @@ public class ChatOrchestrator {
         private InstructionSelection route(String categoryKey, List<ChatMessage> redactedHistory) {
             RouteDecision decision;
             if (categoryKey != null && configs.instructions().stream()
-                    .map(AssistantConfig::getConfigKey).anyMatch(categoryKey::equals)) {
+                    .map(AssistantConfig::configKey).anyMatch(categoryKey::equals)) {
                 decision = new RouteDecision(categoryKey, RouteSource.CHIP, false, 0, 0, 0);
             } else {
                 checkDeadline();

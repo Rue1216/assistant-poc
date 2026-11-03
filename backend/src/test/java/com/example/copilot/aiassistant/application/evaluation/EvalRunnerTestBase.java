@@ -65,12 +65,8 @@ abstract class EvalRunnerTestBase extends IntegrationTestBase {
     }
 
     static AssistantConfig config(String key, int version, String content) {
-        AssistantConfig c = new AssistantConfig();
-        c.setConfigKey(key);
-        c.setVersion(version);
-        c.setName(key);
-        c.setContent(content);
-        return c;
+        return new AssistantConfig(null, key, null, key, content, null, version, null, null, null, null, null, null,
+                null, null);
     }
 
     static EvalRunService.EvalSnapshot snapshot() {

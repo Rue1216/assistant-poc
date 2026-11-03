@@ -71,7 +71,7 @@ public class InstructionRouter {
             return new RouteDecision(null, RouteSource.ROUTER, false, 0, 0, 0);
         }
         List<AssistantConfig> sorted = instructions.stream()
-                .sorted(Comparator.comparing(AssistantConfig::getConfigKey)).toList();
+                .sorted(Comparator.comparing(AssistantConfig::configKey)).toList();
         try {
             ChatResponse response = chatModel.chat(request(redactedQuestion, redactedHistory, summary, sorted));
             TokenUsage usage = response.tokenUsage();
@@ -92,7 +92,7 @@ public class InstructionRouter {
                 if (NONE.equals(value)) {
                     return new RouteDecision(null, RouteSource.ROUTER, true, in, out, total);
                 }
-                if (instructions.stream().anyMatch(i -> i.getConfigKey().equals(value))) {
+                if (instructions.stream().anyMatch(i -> i.configKey().equals(value))) {
                     return new RouteDecision(value, RouteSource.ROUTER, true, in, out, total);
                 }
             }
@@ -129,8 +129,8 @@ public class InstructionRouter {
         ArrayNode categories = user.putArray("categories");
         for (AssistantConfig instruction : instructions) {
             ObjectNode category = categories.addObject();
-            category.put("key", instruction.getConfigKey());
-            category.put("name", instruction.getName());
+            category.put("key", instruction.configKey());
+            category.put("name", instruction.name());
             category.put("scope", scope(instruction));
         }
         return ChatRequest.builder()
@@ -156,7 +156,7 @@ public class InstructionRouter {
 
     /** The body of the "## 適用問題" section, or the instruction name when it is missing or empty. */
     private static String scope(AssistantConfig instruction) {
-        String content = instruction.getContent();
+        String content = instruction.content();
         if (content != null) {
             boolean inScope = false;
             List<String> lines = new ArrayList<>();
@@ -175,7 +175,7 @@ public class InstructionRouter {
                 return scope;
             }
         }
-        return instruction.getName();
+        return instruction.name();
     }
 
     private static long count(Integer tokens) {
@@ -183,7 +183,7 @@ public class InstructionRouter {
     }
 
     private static ResponseFormat responseFormat(List<AssistantConfig> instructions) {
-        List<String> values = new ArrayList<>(instructions.stream().map(AssistantConfig::getConfigKey).toList());
+        List<String> values = new ArrayList<>(instructions.stream().map(AssistantConfig::configKey).toList());
         values.add(NONE);
         JsonObjectSchema root = JsonObjectSchema.builder()
                 .addProperty("category", JsonEnumSchema.builder().enumValues(values).build())

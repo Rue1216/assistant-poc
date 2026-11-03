@@ -15,12 +15,8 @@ import org.junit.jupiter.api.Test;
 class SuggestionServiceTest {
 
     private static AssistantConfig instruction(String key, String content) {
-        AssistantConfig c = new AssistantConfig();
-        c.setConfigKey(key);
-        c.setName(key);
-        c.setConfigType(ConfigType.SYSTEM_INSTRUCTION);
-        c.setContent(content);
-        return c;
+        return new AssistantConfig(null, key, ConfigType.SYSTEM_INSTRUCTION, key, content, null, 0, null, null, null,
+                null, null, null, null, null);
     }
 
     @Test

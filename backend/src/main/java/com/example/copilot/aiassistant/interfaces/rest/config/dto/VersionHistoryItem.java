@@ -10,8 +10,8 @@ public record VersionHistoryItem(int version, ConfigStatus status, OffsetDateTim
                                  OffsetDateTime updatedAt) {
 
     public static VersionHistoryItem of(AssistantConfig c) {
-        return new VersionHistoryItem(c.getVersion(), c.getStatus(), AdminTime.at(c.getScheduledAt()),
-                c.getChangeNote(), c.getBasedOnVersion(), c.getCreatedBy(), c.getUpdatedBy(),
-                AdminTime.at(c.getUpdatedAt()));
+        return new VersionHistoryItem(c.version(), c.status(), AdminTime.at(c.scheduledAt()),
+                c.changeNote(), c.basedOnVersion(), c.createdBy(), c.updatedBy(),
+                AdminTime.at(c.updatedAt()));
     }
 }

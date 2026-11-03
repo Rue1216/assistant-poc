@@ -48,18 +48,9 @@ public class SeedLoader implements ApplicationRunner {
         List<ManifestEntry> entries = objectMapper.readValue(ClasspathText.read("seed/manifest.json"),
                 new TypeReference<List<ManifestEntry>>() { });
         for (ManifestEntry entry : entries) {
-            AssistantConfig config = new AssistantConfig();
-            config.setConfigKey(entry.configKey());
-            config.setConfigType(entry.configType());
-            config.setName(entry.name());
-            config.setContent(ClasspathText.read("seed/" + entry.file()));
-            config.setStatus(ConfigStatus.PUBLISHED);
-            config.setVersion(1);
-            config.setCreatedBy(SYSTEM_USER);
-            config.setCreatedAt(now);
-            config.setUpdatedBy(SYSTEM_USER);
-            config.setUpdatedAt(now);
-            repository.save(config);
+            repository.insert(AssistantConfig.newDraft(entry.configKey(), entry.configType(), entry.name(),
+                    ClasspathText.read("seed/" + entry.file()), 1, SYSTEM_USER, now)
+                    .withStatus(ConfigStatus.PUBLISHED, null));
         }
         log.info("seed completed: {} configs published", entries.size());
     }

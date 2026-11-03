@@ -3,7 +3,6 @@ package com.example.copilot.aiassistant.application.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -38,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
+import org.bson.types.ObjectId;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -46,7 +46,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.data.mongodb.MongoTransactionManager;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
@@ -65,7 +64,6 @@ class ConfigServiceTest extends IntegrationTestBase {
     @Autowired AssistantConfigRepository repository;
     @Autowired MongoTemplate mongo;
     @Autowired ConfigValidator validator;
-    @Autowired MongoTransactionManager transactionManager;
     @Autowired AiAssistantProperties properties;
     @Autowired SeedLoader seedLoader;
 
@@ -82,16 +80,20 @@ class ConfigServiceTest extends IntegrationTestBase {
 
     @AfterEach
     void restoreSeed() {
-        repository.deleteAll();
+        mongo.remove(new Query(), CONFIG);
         seedLoader.run(new DefaultApplicationArguments());
     }
 
     private ConfigService newService(AssistantConfigRepository repo) {
-        return new ConfigService(repo, mongo, validator, cache, transactionManager, clock, properties);
+        return new ConfigService(repo, validator, cache, clock, properties);
     }
 
     private AssistantConfig reload(int version) {
-        return repository.findByConfigKeyAndVersion(KEY, version).orElseThrow();
+        return repository.findVersion(KEY, version).orElseThrow();
+    }
+
+    private long versionCount() {
+        return mongo.count(Query.query(where("configKey").is(KEY)), CONFIG);
     }
 
     private static AssistantException assertError(ThrowingCallable call, ErrorCode code) {
@@ -104,19 +106,19 @@ class ConfigServiceTest extends IntegrationTestBase {
     }
 
     private String validContent(String extraNote) {
-        return reload(1).getContent() + "\n- " + extraNote + "\n";
+        return reload(1).content() + "\n- " + extraNote + "\n";
     }
 
     private AssistantConfig save(AssistantConfig current, String name, String content, SaveMode mode, String actor) {
-        return service.saveWorkingCopy(KEY, new SaveCommand(name, content, "note", mode, current.getDocVersion()), actor);
+        return service.saveWorkingCopy(KEY, new SaveCommand(name, content, "note", mode, current.docVersion()), actor);
     }
 
     private AssistantConfig schedule(AssistantConfig current, Instant at, String actor) {
-        return service.publish(KEY, new PublishCommand(PublishMode.SCHEDULED, at, current.getDocVersion()), actor);
+        return service.publish(KEY, new PublishCommand(PublishMode.SCHEDULED, at, current.docVersion()), actor);
     }
 
     private AssistantConfig publishNow(AssistantConfig current, String actor) {
-        return service.publish(KEY, new PublishCommand(PublishMode.IMMEDIATE, null, current.getDocVersion()), actor);
+        return service.publish(KEY, new PublishCommand(PublishMode.IMMEDIATE, null, current.docVersion()), actor);
     }
 
     /** v1 ARCHIVED, v2 PUBLISHED (renamed, extra note), no working copy. */
@@ -134,20 +136,20 @@ class ConfigServiceTest extends IntegrationTestBase {
 
         AssistantConfig draft = service.createDraft(KEY, ACTOR);
 
-        assertThat(draft.getVersion()).isEqualTo(2);
-        assertThat(draft.getStatus()).isEqualTo(ConfigStatus.DRAFT);
-        assertThat(draft.getName()).isEqualTo(v1.getName());
-        assertThat(draft.getContent()).isEqualTo(v1.getContent());
-        assertThat(draft.getConfigType()).isEqualTo(ConfigType.SYSTEM_INSTRUCTION);
-        assertThat(draft.getBasedOnVersion()).isNull();
-        assertThat(draft.getChangeNote()).isNull();
-        assertThat(draft.getScheduledAt()).isNull();
-        assertThat(draft.getCreatedBy()).isEqualTo(ACTOR);
-        assertThat(draft.getCreatedAt()).isEqualTo(NOW);
-        assertThat(draft.getUpdatedBy()).isEqualTo(ACTOR);
-        assertThat(draft.getUpdatedAt()).isEqualTo(NOW);
-        assertThat(reload(2).getStatus()).isEqualTo(ConfigStatus.DRAFT);
-        assertThat(reload(1).getStatus()).isEqualTo(ConfigStatus.PUBLISHED);
+        assertThat(draft.version()).isEqualTo(2);
+        assertThat(draft.status()).isEqualTo(ConfigStatus.DRAFT);
+        assertThat(draft.name()).isEqualTo(v1.name());
+        assertThat(draft.content()).isEqualTo(v1.content());
+        assertThat(draft.configType()).isEqualTo(ConfigType.SYSTEM_INSTRUCTION);
+        assertThat(draft.basedOnVersion()).isNull();
+        assertThat(draft.changeNote()).isNull();
+        assertThat(draft.scheduledAt()).isNull();
+        assertThat(draft.createdBy()).isEqualTo(ACTOR);
+        assertThat(draft.createdAt()).isEqualTo(NOW);
+        assertThat(draft.updatedBy()).isEqualTo(ACTOR);
+        assertThat(draft.updatedAt()).isEqualTo(NOW);
+        assertThat(reload(2).status()).isEqualTo(ConfigStatus.DRAFT);
+        assertThat(reload(1).status()).isEqualTo(ConfigStatus.PUBLISHED);
     }
 
     @Test
@@ -158,7 +160,7 @@ class ConfigServiceTest extends IntegrationTestBase {
         schedule(draft, NOW.plus(Duration.ofHours(1)), ACTOR);
         assertError(() -> service.createDraft(KEY, ACTOR), ErrorCode.AI_CONFIG_INVALID_STATE);
 
-        assertThat(repository.findByConfigKeyOrderByVersionDesc(KEY)).hasSize(2);
+        assertThat(versionCount()).isEqualTo(2);
     }
 
     @Test
@@ -174,18 +176,18 @@ class ConfigServiceTest extends IntegrationTestBase {
         // A DRAFT may hold content that would not pass the pre-publish check.
         AssistantConfig saved = save(draft, "新名稱", INVALID_CONTENT, SaveMode.KEEP_STATUS, ACTOR);
 
-        assertThat(saved.getStatus()).isEqualTo(ConfigStatus.DRAFT);
-        assertThat(saved.getName()).isEqualTo("新名稱");
-        assertThat(saved.getContent()).isEqualTo(INVALID_CONTENT);
-        assertThat(saved.getChangeNote()).isEqualTo("note");
-        assertThat(saved.getUpdatedBy()).isEqualTo(ACTOR);
-        assertThat(saved.getUpdatedAt()).isEqualTo(NOW.plus(Duration.ofMinutes(5)));
-        assertThat(saved.getCreatedBy()).isEqualTo(OTHER);
-        assertThat(saved.getDocVersion()).isEqualTo(draft.getDocVersion() + 1);
-        assertThat(reload(2).getContent()).isEqualTo(INVALID_CONTENT);
+        assertThat(saved.status()).isEqualTo(ConfigStatus.DRAFT);
+        assertThat(saved.name()).isEqualTo("新名稱");
+        assertThat(saved.content()).isEqualTo(INVALID_CONTENT);
+        assertThat(saved.changeNote()).isEqualTo("note");
+        assertThat(saved.updatedBy()).isEqualTo(ACTOR);
+        assertThat(saved.updatedAt()).isEqualTo(NOW.plus(Duration.ofMinutes(5)));
+        assertThat(saved.createdBy()).isEqualTo(OTHER);
+        assertThat(saved.docVersion()).isEqualTo(draft.docVersion() + 1);
+        assertThat(reload(2).content()).isEqualTo(INVALID_CONTENT);
 
         AssistantConfig asDraft = save(saved, "新名稱", "x", SaveMode.DRAFT, ACTOR);
-        assertThat(asDraft.getStatus()).isEqualTo(ConfigStatus.DRAFT);
+        assertThat(asDraft.status()).isEqualTo(ConfigStatus.DRAFT);
     }
 
     @Test
@@ -197,11 +199,11 @@ class ConfigServiceTest extends IntegrationTestBase {
         String content = validContent("排程中修改");
         AssistantConfig saved = save(scheduled, "聯繫準備", content, SaveMode.KEEP_STATUS, ACTOR);
 
-        assertThat(saved.getStatus()).isEqualTo(ConfigStatus.SCHEDULED);
-        assertThat(saved.getScheduledAt()).isEqualTo(at);
-        assertThat(saved.getContent()).isEqualTo(content);
-        assertThat(saved.getUpdatedBy()).isEqualTo(ACTOR);
-        assertThat(saved.getUpdatedAt()).isEqualTo(NOW.plus(Duration.ofMinutes(1)));
+        assertThat(saved.status()).isEqualTo(ConfigStatus.SCHEDULED);
+        assertThat(saved.scheduledAt()).isEqualTo(at);
+        assertThat(saved.content()).isEqualTo(content);
+        assertThat(saved.updatedBy()).isEqualTo(ACTOR);
+        assertThat(saved.updatedAt()).isEqualTo(NOW.plus(Duration.ofMinutes(1)));
 
         AssistantException e = assertError(
                 () -> save(saved, "聯繫準備", INVALID_CONTENT, SaveMode.KEEP_STATUS, OTHER),
@@ -209,10 +211,10 @@ class ConfigServiceTest extends IntegrationTestBase {
         assertThat(e.details()).isNotEmpty().allSatisfy(d -> assertThat(d).isInstanceOf(ValidationError.class));
 
         AssistantConfig after = reload(2);
-        assertThat(after.getContent()).isEqualTo(content);
-        assertThat(after.getStatus()).isEqualTo(ConfigStatus.SCHEDULED);
-        assertThat(after.getUpdatedBy()).isEqualTo(ACTOR);
-        assertThat(after.getDocVersion()).isEqualTo(saved.getDocVersion());
+        assertThat(after.content()).isEqualTo(content);
+        assertThat(after.status()).isEqualTo(ConfigStatus.SCHEDULED);
+        assertThat(after.updatedBy()).isEqualTo(ACTOR);
+        assertThat(after.docVersion()).isEqualTo(saved.docVersion());
     }
 
     @Test
@@ -221,11 +223,11 @@ class ConfigServiceTest extends IntegrationTestBase {
 
         AssistantConfig saved = save(scheduled, "聯繫準備", INVALID_CONTENT, SaveMode.DRAFT, ACTOR);
 
-        assertThat(saved.getStatus()).isEqualTo(ConfigStatus.DRAFT);
-        assertThat(saved.getScheduledAt()).isNull();
-        assertThat(saved.getUpdatedBy()).isEqualTo(ACTOR);
-        assertThat(reload(2).getStatus()).isEqualTo(ConfigStatus.DRAFT);
-        assertThat(reload(2).getScheduledAt()).isNull();
+        assertThat(saved.status()).isEqualTo(ConfigStatus.DRAFT);
+        assertThat(saved.scheduledAt()).isNull();
+        assertThat(saved.updatedBy()).isEqualTo(ACTOR);
+        assertThat(reload(2).status()).isEqualTo(ConfigStatus.DRAFT);
+        assertThat(reload(2).scheduledAt()).isNull();
     }
 
     @Test
@@ -237,23 +239,23 @@ class ConfigServiceTest extends IntegrationTestBase {
                 ErrorCode.AI_CONFIG_CONFLICT);
         assertError(() -> publishNow(draft, OTHER), ErrorCode.AI_CONFIG_CONFLICT);
         assertError(() -> schedule(draft, NOW.plus(Duration.ofHours(1)), OTHER), ErrorCode.AI_CONFIG_CONFLICT);
-        assertError(() -> service.discardDraft(KEY, draft.getDocVersion(), OTHER), ErrorCode.AI_CONFIG_CONFLICT);
+        assertError(() -> service.discardDraft(KEY, draft.docVersion(), OTHER), ErrorCode.AI_CONFIG_CONFLICT);
 
         AssistantConfig after = reload(2);
-        assertThat(after.getStatus()).isEqualTo(ConfigStatus.DRAFT);
-        assertThat(after.getDocVersion()).isEqualTo(saved.getDocVersion());
-        assertThat(reload(1).getStatus()).isEqualTo(ConfigStatus.PUBLISHED);
+        assertThat(after.status()).isEqualTo(ConfigStatus.DRAFT);
+        assertThat(after.docVersion()).isEqualTo(saved.docVersion());
+        assertThat(reload(1).status()).isEqualTo(ConfigStatus.PUBLISHED);
     }
 
-    /** A delegating repository whose working-copy / published reads can be intercepted. */
+    /** A delegating repository whose working-copy / scheduled reads can be intercepted. */
     private AssistantConfigRepository delegatingRepository() {
         return mock(AssistantConfigRepository.class,
                 withSettings().defaultAnswer(AdditionalAnswers.delegatesTo(repository)));
     }
 
     private void bumpDocVersion(AssistantConfig c) {
-        mongo.updateFirst(Query.query(where("id").is(c.getId())), new Update().inc("docVersion", 1L),
-                AssistantConfig.class);
+        mongo.updateFirst(Query.query(where("_id").is(new ObjectId(c.id()))), new Update().inc("docVersion", 1L),
+                CONFIG);
     }
 
     @Test
@@ -272,9 +274,9 @@ class ConfigServiceTest extends IntegrationTestBase {
             }
         }
 
-        assertThat(reload(1).getStatus()).isEqualTo(ConfigStatus.PUBLISHED);
-        assertThat(reload(2).getStatus()).isEqualTo(ConfigStatus.DRAFT);
-        assertThat(reload(2).getDocVersion()).isEqualTo(draft.getDocVersion());
+        assertThat(reload(1).status()).isEqualTo(ConfigStatus.PUBLISHED);
+        assertThat(reload(2).status()).isEqualTo(ConfigStatus.DRAFT);
+        assertThat(reload(2).docVersion()).isEqualTo(draft.docVersion());
         verify(cache, never()).invalidate();
     }
 
@@ -283,39 +285,17 @@ class ConfigServiceTest extends IntegrationTestBase {
         AssistantConfig draft = service.createDraft(KEY, OTHER);
         AssistantConfigRepository racing = delegatingRepository();
         doAnswer(inv -> {
-            List<AssistantConfig> read = repository.findByConfigKeyAndStatusIn(inv.getArgument(0), inv.getArgument(1));
+            Optional<AssistantConfig> read = repository.findWorkingCopy(inv.getArgument(0));
             bumpDocVersion(draft);
             return read;
-        }).when(racing).findByConfigKeyAndStatusIn(any(), any());
+        }).when(racing).findWorkingCopy(any());
 
         assertError(() -> newService(racing).saveWorkingCopy(KEY,
-                new SaveCommand("聯繫準備", "競爭中的儲存", null, SaveMode.KEEP_STATUS, draft.getDocVersion()), ACTOR),
+                new SaveCommand("聯繫準備", "競爭中的儲存", null, SaveMode.KEEP_STATUS, draft.docVersion()), ACTOR),
                 ErrorCode.AI_CONFIG_CONFLICT);
 
-        assertThat(reload(2).getContent()).isEqualTo(draft.getContent());
-        assertThat(reload(2).getUpdatedBy()).isEqualTo(OTHER);
-    }
-
-    @Test
-    void publishedVersionChangedBeforeArchiveIsConflict() {
-        AssistantConfig v1Before = reload(1);
-        AssistantConfig draft = service.createDraft(KEY, OTHER);
-        AssistantConfigRepository racing = delegatingRepository();
-        doAnswer(inv -> {
-            Optional<AssistantConfig> read = repository.findByConfigKeyAndStatus(inv.getArgument(0), inv.getArgument(1));
-            read.ifPresent(this::bumpDocVersion);
-            return read;
-        }).when(racing).findByConfigKeyAndStatus(any(), any());
-
-        assertError(() -> newService(racing).publish(KEY,
-                new PublishCommand(PublishMode.IMMEDIATE, null, draft.getDocVersion()), ACTOR),
-                ErrorCode.AI_CONFIG_CONFLICT);
-
-        // The bump ran inside the publishing transaction, so it was rolled back with everything else.
-        assertThat(reload(1).getStatus()).isEqualTo(ConfigStatus.PUBLISHED);
-        assertThat(reload(1).getDocVersion()).isEqualTo(v1Before.getDocVersion());
-        assertThat(reload(2).getStatus()).isEqualTo(ConfigStatus.DRAFT);
-        verify(cache, never()).invalidate();
+        assertThat(reload(2).content()).isEqualTo(draft.content());
+        assertThat(reload(2).updatedBy()).isEqualTo(OTHER);
     }
 
     @Test
@@ -330,18 +310,16 @@ class ConfigServiceTest extends IntegrationTestBase {
 
         // ... and inside the publishing transaction.
         AssistantConfigRepository corrupting = delegatingRepository();
-        doAnswer(inv -> {
-            List<AssistantConfig> read = repository.findByConfigKeyAndStatusIn(inv.getArgument(0), inv.getArgument(1));
-            read.forEach(c -> c.setName(tooLong));
-            return read;
-        }).when(corrupting).findByConfigKeyAndStatusIn(any(), any());
+        doAnswer(inv -> repository.findWorkingCopy(inv.getArgument(0))
+                .map(c -> c.withContent(tooLong, c.content(), c.changeNote())))
+                .when(corrupting).findWorkingCopy(any());
         assertThatThrownBy(() -> newService(corrupting).publish(KEY,
-                new PublishCommand(PublishMode.IMMEDIATE, null, draft.getDocVersion()), ACTOR))
+                new PublishCommand(PublishMode.IMMEDIATE, null, draft.docVersion()), ACTOR))
                 .isInstanceOf(DataIntegrityViolationException.class)
                 .rootCause().isInstanceOfSatisfying(MongoException.class, e -> assertThat(e.getCode()).isEqualTo(121));
 
-        assertThat(reload(1).getStatus()).isEqualTo(ConfigStatus.PUBLISHED);
-        assertThat(reload(2).getStatus()).isEqualTo(ConfigStatus.DRAFT);
+        assertThat(reload(1).status()).isEqualTo(ConfigStatus.PUBLISHED);
+        assertThat(reload(2).status()).isEqualTo(ConfigStatus.DRAFT);
     }
 
     @Test
@@ -373,19 +351,20 @@ class ConfigServiceTest extends IntegrationTestBase {
 
         AssistantConfig published = publishNow(draft, ACTOR);
 
-        assertThat(published.getVersion()).isEqualTo(2);
-        assertThat(published.getStatus()).isEqualTo(ConfigStatus.PUBLISHED);
-        assertThat(published.getUpdatedBy()).isEqualTo(ACTOR);
-        assertThat(published.getUpdatedAt()).isEqualTo(NOW.plus(Duration.ofMinutes(10)));
-        assertThat(reload(2).getStatus()).isEqualTo(ConfigStatus.PUBLISHED);
+        assertThat(published.version()).isEqualTo(2);
+        assertThat(published.status()).isEqualTo(ConfigStatus.PUBLISHED);
+        assertThat(published.updatedBy()).isEqualTo(ACTOR);
+        assertThat(published.updatedAt()).isEqualTo(NOW.plus(Duration.ofMinutes(10)));
+        assertThat(reload(2).status()).isEqualTo(ConfigStatus.PUBLISHED);
 
         AssistantConfig v1 = reload(1);
-        assertThat(v1.getStatus()).isEqualTo(ConfigStatus.ARCHIVED);
-        assertThat(v1.getUpdatedBy()).isEqualTo(v1Before.getUpdatedBy());
-        assertThat(v1.getUpdatedAt()).isEqualTo(v1Before.getUpdatedAt());
-        assertThat(v1.getContent()).isEqualTo(v1Before.getContent());
+        assertThat(v1.status()).isEqualTo(ConfigStatus.ARCHIVED);
+        assertThat(v1.updatedBy()).isEqualTo(v1Before.updatedBy());
+        assertThat(v1.updatedAt()).isEqualTo(v1Before.updatedAt());
+        assertThat(v1.content()).isEqualTo(v1Before.content());
 
-        assertThat(repository.findByConfigKeyAndStatusIn(KEY, List.of(ConfigStatus.PUBLISHED))).hasSize(1);
+        assertThat(mongo.count(Query.query(where("configKey").is(KEY).and("status").is(ConfigStatus.PUBLISHED)),
+                CONFIG)).isEqualTo(1);
         verify(cache).invalidate();
     }
 
@@ -399,9 +378,9 @@ class ConfigServiceTest extends IntegrationTestBase {
         assertError(() -> schedule(draft, NOW.plus(Duration.ofHours(1)), ACTOR),
                 ErrorCode.AI_CONFIG_VALIDATION_FAILED);
 
-        assertThat(reload(2).getStatus()).isEqualTo(ConfigStatus.DRAFT);
-        assertThat(reload(2).getDocVersion()).isEqualTo(draft.getDocVersion());
-        assertThat(reload(1).getStatus()).isEqualTo(ConfigStatus.PUBLISHED);
+        assertThat(reload(2).status()).isEqualTo(ConfigStatus.DRAFT);
+        assertThat(reload(2).docVersion()).isEqualTo(draft.docVersion());
+        assertThat(reload(1).status()).isEqualTo(ConfigStatus.PUBLISHED);
         verify(cache, never()).invalidate();
     }
 
@@ -412,12 +391,12 @@ class ConfigServiceTest extends IntegrationTestBase {
 
         AssistantConfig scheduled = schedule(draft, at, ACTOR);
 
-        assertThat(scheduled.getStatus()).isEqualTo(ConfigStatus.SCHEDULED);
-        assertThat(scheduled.getScheduledAt()).isEqualTo(at);
-        assertThat(scheduled.getUpdatedBy()).isEqualTo(ACTOR);
-        assertThat(scheduled.getUpdatedAt()).isEqualTo(NOW);
-        assertThat(reload(2).getStatus()).isEqualTo(ConfigStatus.SCHEDULED);
-        assertThat(reload(1).getStatus()).isEqualTo(ConfigStatus.PUBLISHED);
+        assertThat(scheduled.status()).isEqualTo(ConfigStatus.SCHEDULED);
+        assertThat(scheduled.scheduledAt()).isEqualTo(at);
+        assertThat(scheduled.updatedBy()).isEqualTo(ACTOR);
+        assertThat(scheduled.updatedAt()).isEqualTo(NOW);
+        assertThat(reload(2).status()).isEqualTo(ConfigStatus.SCHEDULED);
+        assertThat(reload(1).status()).isEqualTo(ConfigStatus.PUBLISHED);
         verify(cache, never()).invalidate();
     }
 
@@ -429,12 +408,12 @@ class ConfigServiceTest extends IntegrationTestBase {
             AssistantException e = assertError(() -> schedule(draft, at, ACTOR), ErrorCode.AI_INPUT_INVALID);
             assertThat(e.details()).containsExactly(Map.of("field", "scheduledAt"));
         }
-        assertThat(reload(2).getStatus()).isEqualTo(ConfigStatus.DRAFT);
+        assertThat(reload(2).status()).isEqualTo(ConfigStatus.DRAFT);
 
         // Both bounds are inclusive.
         AssistantConfig atMin = schedule(draft, NOW.plus(Duration.ofMinutes(1)), ACTOR);
         AssistantConfig atMax = schedule(atMin, NOW.plus(Duration.ofDays(90)), ACTOR);
-        assertThat(atMax.getScheduledAt()).isEqualTo(NOW.plus(Duration.ofDays(90)));
+        assertThat(atMax.scheduledAt()).isEqualTo(NOW.plus(Duration.ofDays(90)));
     }
 
     @Test
@@ -444,11 +423,11 @@ class ConfigServiceTest extends IntegrationTestBase {
 
         AssistantConfig moved = schedule(scheduled, NOW.plus(Duration.ofHours(2)), ACTOR);
 
-        assertThat(moved.getStatus()).isEqualTo(ConfigStatus.SCHEDULED);
-        assertThat(moved.getScheduledAt()).isEqualTo(NOW.plus(Duration.ofHours(2)));
-        assertThat(moved.getUpdatedBy()).isEqualTo(ACTOR);
-        assertThat(moved.getUpdatedAt()).isEqualTo(NOW.plus(Duration.ofMinutes(3)));
-        assertThat(reload(2).getScheduledAt()).isEqualTo(NOW.plus(Duration.ofHours(2)));
+        assertThat(moved.status()).isEqualTo(ConfigStatus.SCHEDULED);
+        assertThat(moved.scheduledAt()).isEqualTo(NOW.plus(Duration.ofHours(2)));
+        assertThat(moved.updatedBy()).isEqualTo(ACTOR);
+        assertThat(moved.updatedAt()).isEqualTo(NOW.plus(Duration.ofMinutes(3)));
+        assertThat(reload(2).scheduledAt()).isEqualTo(NOW.plus(Duration.ofHours(2)));
     }
 
     @Test
@@ -459,12 +438,12 @@ class ConfigServiceTest extends IntegrationTestBase {
 
         AssistantConfig published = publishNow(scheduled, ACTOR);
 
-        assertThat(published.getStatus()).isEqualTo(ConfigStatus.PUBLISHED);
-        assertThat(published.getUpdatedBy()).isEqualTo(ACTOR);
-        assertThat(published.getUpdatedAt()).isEqualTo(NOW.plus(Duration.ofMinutes(5)));
+        assertThat(published.status()).isEqualTo(ConfigStatus.PUBLISHED);
+        assertThat(published.updatedBy()).isEqualTo(ACTOR);
+        assertThat(published.updatedAt()).isEqualTo(NOW.plus(Duration.ofMinutes(5)));
         AssistantConfig v1 = reload(1);
-        assertThat(v1.getStatus()).isEqualTo(ConfigStatus.ARCHIVED);
-        assertThat(v1.getUpdatedAt()).isEqualTo(v1Before.getUpdatedAt());
+        assertThat(v1.status()).isEqualTo(ConfigStatus.ARCHIVED);
+        assertThat(v1.updatedAt()).isEqualTo(v1Before.updatedAt());
         verify(cache).invalidate();
 
         // Nothing is left for the scheduler.
@@ -480,21 +459,21 @@ class ConfigServiceTest extends IntegrationTestBase {
 
         clock.advance(Duration.ofMinutes(59));
         assertThat(service.publishDue()).isZero();
-        assertThat(reload(2).getStatus()).isEqualTo(ConfigStatus.SCHEDULED);
+        assertThat(reload(2).status()).isEqualTo(ConfigStatus.SCHEDULED);
         verify(cache, never()).invalidate();
 
         clock.advance(Duration.ofMinutes(1).plusSeconds(20));
         assertThat(service.publishDue()).isEqualTo(1);
 
         AssistantConfig v2 = reload(2);
-        assertThat(v2.getStatus()).isEqualTo(ConfigStatus.PUBLISHED);
-        assertThat(v2.getUpdatedBy()).isEqualTo(OTHER);
-        assertThat(v2.getUpdatedAt()).isEqualTo(at.plusSeconds(20));
-        assertThat(v2.getScheduledAt()).isEqualTo(at);
+        assertThat(v2.status()).isEqualTo(ConfigStatus.PUBLISHED);
+        assertThat(v2.updatedBy()).isEqualTo(OTHER);
+        assertThat(v2.updatedAt()).isEqualTo(at.plusSeconds(20));
+        assertThat(v2.scheduledAt()).isEqualTo(at);
         AssistantConfig v1 = reload(1);
-        assertThat(v1.getStatus()).isEqualTo(ConfigStatus.ARCHIVED);
-        assertThat(v1.getUpdatedBy()).isEqualTo(v1Before.getUpdatedBy());
-        assertThat(v1.getUpdatedAt()).isEqualTo(v1Before.getUpdatedAt());
+        assertThat(v1.status()).isEqualTo(ConfigStatus.ARCHIVED);
+        assertThat(v1.updatedBy()).isEqualTo(v1Before.updatedBy());
+        assertThat(v1.updatedAt()).isEqualTo(v1Before.updatedAt());
         verify(cache).invalidate();
 
         assertThat(service.publishDue()).isZero();
@@ -509,16 +488,15 @@ class ConfigServiceTest extends IntegrationTestBase {
         AssistantConfigRepository racing = mock(AssistantConfigRepository.class,
                 withSettings().defaultAnswer(AdditionalAnswers.delegatesTo(repository)));
         doAnswer(inv -> {
-            List<AssistantConfig> stale = repository.findByStatusAndScheduledAtLessThanEqual(
-                    inv.getArgument(0), inv.getArgument(1));
+            List<AssistantConfig> stale = repository.findScheduledDue(inv.getArgument(0));
             save(scheduled, "聯繫準備", validContent("搶先儲存"), SaveMode.KEEP_STATUS, ACTOR);
             return stale;
-        }).when(racing).findByStatusAndScheduledAtLessThanEqual(any(), any());
+        }).when(racing).findScheduledDue(any());
 
         assertThat(newService(racing).publishDue()).isZero();
 
-        assertThat(reload(2).getStatus()).isEqualTo(ConfigStatus.SCHEDULED);
-        assertThat(reload(1).getStatus()).isEqualTo(ConfigStatus.PUBLISHED);
+        assertThat(reload(2).status()).isEqualTo(ConfigStatus.SCHEDULED);
+        assertThat(reload(1).status()).isEqualTo(ConfigStatus.PUBLISHED);
         verify(cache, never()).invalidate();
     }
 
@@ -526,10 +504,10 @@ class ConfigServiceTest extends IntegrationTestBase {
     void discardOnlyAllowedForDraft() {
         AssistantConfig scheduled = schedule(service.createDraft(KEY, OTHER), NOW.plus(Duration.ofHours(1)), OTHER);
 
-        assertError(() -> service.discardDraft(KEY, scheduled.getDocVersion(), ACTOR),
+        assertError(() -> service.discardDraft(KEY, scheduled.docVersion(), ACTOR),
                 ErrorCode.AI_CONFIG_INVALID_STATE);
 
-        assertThat(reload(2).getStatus()).isEqualTo(ConfigStatus.SCHEDULED);
+        assertThat(reload(2).status()).isEqualTo(ConfigStatus.SCHEDULED);
     }
 
     @Test
@@ -538,18 +516,18 @@ class ConfigServiceTest extends IntegrationTestBase {
                 SaveMode.KEEP_STATUS, OTHER);
         clock.advance(Duration.ofMinutes(7));
 
-        service.discardDraft(KEY, draft.getDocVersion(), ACTOR);
+        service.discardDraft(KEY, draft.docVersion(), ACTOR);
 
         AssistantConfig discarded = reload(2);
-        assertThat(discarded.getStatus()).isEqualTo(ConfigStatus.DISCARDED);
-        assertThat(discarded.getContent()).isEqualTo("未完成的草稿");
-        assertThat(discarded.getCreatedBy()).isEqualTo(OTHER);
-        assertThat(discarded.getUpdatedBy()).isEqualTo(ACTOR);
-        assertThat(discarded.getUpdatedAt()).isEqualTo(NOW.plus(Duration.ofMinutes(7)));
+        assertThat(discarded.status()).isEqualTo(ConfigStatus.DISCARDED);
+        assertThat(discarded.content()).isEqualTo("未完成的草稿");
+        assertThat(discarded.createdBy()).isEqualTo(OTHER);
+        assertThat(discarded.updatedBy()).isEqualTo(ACTOR);
+        assertThat(discarded.updatedAt()).isEqualTo(NOW.plus(Duration.ofMinutes(7)));
 
         AssistantConfig next = service.createDraft(KEY, ACTOR);
-        assertThat(next.getVersion()).isEqualTo(3);
-        assertThat(next.getContent()).isEqualTo(reload(1).getContent());
+        assertThat(next.version()).isEqualTo(3);
+        assertThat(next.content()).isEqualTo(reload(1).content());
     }
 
     @Test
@@ -560,20 +538,20 @@ class ConfigServiceTest extends IntegrationTestBase {
 
         AssistantConfig applied = service.applyVersion(KEY, new ApplyCommand(1, null, false), OTHER);
 
-        assertThat(applied.getVersion()).isEqualTo(3);
-        assertThat(applied.getStatus()).isEqualTo(ConfigStatus.DRAFT);
-        assertThat(applied.getName()).isEqualTo(v1.getName());
-        assertThat(applied.getContent()).isEqualTo(v1.getContent());
-        assertThat(applied.getBasedOnVersion()).isEqualTo(1);
-        assertThat(applied.getChangeNote()).isNull();
-        assertThat(applied.getScheduledAt()).isNull();
-        assertThat(applied.getCreatedBy()).isEqualTo(OTHER);
-        assertThat(applied.getUpdatedBy()).isEqualTo(OTHER);
-        assertThat(applied.getUpdatedAt()).isEqualTo(NOW.plus(Duration.ofMinutes(30)));
+        assertThat(applied.version()).isEqualTo(3);
+        assertThat(applied.status()).isEqualTo(ConfigStatus.DRAFT);
+        assertThat(applied.name()).isEqualTo(v1.name());
+        assertThat(applied.content()).isEqualTo(v1.content());
+        assertThat(applied.basedOnVersion()).isEqualTo(1);
+        assertThat(applied.changeNote()).isNull();
+        assertThat(applied.scheduledAt()).isNull();
+        assertThat(applied.createdBy()).isEqualTo(OTHER);
+        assertThat(applied.updatedBy()).isEqualTo(OTHER);
+        assertThat(applied.updatedAt()).isEqualTo(NOW.plus(Duration.ofMinutes(30)));
 
-        assertThat(reload(2).getStatus()).isEqualTo(ConfigStatus.PUBLISHED);
-        assertThat(reload(2).getDocVersion()).isEqualTo(v2.getDocVersion());
-        assertThat(reload(1).getStatus()).isEqualTo(ConfigStatus.ARCHIVED);
+        assertThat(reload(2).status()).isEqualTo(ConfigStatus.PUBLISHED);
+        assertThat(reload(2).docVersion()).isEqualTo(v2.docVersion());
+        assertThat(reload(1).status()).isEqualTo(ConfigStatus.ARCHIVED);
         verify(cache, never()).invalidate();
     }
 
@@ -584,7 +562,7 @@ class ConfigServiceTest extends IntegrationTestBase {
         AssistantConfig draft = save(service.createDraft(KEY, OTHER), "聯繫準備", "草稿內容",
                 SaveMode.KEEP_STATUS, OTHER);
 
-        for (Long seen : new Long[] {null, draft.getDocVersion()}) {
+        for (Long seen : new Long[] {null, draft.docVersion()}) {
             AssistantException e = assertError(
                     () -> service.applyVersion(KEY, new ApplyCommand(1, seen, false), ACTOR),
                     ErrorCode.AI_CONFIG_OVERWRITE_PENDING);
@@ -593,25 +571,25 @@ class ConfigServiceTest extends IntegrationTestBase {
             assertThat(pending.get("status")).isEqualTo("DRAFT");
             assertThat(pending.get("scheduledAt")).isNull();
             assertThat(pending.get("updatedAt")).isEqualTo(NOW);
-            assertThat(pending.get("docVersion")).isEqualTo(draft.getDocVersion());
+            assertThat(pending.get("docVersion")).isEqualTo(draft.docVersion());
         }
-        assertThat(reload(3).getStatus()).isEqualTo(ConfigStatus.DRAFT);
+        assertThat(reload(3).status()).isEqualTo(ConfigStatus.DRAFT);
 
         clock.advance(Duration.ofMinutes(4));
-        AssistantConfig applied = service.applyVersion(KEY, new ApplyCommand(1, draft.getDocVersion(), true), ACTOR);
+        AssistantConfig applied = service.applyVersion(KEY, new ApplyCommand(1, draft.docVersion(), true), ACTOR);
 
-        assertThat(applied.getVersion()).isEqualTo(4);
-        assertThat(applied.getStatus()).isEqualTo(ConfigStatus.DRAFT);
-        assertThat(applied.getContent()).isEqualTo(v1.getContent());
-        assertThat(applied.getBasedOnVersion()).isEqualTo(1);
+        assertThat(applied.version()).isEqualTo(4);
+        assertThat(applied.status()).isEqualTo(ConfigStatus.DRAFT);
+        assertThat(applied.content()).isEqualTo(v1.content());
+        assertThat(applied.basedOnVersion()).isEqualTo(1);
 
         AssistantConfig replaced = reload(3);
-        assertThat(replaced.getStatus()).isEqualTo(ConfigStatus.DISCARDED);
-        assertThat(replaced.getContent()).isEqualTo("草稿內容");
-        assertThat(replaced.getCreatedBy()).isEqualTo(OTHER);
-        assertThat(replaced.getUpdatedBy()).isEqualTo(ACTOR);
-        assertThat(replaced.getUpdatedAt()).isEqualTo(NOW.plus(Duration.ofMinutes(4)));
-        assertThat(reload(2).getStatus()).isEqualTo(ConfigStatus.PUBLISHED);
+        assertThat(replaced.status()).isEqualTo(ConfigStatus.DISCARDED);
+        assertThat(replaced.content()).isEqualTo("草稿內容");
+        assertThat(replaced.createdBy()).isEqualTo(OTHER);
+        assertThat(replaced.updatedBy()).isEqualTo(ACTOR);
+        assertThat(replaced.updatedAt()).isEqualTo(NOW.plus(Duration.ofMinutes(4)));
+        assertThat(reload(2).status()).isEqualTo(ConfigStatus.PUBLISHED);
         verify(cache, never()).invalidate();
     }
 
@@ -621,65 +599,65 @@ class ConfigServiceTest extends IntegrationTestBase {
         AssistantConfig scheduled = schedule(service.createDraft(KEY, OTHER), at, OTHER);
 
         AssistantException e = assertError(
-                () -> service.applyVersion(KEY, new ApplyCommand(1, scheduled.getDocVersion(), false), ACTOR),
+                () -> service.applyVersion(KEY, new ApplyCommand(1, scheduled.docVersion(), false), ACTOR),
                 ErrorCode.AI_CONFIG_OVERWRITE_PENDING);
         Map<?, ?> pending = (Map<?, ?>) e.details().get(0);
         assertThat(pending.get("status")).isEqualTo("SCHEDULED");
         assertThat(pending.get("scheduledAt")).isEqualTo(at);
 
-        AssistantConfig applied = service.applyVersion(KEY, new ApplyCommand(1, scheduled.getDocVersion(), true), ACTOR);
+        AssistantConfig applied = service.applyVersion(KEY, new ApplyCommand(1, scheduled.docVersion(), true), ACTOR);
 
-        assertThat(applied.getVersion()).isEqualTo(3);
-        assertThat(applied.getStatus()).isEqualTo(ConfigStatus.DRAFT);
+        assertThat(applied.version()).isEqualTo(3);
+        assertThat(applied.status()).isEqualTo(ConfigStatus.DRAFT);
         AssistantConfig replaced = reload(2);
-        assertThat(replaced.getStatus()).isEqualTo(ConfigStatus.DISCARDED);
-        assertThat(replaced.getScheduledAt()).isEqualTo(at);
-        assertThat(replaced.getUpdatedBy()).isEqualTo(ACTOR);
+        assertThat(replaced.status()).isEqualTo(ConfigStatus.DISCARDED);
+        assertThat(replaced.scheduledAt()).isEqualTo(at);
+        assertThat(replaced.updatedBy()).isEqualTo(ACTOR);
 
         clock.advance(Duration.ofHours(2));
         assertThat(service.publishDue()).isZero();
-        assertThat(reload(1).getStatus()).isEqualTo(ConfigStatus.PUBLISHED);
-        assertThat(reload(2).getStatus()).isEqualTo(ConfigStatus.DISCARDED);
-        assertThat(reload(3).getStatus()).isEqualTo(ConfigStatus.DRAFT);
+        assertThat(reload(1).status()).isEqualTo(ConfigStatus.PUBLISHED);
+        assertThat(reload(2).status()).isEqualTo(ConfigStatus.DISCARDED);
+        assertThat(reload(3).status()).isEqualTo(ConfigStatus.DRAFT);
     }
 
     @Test
     void applyFromDiscardedRestoresContent() {
         AssistantConfig draft = save(service.createDraft(KEY, OTHER), "捨棄前的名稱", "捨棄前的內容",
                 SaveMode.KEEP_STATUS, OTHER);
-        service.discardDraft(KEY, draft.getDocVersion(), OTHER);
+        service.discardDraft(KEY, draft.docVersion(), OTHER);
 
         AssistantConfig applied = service.applyVersion(KEY, new ApplyCommand(2, null, false), ACTOR);
 
-        assertThat(applied.getVersion()).isEqualTo(3);
-        assertThat(applied.getName()).isEqualTo("捨棄前的名稱");
-        assertThat(applied.getContent()).isEqualTo("捨棄前的內容");
-        assertThat(applied.getBasedOnVersion()).isEqualTo(2);
-        assertThat(reload(2).getStatus()).isEqualTo(ConfigStatus.DISCARDED);
+        assertThat(applied.version()).isEqualTo(3);
+        assertThat(applied.name()).isEqualTo("捨棄前的名稱");
+        assertThat(applied.content()).isEqualTo("捨棄前的內容");
+        assertThat(applied.basedOnVersion()).isEqualTo(2);
+        assertThat(reload(2).status()).isEqualTo(ConfigStatus.DISCARDED);
     }
 
+    /** The rollback itself is pinned by AssistantConfigRepositoryImplTest#replaceWorkingCopyFailureRollsBackDiscard. */
     @Test
     void applyIsAtomic() {
-        AssistantConfigRepository failing = mock(AssistantConfigRepository.class,
-                withSettings().defaultAnswer(AdditionalAnswers.delegatesTo(repository)));
+        AssistantConfigRepository failing = delegatingRepository();
         DataAccessResourceFailureException boom = new DataAccessResourceFailureException("insert failed");
+        doThrow(boom).when(failing).replaceWorkingCopy(any(), any());
         doThrow(boom).when(failing).insert(any(AssistantConfig.class));
-        doThrow(boom).when(failing).save(argThat((AssistantConfig c) -> c != null && c.getId() == null));
         ConfigService failingService = newService(failing);
 
         AssistantConfig draft = service.createDraft(KEY, OTHER);
         assertThatThrownBy(() -> failingService.applyVersion(KEY,
-                new ApplyCommand(1, draft.getDocVersion(), true), ACTOR)).isSameAs(boom);
-        assertThat(reload(2).getStatus()).isEqualTo(ConfigStatus.DRAFT);
-        assertThat(reload(2).getDocVersion()).isEqualTo(draft.getDocVersion());
+                new ApplyCommand(1, draft.docVersion(), true), ACTOR)).isSameAs(boom);
+        assertThat(reload(2).status()).isEqualTo(ConfigStatus.DRAFT);
+        assertThat(reload(2).docVersion()).isEqualTo(draft.docVersion());
 
         AssistantConfig scheduled = schedule(draft, NOW.plus(Duration.ofHours(1)), OTHER);
         assertThatThrownBy(() -> failingService.applyVersion(KEY,
-                new ApplyCommand(1, scheduled.getDocVersion(), true), ACTOR)).isSameAs(boom);
-        assertThat(reload(2).getStatus()).isEqualTo(ConfigStatus.SCHEDULED);
-        assertThat(reload(2).getUpdatedBy()).isEqualTo(OTHER);
+                new ApplyCommand(1, scheduled.docVersion(), true), ACTOR)).isSameAs(boom);
+        assertThat(reload(2).status()).isEqualTo(ConfigStatus.SCHEDULED);
+        assertThat(reload(2).updatedBy()).isEqualTo(OTHER);
 
-        assertThat(repository.findByConfigKeyOrderByVersionDesc(KEY)).hasSize(2);
+        assertThat(versionCount()).isEqualTo(2);
     }
 
     @Test
@@ -687,32 +665,32 @@ class ConfigServiceTest extends IntegrationTestBase {
         AssistantConfig draft = service.createDraft(KEY, OTHER);
         AssistantConfig saved = save(draft, "聯繫準備", validContent("他人修改"), SaveMode.KEEP_STATUS, OTHER);
 
-        assertError(() -> service.applyVersion(KEY, new ApplyCommand(1, draft.getDocVersion(), true), ACTOR),
+        assertError(() -> service.applyVersion(KEY, new ApplyCommand(1, draft.docVersion(), true), ACTOR),
                 ErrorCode.AI_CONFIG_CONFLICT);
         assertError(() -> service.applyVersion(KEY, new ApplyCommand(1, null, true), ACTOR),
                 ErrorCode.AI_CONFIG_CONFLICT);
-        assertThat(reload(2).getStatus()).isEqualTo(ConfigStatus.DRAFT);
+        assertThat(reload(2).status()).isEqualTo(ConfigStatus.DRAFT);
 
         // The schedule the user saw has since been published by the scheduler: no working copy left.
         AssistantConfig scheduled = schedule(saved, NOW.plus(Duration.ofMinutes(2)), OTHER);
         clock.advance(Duration.ofMinutes(3));
         assertThat(service.publishDue()).isEqualTo(1);
-        assertError(() -> service.applyVersion(KEY, new ApplyCommand(1, scheduled.getDocVersion(), true), ACTOR),
+        assertError(() -> service.applyVersion(KEY, new ApplyCommand(1, scheduled.docVersion(), true), ACTOR),
                 ErrorCode.AI_CONFIG_CONFLICT);
-        assertThat(repository.findByConfigKeyOrderByVersionDesc(KEY)).hasSize(2);
+        assertThat(versionCount()).isEqualTo(2);
     }
 
     @Test
     void applyFromDraftOrScheduledIsInvalidState() {
         AssistantConfig draft = service.createDraft(KEY, OTHER);
-        assertError(() -> service.applyVersion(KEY, new ApplyCommand(2, draft.getDocVersion(), true), ACTOR),
+        assertError(() -> service.applyVersion(KEY, new ApplyCommand(2, draft.docVersion(), true), ACTOR),
                 ErrorCode.AI_CONFIG_INVALID_STATE);
 
         AssistantConfig scheduled = schedule(draft, NOW.plus(Duration.ofHours(1)), OTHER);
-        assertError(() -> service.applyVersion(KEY, new ApplyCommand(2, scheduled.getDocVersion(), true), ACTOR),
+        assertError(() -> service.applyVersion(KEY, new ApplyCommand(2, scheduled.docVersion(), true), ACTOR),
                 ErrorCode.AI_CONFIG_INVALID_STATE);
 
-        assertThat(reload(2).getStatus()).isEqualTo(ConfigStatus.SCHEDULED);
+        assertThat(reload(2).status()).isEqualTo(ConfigStatus.SCHEDULED);
     }
 
     @Test
@@ -729,7 +707,7 @@ class ConfigServiceTest extends IntegrationTestBase {
                 ErrorCode.AI_CONFIG_INVALID_STATE);
         assertError(() -> service.createKey(KEY, ConfigType.SYSTEM_INSTRUCTION, "重複", ACTOR),
                 ErrorCode.AI_CONFIG_INVALID_STATE);
-        assertThat(repository.findTopByConfigKeyOrderByVersionDesc("system.second")).isEmpty();
+        assertThat(repository.findLatest("system.second")).isEmpty();
     }
 
     @Test
@@ -745,13 +723,13 @@ class ConfigServiceTest extends IntegrationTestBase {
         AssistantConfig created = service.createKey("instruction.new-topic", ConfigType.SYSTEM_INSTRUCTION,
                 "新分類", ACTOR);
 
-        assertThat(created.getVersion()).isEqualTo(1);
-        assertThat(created.getStatus()).isEqualTo(ConfigStatus.DRAFT);
-        assertThat(created.getName()).isEqualTo("新分類");
-        assertThat(created.getContent()).contains("## 適用問題", "## 回答套版", "## 範例問題", "## 注意事項");
-        assertThat(created.getCreatedBy()).isEqualTo(ACTOR);
-        assertThat(created.getUpdatedBy()).isEqualTo(ACTOR);
-        assertThat(created.getCreatedAt()).isEqualTo(NOW);
+        assertThat(created.version()).isEqualTo(1);
+        assertThat(created.status()).isEqualTo(ConfigStatus.DRAFT);
+        assertThat(created.name()).isEqualTo("新分類");
+        assertThat(created.content()).contains("## 適用問題", "## 回答套版", "## 範例問題", "## 注意事項");
+        assertThat(created.createdBy()).isEqualTo(ACTOR);
+        assertThat(created.updatedBy()).isEqualTo(ACTOR);
+        assertThat(created.createdAt()).isEqualTo(NOW);
         assertThat(service.list()).anySatisfy(s -> {
             assertThat(s.configKey()).isEqualTo("instruction.new-topic");
             assertThat(s.published()).isNull();
@@ -770,7 +748,7 @@ class ConfigServiceTest extends IntegrationTestBase {
         assertThat(list.get(0).configKey()).isEqualTo("system.main");
         ConfigSummary contactPrep = list.stream().filter(s -> s.configKey().equals(KEY)).findFirst().orElseThrow();
         assertThat(contactPrep.configType()).isEqualTo(ConfigType.SYSTEM_INSTRUCTION);
-        assertThat(contactPrep.name()).isEqualTo(reload(1).getName());
+        assertThat(contactPrep.name()).isEqualTo(reload(1).name());
         assertThat(contactPrep.published().version()).isEqualTo(1);
         assertThat(contactPrep.published().status()).isEqualTo(ConfigStatus.PUBLISHED);
         assertThat(contactPrep.workingCopy().version()).isEqualTo(2);
@@ -788,8 +766,8 @@ class ConfigServiceTest extends IntegrationTestBase {
         save(draft, "聯繫準備", INVALID_CONTENT, SaveMode.KEEP_STATUS, OTHER);
 
         assertThat(service.validateWorkingCopy(KEY)).extracting(ValidationError::rule).contains("REQUIRED_SECTION");
-        assertThat(service.versions(KEY)).extracting(AssistantConfig::getVersion).containsExactly(2, 1);
-        assertThat(service.version(KEY, 2).getContent()).isEqualTo(INVALID_CONTENT);
+        assertThat(service.versions(KEY)).extracting(AssistantConfig::version).containsExactly(2, 1);
+        assertThat(service.version(KEY, 2).content()).isEqualTo(INVALID_CONTENT);
         assertError(() -> service.version(KEY, 3), ErrorCode.AI_CONFIG_NOT_FOUND);
         assertError(() -> service.versions("instruction.nope"), ErrorCode.AI_CONFIG_NOT_FOUND);
     }

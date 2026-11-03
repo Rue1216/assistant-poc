@@ -1,59 +1,46 @@
 package com.example.copilot.aiassistant.domain.config;
 
 import java.time.Instant;
-import org.springframework.data.annotation.Id;
-import org.springframework.data.annotation.Version;
-import org.springframework.data.mongodb.core.mapping.Document;
 
-@Document("COLL_ICRM_AI_ASSISTANT_CONFIG")
-public class AssistantConfig {
+/**
+ * One version of a prompt config (04 section 2.1). Immutable: every change returns a copy. {@code id} and
+ * {@code docVersion} are assigned by the store on insert; a write is conditional on the {@code docVersion} read.
+ */
+public record AssistantConfig(String id, String configKey, ConfigType configType, String name, String content,
+                              ConfigStatus status, int version, Integer basedOnVersion, String changeNote,
+                              String createdBy, Instant createdAt, String updatedBy, Instant updatedAt,
+                              Instant scheduledAt, Long docVersion) {
 
-    @Id
-    private String id;
-    private String configKey;
-    private ConfigType configType;
-    private String name;
-    private String content;
-    private ConfigStatus status;
-    private int version;
-    private Integer basedOnVersion;
-    private String changeNote;
-    private String createdBy;
-    private Instant createdAt;
-    private String updatedBy;
-    private Instant updatedAt;
-    private Instant scheduledAt;
-    @Version
-    private Long docVersion;
+    /** A new, not yet stored DRAFT created and last updated by {@code actor} at {@code now}. */
+    public static AssistantConfig newDraft(String configKey, ConfigType type, String name, String content,
+                                           int version, String actor, Instant now) {
+        return new AssistantConfig(null, configKey, type, name, content, ConfigStatus.DRAFT, version, null, null,
+                actor, now, actor, now, null, null);
+    }
 
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
-    public String getConfigKey() { return configKey; }
-    public void setConfigKey(String configKey) { this.configKey = configKey; }
-    public ConfigType getConfigType() { return configType; }
-    public void setConfigType(ConfigType configType) { this.configType = configType; }
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-    public String getContent() { return content; }
-    public void setContent(String content) { this.content = content; }
-    public ConfigStatus getStatus() { return status; }
-    public void setStatus(ConfigStatus status) { this.status = status; }
-    public int getVersion() { return version; }
-    public void setVersion(int version) { this.version = version; }
-    public Integer getBasedOnVersion() { return basedOnVersion; }
-    public void setBasedOnVersion(Integer basedOnVersion) { this.basedOnVersion = basedOnVersion; }
-    public String getChangeNote() { return changeNote; }
-    public void setChangeNote(String changeNote) { this.changeNote = changeNote; }
-    public String getCreatedBy() { return createdBy; }
-    public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
-    public Instant getCreatedAt() { return createdAt; }
-    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
-    public String getUpdatedBy() { return updatedBy; }
-    public void setUpdatedBy(String updatedBy) { this.updatedBy = updatedBy; }
-    public Instant getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
-    public Instant getScheduledAt() { return scheduledAt; }
-    public void setScheduledAt(Instant scheduledAt) { this.scheduledAt = scheduledAt; }
-    public Long getDocVersion() { return docVersion; }
-    public void setDocVersion(Long docVersion) { this.docVersion = docVersion; }
+    public AssistantConfig withContent(String name, String content, String changeNote) {
+        return new AssistantConfig(id, configKey, configType, name, content, status, version, basedOnVersion,
+                changeNote, createdBy, createdAt, updatedBy, updatedAt, scheduledAt, docVersion);
+    }
+
+    public AssistantConfig withStatus(ConfigStatus status, Instant scheduledAt) {
+        return new AssistantConfig(id, configKey, configType, name, content, status, version, basedOnVersion,
+                changeNote, createdBy, createdAt, updatedBy, updatedAt, scheduledAt, docVersion);
+    }
+
+    public AssistantConfig withBasedOnVersion(Integer basedOnVersion) {
+        return new AssistantConfig(id, configKey, configType, name, content, status, version, basedOnVersion,
+                changeNote, createdBy, createdAt, updatedBy, updatedAt, scheduledAt, docVersion);
+    }
+
+    /** Records the last editor. */
+    public AssistantConfig touched(String actor, Instant now) {
+        return new AssistantConfig(id, configKey, configType, name, content, status, version, basedOnVersion,
+                changeNote, createdBy, createdAt, actor, now, scheduledAt, docVersion);
+    }
+
+    /** DRAFT or SCHEDULED: the one version of a key that can still be edited. */
+    public boolean isWorkingCopy() {
+        return status == ConfigStatus.DRAFT || status == ConfigStatus.SCHEDULED;
+    }
 }

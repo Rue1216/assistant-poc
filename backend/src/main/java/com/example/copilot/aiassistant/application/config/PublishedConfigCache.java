@@ -2,7 +2,6 @@ package com.example.copilot.aiassistant.application.config;
 
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
-import com.example.copilot.aiassistant.domain.config.ConfigStatus;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
 import com.example.copilot.aiassistant.domain.config.PublishedConfigs;
 import java.time.Clock;
@@ -47,13 +46,13 @@ public class PublishedConfigCache {
 
     /** Reads the published configs straight from MongoDB without touching the cache. */
     public PublishedConfigs loadFresh() {
-        List<AssistantConfig> published = repository.findByStatus(ConfigStatus.PUBLISHED);
+        List<AssistantConfig> published = repository.findPublished();
         AssistantConfig systemPrompt = published.stream()
-                .filter(c -> c.getConfigType() == ConfigType.SYSTEM_PROMPT)
+                .filter(c -> c.configType() == ConfigType.SYSTEM_PROMPT)
                 .findFirst().orElse(null);
         List<AssistantConfig> instructions = published.stream()
-                .filter(c -> c.getConfigType() == ConfigType.SYSTEM_INSTRUCTION)
-                .sorted(Comparator.comparing(AssistantConfig::getConfigKey))
+                .filter(c -> c.configType() == ConfigType.SYSTEM_INSTRUCTION)
+                .sorted(Comparator.comparing(AssistantConfig::configKey))
                 .toList();
         return new PublishedConfigs(systemPrompt, instructions);
     }
