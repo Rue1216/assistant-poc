@@ -51,7 +51,7 @@ import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 
 /** Each test maps to a row of the state-transition table in 04 section 2.4. */
-class ConfigServiceTest extends IntegrationTestBase {
+class ConfigCommandServiceTest extends IntegrationTestBase {
 
     private static final Instant NOW = Instant.parse("2026-10-20T02:00:00Z");
     private static final String KEY = "instruction.contact-prep";
@@ -69,7 +69,7 @@ class ConfigServiceTest extends IntegrationTestBase {
 
     private MutableClock clock;
     private PublishedConfigCache cache;
-    private ConfigService service;
+    private ConfigCommandService service;
 
     @BeforeEach
     void setUp() {
@@ -84,8 +84,8 @@ class ConfigServiceTest extends IntegrationTestBase {
         seedLoader.run(new DefaultApplicationArguments());
     }
 
-    private ConfigService newService(AssistantConfigRepository repo) {
-        return new ConfigService(repo, validator, cache, clock, properties);
+    private ConfigCommandService newService(AssistantConfigRepository repo) {
+        return new ConfigCommandService(repo, validator, cache, clock, properties);
     }
 
     private AssistantConfig reload(int version) {
@@ -643,7 +643,7 @@ class ConfigServiceTest extends IntegrationTestBase {
         DataAccessResourceFailureException boom = new DataAccessResourceFailureException("insert failed");
         doThrow(boom).when(failing).replaceWorkingCopy(any(), any());
         doThrow(boom).when(failing).insert(any(AssistantConfig.class));
-        ConfigService failingService = newService(failing);
+        ConfigCommandService failingService = newService(failing);
 
         AssistantConfig draft = service.createDraft(KEY, OTHER);
         assertThatThrownBy(() -> failingService.applyVersion(KEY,
@@ -730,46 +730,18 @@ class ConfigServiceTest extends IntegrationTestBase {
         assertThat(created.createdBy()).isEqualTo(ACTOR);
         assertThat(created.updatedBy()).isEqualTo(ACTOR);
         assertThat(created.createdAt()).isEqualTo(NOW);
-        assertThat(service.list()).anySatisfy(s -> {
-            assertThat(s.configKey()).isEqualTo("instruction.new-topic");
-            assertThat(s.published()).isNull();
-            assertThat(s.workingCopy().status()).isEqualTo(ConfigStatus.DRAFT);
-        });
+        assertThat(repository.findPublished("instruction.new-topic")).isEmpty();
+        assertThat(repository.findWorkingCopy("instruction.new-topic")).hasValueSatisfying(
+                wc -> assertThat(wc.status()).isEqualTo(ConfigStatus.DRAFT));
     }
 
     @Test
-    void listShowsPublishedAndWorkingCopy() {
-        Instant at = NOW.plus(Duration.ofHours(1));
-        schedule(service.createDraft(KEY, OTHER), at, OTHER);
-
-        List<ConfigSummary> list = service.list();
-
-        assertThat(list).hasSize(8);
-        assertThat(list.get(0).configKey()).isEqualTo("system.main");
-        ConfigSummary contactPrep = list.stream().filter(s -> s.configKey().equals(KEY)).findFirst().orElseThrow();
-        assertThat(contactPrep.configType()).isEqualTo(ConfigType.SYSTEM_INSTRUCTION);
-        assertThat(contactPrep.name()).isEqualTo(reload(1).name());
-        assertThat(contactPrep.published().version()).isEqualTo(1);
-        assertThat(contactPrep.published().status()).isEqualTo(ConfigStatus.PUBLISHED);
-        assertThat(contactPrep.workingCopy().version()).isEqualTo(2);
-        assertThat(contactPrep.workingCopy().status()).isEqualTo(ConfigStatus.SCHEDULED);
-        assertThat(contactPrep.workingCopy().scheduledAt()).isEqualTo(at);
-        assertThat(contactPrep.workingCopy().updatedBy()).isEqualTo(OTHER);
-        assertThat(list).filteredOn(s -> !s.configKey().equals(KEY))
-                .allSatisfy(s -> assertThat(s.workingCopy()).isNull());
-    }
-
-    @Test
-    void versionsAndValidateWorkingCopy() {
+    void validateWorkingCopyReportsRuleViolations() {
         AssistantConfig draft = service.createDraft(KEY, OTHER);
         assertThat(service.validateWorkingCopy(KEY)).isEmpty();
         save(draft, "聯繫準備", INVALID_CONTENT, SaveMode.KEEP_STATUS, OTHER);
 
         assertThat(service.validateWorkingCopy(KEY)).extracting(ValidationError::rule).contains("REQUIRED_SECTION");
-        assertThat(service.versions(KEY)).extracting(AssistantConfig::version).containsExactly(2, 1);
-        assertThat(service.version(KEY, 2).content()).isEqualTo(INVALID_CONTENT);
-        assertError(() -> service.version(KEY, 3), ErrorCode.AI_CONFIG_NOT_FOUND);
-        assertError(() -> service.versions("instruction.nope"), ErrorCode.AI_CONFIG_NOT_FOUND);
     }
 
     private static final class MutableClock extends Clock {

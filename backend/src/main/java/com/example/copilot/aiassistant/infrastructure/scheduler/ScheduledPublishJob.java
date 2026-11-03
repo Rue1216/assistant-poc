@@ -1,6 +1,6 @@
 package com.example.copilot.aiassistant.infrastructure.scheduler;
 
-import com.example.copilot.aiassistant.application.config.ConfigService;
+import com.example.copilot.aiassistant.application.config.ConfigCommandService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -14,9 +14,9 @@ public class ScheduledPublishJob {
 
     private static final Logger log = LoggerFactory.getLogger(ScheduledPublishJob.class);
 
-    private final ConfigService configService;
+    private final ConfigCommandService configService;
 
-    public ScheduledPublishJob(ConfigService configService) {
+    public ScheduledPublishJob(ConfigCommandService configService) {
         this.configService = configService;
     }
 

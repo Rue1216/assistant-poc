@@ -96,13 +96,6 @@ public class AssistantConfigRepositoryImpl implements AssistantConfigRepository 
     }
 
     @Override
-    public List<AssistantConfig> findAllWithoutContent() {
-        Query withoutContent = new Query();
-        withoutContent.fields().exclude("content");
-        return toDomain(mongo.find(withoutContent, AssistantConfigDocument.class));
-    }
-
-    @Override
     public AssistantConfig insert(AssistantConfig config) {
         return write(() -> AssistantConfigMapper.toDomain(
                 mongoRepository.insert(AssistantConfigMapper.toDocument(config))));

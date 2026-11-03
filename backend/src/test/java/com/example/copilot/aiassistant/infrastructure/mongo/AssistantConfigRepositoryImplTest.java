@@ -185,7 +185,7 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
         assertThat(repository.findPublished(KEY)).map(AssistantConfig::version).contains(2);
     }
 
-    /** Moved from ConfigServiceTest#publishedVersionChangedBeforeArchiveIsConflict. */
+    /** Moved from ConfigCommandServiceTest#publishedVersionChangedBeforeArchiveIsConflict. */
     @Test
     void publishedVersionChangedBeforeArchiveIsConflictAndRollsBack() {
         AssistantConfig v1Before = reload(1);
@@ -303,7 +303,7 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
         assertThat(reload(2).status()).isEqualTo(ConfigStatus.SCHEDULED);
     }
 
-    /** Moved from ScheduledPublishJobTest#lostRaceClassification (was ConfigService.isLostRace). */
+    /** Moved from ScheduledPublishJobTest#lostRaceClassification (was ConfigCommandService.isLostRace). */
     @Test
     void lostRaceClassification() {
         assertThat(AssistantConfigRepositoryImpl.isLostRace(new AssistantException(ErrorCode.AI_CONFIG_CONFLICT)))
@@ -385,7 +385,7 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
         assertThat(versionCount()).isEqualTo(2);
     }
 
-    /** Moved from ConfigServiceTest#applyIsAtomic. */
+    /** Moved from ConfigCommandServiceTest#applyIsAtomic. */
     @Test
     void replaceWorkingCopyFailureRollsBackDiscard() {
         AssistantConfigMongoRepository failing = delegatingMongoRepository();
@@ -428,24 +428,6 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
         assertThat(repository.existsByConfigType(ConfigType.SYSTEM_PROMPT)).isTrue();
         assertThat(repository.count()).isEqualTo(9);
         assertThat(repository.findWorkingCopy("instruction.nope")).isEmpty();
-    }
-
-    @Test
-    void findAllWithoutContentOmitsOnlyContent() {
-        insertDraft(OTHER);
-
-        List<AssistantConfig> all = repository.findAllWithoutContent();
-
-        assertThat(all).hasSize(9).allSatisfy(c -> {
-            assertThat(c.content()).isNull();
-            assertThat(c.id()).isNotNull();
-            assertThat(c.configKey()).isNotNull();
-            assertThat(c.name()).isNotNull();
-            assertThat(c.status()).isNotNull();
-            assertThat(c.docVersion()).isNotNull();
-        });
-        assertThat(all).filteredOn(c -> c.configKey().equals(KEY)).extracting(AssistantConfig::version)
-                .containsExactlyInAnyOrder(1, 2);
     }
 
     /** The stored document keeps the fields and the {@code _class} value written before the domain/document split. */

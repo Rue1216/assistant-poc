@@ -1,5 +1,6 @@
 package com.example.copilot.aiassistant.interfaces.rest.feedback;
 
+import com.example.copilot.aiassistant.application.feedback.FeedbackQueryService;
 import com.example.copilot.aiassistant.application.feedback.FeedbackService;
 import com.example.copilot.aiassistant.application.feedback.VersionFeedback;
 import com.example.copilot.aiassistant.interfaces.rest.config.dto.ConfigKeys;
@@ -22,10 +23,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class FeedbackController {
 
     private final FeedbackService service;
+    private final FeedbackQueryService queries;
     private final CurrentUserPort currentUser;
 
-    public FeedbackController(FeedbackService service, CurrentUserPort currentUser) {
+    public FeedbackController(FeedbackService service, FeedbackQueryService queries,
+            CurrentUserPort currentUser) {
         this.service = service;
+        this.queries = queries;
         this.currentUser = currentUser;
     }
 
@@ -40,6 +44,6 @@ public class FeedbackController {
     @GetMapping("/api/ai-assistant/admin/configs/{configKey}/feedback-stats")
     @PreAuthorize("hasAuthority('AI_CONFIG_READ')")
     public List<VersionFeedback> stats(@PathVariable @Pattern(regexp = ConfigKeys.PATTERN) String configKey) {
-        return service.stats(configKey);
+        return queries.stats(configKey);
     }
 }

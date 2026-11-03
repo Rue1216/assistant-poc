@@ -1,6 +1,6 @@
 package com.example.copilot.aiassistant.interfaces.rest.config.dto;
 
-import com.example.copilot.aiassistant.domain.config.AssistantConfig;
+import com.example.copilot.aiassistant.application.config.VersionHistoryEntry;
 import com.example.copilot.aiassistant.domain.config.ConfigStatus;
 import java.time.OffsetDateTime;
 
@@ -9,7 +9,7 @@ public record VersionHistoryItem(int version, ConfigStatus status, OffsetDateTim
                                  Integer basedOnVersion, String createdBy, String updatedBy,
                                  OffsetDateTime updatedAt) {
 
-    public static VersionHistoryItem of(AssistantConfig c) {
+    public static VersionHistoryItem of(VersionHistoryEntry c) {
         return new VersionHistoryItem(c.version(), c.status(), AdminTime.at(c.scheduledAt()),
                 c.changeNote(), c.basedOnVersion(), c.createdBy(), c.updatedBy(),
                 AdminTime.at(c.updatedAt()));

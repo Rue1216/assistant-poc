@@ -25,7 +25,7 @@ import com.example.copilot.aiassistant.domain.exception.ErrorCode;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
 import com.example.copilot.aiassistant.infrastructure.mongo.AssistantConfigMongoRepository;
-import com.example.copilot.aiassistant.application.config.ConfigService;
+import com.example.copilot.aiassistant.application.config.ConfigCommandService;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
 import com.example.copilot.aiassistant.domain.config.PublishedConfigs;
 import com.example.copilot.aiassistant.domain.config.ConfigValidator;
@@ -69,7 +69,7 @@ class EvalRunServiceTest extends IntegrationTestBase {
 
     @Autowired EvalRunService service;
     @Autowired EvalRunRepository runs;
-    @Autowired ConfigService configService;
+    @Autowired ConfigCommandService configService;
     @Autowired AssistantConfigRepository configs;
     @Autowired AssistantConfigMongoRepository configDocuments;
     @Autowired SeedLoader seedLoader;

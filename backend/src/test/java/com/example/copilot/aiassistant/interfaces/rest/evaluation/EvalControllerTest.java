@@ -27,7 +27,7 @@ import com.example.copilot.aiassistant.domain.eval.EvalStatus;
 import com.example.copilot.aiassistant.domain.eval.EvalSummary;
 import com.example.copilot.aiassistant.domain.eval.JudgeVerdict;
 import com.example.copilot.aiassistant.infrastructure.mongo.AssistantConfigMongoRepository;
-import com.example.copilot.aiassistant.application.config.ConfigService;
+import com.example.copilot.aiassistant.application.config.ConfigCommandService;
 import com.example.copilot.aiassistant.domain.repository.EvalRunRepository;
 import com.example.copilot.aiassistant.infrastructure.seed.SeedLoader;
 import com.example.copilot.aiassistant.domain.config.PromptVersion;
@@ -57,7 +57,7 @@ class EvalControllerTest extends IntegrationTestBase {
     @MockitoBean EvalRunner runner;
 
     @Autowired EvalRunRepository runs;
-    @Autowired ConfigService configService;
+    @Autowired ConfigCommandService configService;
     @Autowired AssistantConfigMongoRepository configs;
     @Autowired SeedLoader seedLoader;
     @Autowired MongoTemplate mongo;

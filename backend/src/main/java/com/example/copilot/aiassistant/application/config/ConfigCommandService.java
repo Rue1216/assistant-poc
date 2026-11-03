@@ -12,7 +12,6 @@ import com.example.copilot.aiassistant.domain.exception.ErrorCode;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
 import java.time.Clock;
 import java.time.Instant;
-import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -20,7 +19,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -30,9 +28,9 @@ import org.springframework.stereotype.Service;
  * {@code docVersion}; publishing and applying are atomic in the repository. No operation deletes a document.
  */
 @Service
-public class ConfigService {
+public class ConfigCommandService {
 
-    private static final Logger log = LoggerFactory.getLogger(ConfigService.class);
+    private static final Logger log = LoggerFactory.getLogger(ConfigCommandService.class);
 
     private static final Set<ConfigStatus> APPLICABLE =
             EnumSet.of(ConfigStatus.PUBLISHED, ConfigStatus.ARCHIVED, ConfigStatus.DISCARDED);
@@ -45,7 +43,7 @@ public class ConfigService {
     private final AiAssistantProperties.Config limits;
     private final String instructionTemplate;
 
-    public ConfigService(AssistantConfigRepository repository, ConfigValidator validator, PublishedConfigCache cache,
+    public ConfigCommandService(AssistantConfigRepository repository, ConfigValidator validator, PublishedConfigCache cache,
                          Clock clock, AiAssistantProperties properties) {
         this.repository = repository;
         this.validator = validator;
@@ -76,7 +74,7 @@ public class ConfigService {
         }
         AssistantConfig base = repository.findPublished(configKey)
                 .or(() -> repository.findLatest(configKey))
-                .orElseThrow(ConfigService::notFound);
+                .orElseThrow(ConfigCommandService::notFound);
         return repository.insert(AssistantConfig.newDraft(configKey, base.configType(), base.name(), base.content(),
                 nextVersion(configKey), actor, clock.instant()));
     }
@@ -129,7 +127,7 @@ public class ConfigService {
      */
     public AssistantConfig applyVersion(String configKey, ApplyCommand cmd, String actor) {
         AssistantConfig source = repository.findVersion(configKey, cmd.sourceVersion())
-                .orElseThrow(ConfigService::notFound);
+                .orElseThrow(ConfigCommandService::notFound);
         if (!APPLICABLE.contains(source.status())) {
             throw new AssistantException(ErrorCode.AI_CONFIG_INVALID_STATE);
         }
@@ -174,31 +172,6 @@ public class ConfigService {
             cache.invalidate();
         }
         return published;
-    }
-
-    public List<ConfigSummary> list() {
-        return repository.findAllWithoutContent().stream()
-                .collect(Collectors.groupingBy(AssistantConfig::configKey))
-                .values().stream()
-                .map(ConfigService::summarize)
-                .sorted(Comparator.comparing(ConfigSummary::configType).thenComparing(ConfigSummary::configKey))
-                .toList();
-    }
-
-    /** All versions of a key, newest first, without their content (the history view does not show it). */
-    public List<AssistantConfig> versions(String configKey) {
-        List<AssistantConfig> versions = repository.findAllWithoutContent().stream()
-                .filter(c -> c.configKey().equals(configKey))
-                .sorted(Comparator.comparingInt(AssistantConfig::version).reversed())
-                .toList();
-        if (versions.isEmpty()) {
-            throw notFound();
-        }
-        return versions;
-    }
-
-    public AssistantConfig version(String configKey, int version) {
-        return repository.findVersion(configKey, version).orElseThrow(ConfigService::notFound);
     }
 
     public List<ValidationError> validateWorkingCopy(String configKey) {
@@ -268,18 +241,6 @@ public class ConfigService {
         detail.put("updatedAt", wc.updatedAt());
         detail.put("docVersion", wc.docVersion());
         return detail;
-    }
-
-    private static ConfigSummary summarize(List<AssistantConfig> versions) {
-        AssistantConfig latest = versions.stream().max(Comparator.comparingInt(AssistantConfig::version))
-                .orElseThrow();
-        AssistantConfig published = versions.stream()
-                .filter(c -> c.status() == ConfigStatus.PUBLISHED).findFirst().orElse(null);
-        AssistantConfig wc = versions.stream()
-                .filter(AssistantConfig::isWorkingCopy).findFirst().orElse(null);
-        String name = published != null ? published.name() : wc != null ? wc.name() : latest.name();
-        return new ConfigSummary(latest.configKey(), latest.configType(), name,
-                ConfigSummary.VersionInfo.of(published), ConfigSummary.VersionInfo.of(wc));
     }
 
     private static AssistantException notFound() {

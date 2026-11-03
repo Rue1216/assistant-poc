@@ -10,7 +10,7 @@ import static org.mockito.Mockito.withSettings;
 
 import com.example.copilot.IntegrationTestBase;
 import com.example.copilot.aiassistant.AiAssistantProperties;
-import com.example.copilot.aiassistant.application.config.ConfigService;
+import com.example.copilot.aiassistant.application.config.ConfigCommandService;
 import com.example.copilot.aiassistant.application.config.PublishCommand;
 import com.example.copilot.aiassistant.application.config.PublishMode;
 import com.example.copilot.aiassistant.application.config.SaveCommand;
@@ -73,7 +73,7 @@ class ScheduledPublishJobTest extends IntegrationTestBase {
     @Autowired ApplicationContext context;
 
     private MutableClock clock;
-    private ConfigService service;
+    private ConfigCommandService service;
     private ScheduledPublishJob job;
 
     @BeforeEach
@@ -90,8 +90,8 @@ class ScheduledPublishJobTest extends IntegrationTestBase {
         cache.invalidate();
     }
 
-    private ConfigService newService(AssistantConfigRepository repo) {
-        return new ConfigService(repo, validator, cache, clock, properties);
+    private ConfigCommandService newService(AssistantConfigRepository repo) {
+        return new ConfigCommandService(repo, validator, cache, clock, properties);
     }
 
     private AssistantConfig reload(int version) {
@@ -246,9 +246,9 @@ class ScheduledPublishJobTest extends IntegrationTestBase {
         AssistantConfigMongoRepository failing = mock(AssistantConfigMongoRepository.class,
                 withSettings().defaultAnswer(AdditionalAnswers.delegatesTo(mongoRepository)));
         doThrow(failure).when(failing).findByConfigKeyAndStatus(any(), any());
-        ConfigService racing = newService(new AssistantConfigRepositoryImpl(failing, mongo, transactionManager));
+        ConfigCommandService racing = newService(new AssistantConfigRepositoryImpl(failing, mongo, transactionManager));
         List<LogEvent> events = new ArrayList<>();
-        try (LogCapture serviceLog = LogCapture.of(ConfigService.class, Level.DEBUG);
+        try (LogCapture serviceLog = LogCapture.of(ConfigCommandService.class, Level.DEBUG);
              LogCapture repositoryLog = LogCapture.of(AssistantConfigRepositoryImpl.class, Level.DEBUG)) {
             assertThat(racing.publishDue()).isZero();
             events.addAll(serviceLog.events());
@@ -304,7 +304,7 @@ class ScheduledPublishJobTest extends IntegrationTestBase {
 
     @Test
     void runSwallowsFailures() {
-        ConfigService broken = mock(ConfigService.class);
+        ConfigCommandService broken = mock(ConfigCommandService.class);
         doThrow(new IllegalStateException("secret")).when(broken).publishDue();
 
         new ScheduledPublishJob(broken).run();

@@ -1,7 +1,8 @@
 package com.example.copilot.aiassistant.interfaces.rest.config;
 
 import com.example.copilot.aiassistant.application.config.ApplyCommand;
-import com.example.copilot.aiassistant.application.config.ConfigService;
+import com.example.copilot.aiassistant.application.config.ConfigCommandService;
+import com.example.copilot.aiassistant.application.config.ConfigQueryService;
 import com.example.copilot.aiassistant.application.config.PublishCommand;
 import com.example.copilot.aiassistant.application.config.PublishMode;
 import com.example.copilot.aiassistant.application.config.SaveCommand;
@@ -53,13 +54,15 @@ public class AdminConfigController {
     private static final String EDIT = "hasAuthority('AI_CONFIG_EDIT')";
     private static final String PUBLISH = "hasAuthority('AI_CONFIG_PUBLISH')";
 
-    private final ConfigService service;
+    private final ConfigCommandService service;
+    private final ConfigQueryService queries;
     private final CurrentUserPort currentUser;
     private final ExampleQuestionParser exampleQuestions;
 
-    public AdminConfigController(ConfigService service, CurrentUserPort currentUser,
-                                 ExampleQuestionParser exampleQuestions) {
+    public AdminConfigController(ConfigCommandService service, ConfigQueryService queries,
+                                 CurrentUserPort currentUser, ExampleQuestionParser exampleQuestions) {
         this.service = service;
+        this.queries = queries;
         this.currentUser = currentUser;
         this.exampleQuestions = exampleQuestions;
     }
@@ -67,7 +70,7 @@ public class AdminConfigController {
     @GetMapping
     @PreAuthorize(READ)
     public List<ConfigSummaryView> list() {
-        return service.list().stream().map(ConfigSummaryView::of).toList();
+        return queries.list().stream().map(ConfigSummaryView::of).toList();
     }
 
     @PostMapping
@@ -80,14 +83,14 @@ public class AdminConfigController {
     @GetMapping("/{configKey}/versions")
     @PreAuthorize(READ)
     public List<VersionHistoryItem> versions(@PathVariable @Pattern(regexp = ConfigKeys.PATTERN) String configKey) {
-        return service.versions(configKey).stream().map(VersionHistoryItem::of).toList();
+        return queries.versions(configKey).stream().map(VersionHistoryItem::of).toList();
     }
 
     @GetMapping("/{configKey}/versions/{version}")
     @PreAuthorize(READ)
     public ConfigVersionView version(@PathVariable @Pattern(regexp = ConfigKeys.PATTERN) String configKey,
                                      @PathVariable int version) {
-        return view(service.version(configKey, version));
+        return view(queries.version(configKey, version));
     }
 
     @PostMapping("/{configKey}/draft")

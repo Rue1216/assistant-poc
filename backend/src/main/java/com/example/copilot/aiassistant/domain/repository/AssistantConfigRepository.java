@@ -32,9 +32,6 @@ public interface AssistantConfigRepository {
 
     long count();
 
-    /** Temporary: every version with {@code content} null, for the config list; Task 8 deletes this method. */
-    List<AssistantConfig> findAllWithoutContent();
-
     /** Stores a new version; a unique index violation is a conflict. */
     AssistantConfig insert(AssistantConfig config);
 
