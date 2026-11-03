@@ -11,6 +11,7 @@ import com.example.copilot.aiassistant.domain.config.ConfigType;
 import com.example.copilot.aiassistant.infrastructure.seed.SeedLoader;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -96,8 +97,25 @@ class ConfigQueryRepositoryImplTest extends IntegrationTestBase {
     }
 
     @Test
-    void listSummariesQueryExcludesContent() {
-        assertThat(ConfigQueryRepositoryImpl.summariesQuery().getFieldsObject().get("content")).isEqualTo(0);
+    void listSummariesShowsKeyWhoseOnlyVersionIsDiscarded() {
+        AssistantConfig dropped = AssistantConfig.newDraft("instruction.dropped",
+                ConfigType.SYSTEM_INSTRUCTION, "Dropped", "body", 1, "EEE11111", NOW);
+        mongoRepository.insert(AssistantConfigMapper.toDocument(dropped.withStatus(ConfigStatus.DISCARDED, null)));
+
+        assertThat(queries.listSummaries()).anySatisfy(s -> {
+            assertThat(s.configKey()).isEqualTo("instruction.dropped");
+            assertThat(s.name()).isEqualTo("Dropped");
+            assertThat(s.published()).isNull();
+            assertThat(s.workingCopy()).isNull();
+        });
+    }
+
+    @Test
+    void listQueriesReadOnlySummaryFields() {
+        Set<String> fields = Set.of("configKey", "configType", "name", "status", "version",
+                "scheduledAt", "updatedBy", "updatedAt");
+        assertThat(ConfigQueryRepositoryImpl.activeVersionsQuery().getFieldsObject().keySet()).isEqualTo(fields);
+        assertThat(ConfigQueryRepositoryImpl.latestVersionQuery(KEY).getFieldsObject().keySet()).isEqualTo(fields);
         assertThat(ConfigQueryRepositoryImpl.historyQuery(KEY).getFieldsObject().get("content")).isEqualTo(0);
     }
 

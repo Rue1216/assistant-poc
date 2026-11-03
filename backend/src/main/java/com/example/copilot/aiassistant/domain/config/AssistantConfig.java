@@ -11,6 +11,11 @@ public record AssistantConfig(String id, String configKey, ConfigType configType
                               String createdBy, Instant createdAt, String updatedBy, Instant updatedAt,
                               Instant scheduledAt, Long docVersion) {
 
+    /** The actor recorded for changes the system makes on its own (seeding, scheduled-publish rejection). */
+    public static final String SYSTEM_ACTOR = "system";
+    public static final String SYSTEM_PROMPT_KEY = "system.main";
+    public static final String INSTRUCTION_KEY_PREFIX = "instruction.";
+
     /** A new, not yet stored DRAFT created and last updated by {@code actor} at {@code now}. */
     public static AssistantConfig newDraft(String configKey, ConfigType type, String name, String content,
                                            int version, String actor, Instant now) {

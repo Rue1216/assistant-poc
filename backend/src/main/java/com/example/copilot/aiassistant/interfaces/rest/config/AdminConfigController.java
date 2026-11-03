@@ -137,6 +137,7 @@ public class AdminConfigController {
     }
 
     @PostMapping("/{configKey}/versions/{version}/apply")
+    @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize(EDIT)
     public ConfigVersionView apply(@PathVariable @Pattern(regexp = ConfigKeys.PATTERN) String configKey,
                                    @PathVariable int version,

@@ -142,7 +142,8 @@ class AdminConfigControllerTest extends IntegrationTestBase {
                 .andExpect(jsonPath("$.code").value("AI_CONFIG_INVALID_STATE"));
         call(post(BASE), "{\"configKey\":\"instruction.x\",\"configType\":\"SYSTEM_PROMPT\",\"name\":\"x\"}")
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("AI_INPUT_INVALID"));
+                .andExpect(jsonPath("$.code").value("AI_INPUT_INVALID"))
+                .andExpect(jsonPath("$.details[0].field").value("configKey"));
     }
 
     @Test
@@ -255,7 +256,7 @@ class AdminConfigControllerTest extends IntegrationTestBase {
                 .andExpect(jsonPath("$.details[0].scheduledAt").value(endsWith("+08:00")))
                 .andExpect(jsonPath("$.details[0].updatedAt").value(endsWith("+08:00")));
         call(post(applyUrl), "{\"workingCopyDocVersion\":" + wcDoc + ",\"confirmOverwrite\":true}")
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("DRAFT"))
                 .andExpect(jsonPath("$.basedOnVersion").value(1));
         read(VERSIONS_URL)
@@ -266,7 +267,7 @@ class AdminConfigControllerTest extends IntegrationTestBase {
     @Test
     void applyWithoutWorkingCopyReturnsDraft() throws Exception {
         call(post(VERSIONS_URL + "/1/apply"), "{\"workingCopyDocVersion\":null}")
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("DRAFT"))
                 .andExpect(jsonPath("$.basedOnVersion").value(1));
         call(post(VERSIONS_URL + "/99/apply"), "{}")

@@ -23,7 +23,6 @@ import tools.jackson.databind.ObjectMapper;
 public class SeedLoader implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(SeedLoader.class);
-    private static final String SYSTEM_USER = "system";
 
     private final AssistantConfigRepository repository;
     private final Clock clock;
@@ -49,7 +48,7 @@ public class SeedLoader implements ApplicationRunner {
                 new TypeReference<List<ManifestEntry>>() { });
         for (ManifestEntry entry : entries) {
             repository.insert(AssistantConfig.newDraft(entry.configKey(), entry.configType(), entry.name(),
-                    ClasspathText.read("seed/" + entry.file()), 1, SYSTEM_USER, now)
+                    ClasspathText.read("seed/" + entry.file()), 1, AssistantConfig.SYSTEM_ACTOR, now)
                     .withStatus(ConfigStatus.PUBLISHED, null));
         }
         log.info("seed completed: {} configs published", entries.size());

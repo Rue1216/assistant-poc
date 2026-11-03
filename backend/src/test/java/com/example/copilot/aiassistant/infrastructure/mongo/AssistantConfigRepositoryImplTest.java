@@ -262,6 +262,36 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
         assertThat(countOf(ConfigStatus.PUBLISHED)).isEqualTo(1);
     }
 
+    @Test
+    void revertScheduledTurnsItBackIntoADraft() {
+        scheduleDraft(NOW.plus(Duration.ofMinutes(2)));
+        Instant due = NOW.plus(Duration.ofMinutes(3));
+        AssistantConfig scheduled = repository.findScheduledDue(due).getFirst();
+
+        assertThat(repository.revertScheduled(scheduled, AssistantConfig.SYSTEM_ACTOR, due)).isTrue();
+
+        AssistantConfig reverted = reload(2);
+        assertThat(reverted.status()).isEqualTo(ConfigStatus.DRAFT);
+        assertThat(reverted.scheduledAt()).isNull();
+        assertThat(reverted.updatedBy()).isEqualTo("system");
+        assertThat(reverted.updatedAt()).isEqualTo(due);
+        assertThat(reverted.docVersion()).isEqualTo(scheduled.docVersion() + 1);
+    }
+
+    @Test
+    void revertScheduledSkipsAChangedVersion() {
+        scheduleDraft(NOW.plus(Duration.ofMinutes(2)));
+        Instant due = NOW.plus(Duration.ofMinutes(3));
+        AssistantConfig stale = repository.findScheduledDue(due).getFirst();
+        repository.save(stale.withContent("saved meanwhile", stale.content(), "note").touched(OTHER, due));
+        AssistantConfig before = reload(2);
+
+        assertThat(repository.revertScheduled(stale, AssistantConfig.SYSTEM_ACTOR, due)).isFalse();
+
+        assertThat(reload(2)).isEqualTo(before);
+        assertThat(reload(2).status()).isEqualTo(ConfigStatus.SCHEDULED);
+    }
+
     /** Impl-level half of ScheduledPublishJobTest#writeConflictOnClaimIsLoggedAtDebug. */
     @Test
     void publishScheduledWriteConflictIsLostRaceLoggedAtDebug() {
@@ -425,7 +455,6 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
         assertThat(repository.findScheduledDue(NOW.plus(Duration.ofMinutes(2)))).containsExactly(scheduled);
         assertThat(repository.findPublished()).hasSize(8)
                 .allSatisfy(c -> assertThat(c.status()).isEqualTo(ConfigStatus.PUBLISHED));
-        assertThat(repository.existsByConfigType(ConfigType.SYSTEM_PROMPT)).isTrue();
         assertThat(repository.count()).isEqualTo(9);
         assertThat(repository.findWorkingCopy("instruction.nope")).isEmpty();
     }

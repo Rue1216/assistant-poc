@@ -86,11 +86,6 @@ public class AssistantConfigRepositoryImpl implements AssistantConfigRepository 
     }
 
     @Override
-    public boolean existsByConfigType(ConfigType type) {
-        return mongoRepository.existsByConfigType(type);
-    }
-
-    @Override
     public long count() {
         return mongoRepository.count();
     }
@@ -141,6 +136,20 @@ public class AssistantConfigRepositoryImpl implements AssistantConfigRepository 
             }
             throw e;
         }
+    }
+
+    @Override
+    public boolean revertScheduled(AssistantConfig due, String actor, Instant now) {
+        Query current = Query.query(where("id").is(due.id())
+                .and("status").is(ConfigStatus.SCHEDULED)
+                .and("docVersion").is(due.docVersion()));
+        Update revert = new Update()
+                .set("status", ConfigStatus.DRAFT)
+                .unset("scheduledAt")
+                .set("updatedBy", actor)
+                .set("updatedAt", now)
+                .inc("docVersion", 1L);
+        return mongo.updateFirst(current, revert, AssistantConfigDocument.class).getModifiedCount() == 1;
     }
 
     private boolean claim(AssistantConfig due, Instant now, TransactionStatus status) {

@@ -1,7 +1,6 @@
 package com.example.copilot.aiassistant.domain.repository;
 
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
-import com.example.copilot.aiassistant.domain.config.ConfigType;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -28,8 +27,6 @@ public interface AssistantConfigRepository {
     /** SCHEDULED versions whose {@code scheduledAt} is at or before {@code now}. */
     List<AssistantConfig> findScheduledDue(Instant now);
 
-    boolean existsByConfigType(ConfigType type);
-
     long count();
 
     /** Stores a new version; a unique index violation is a conflict. */
@@ -49,4 +46,10 @@ public interface AssistantConfigRepository {
      * with the same docVersion. Returns false, with nothing changed, when another change won the race.
      */
     boolean publishScheduled(AssistantConfig due, Instant now);
+
+    /**
+     * Turns {@code due} back into a DRAFT (clearing {@code scheduledAt}) if it is still SCHEDULED with the same
+     * docVersion. Returns false, with nothing changed, when another change won the race. No transaction.
+     */
+    boolean revertScheduled(AssistantConfig due, String actor, Instant now);
 }

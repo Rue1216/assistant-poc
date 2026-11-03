@@ -55,16 +55,26 @@ public class ConfigCommandService {
 
     /** Creates a new key with a v1 DRAFT; instructions are prefilled with the 07 section 4.1 template. */
     public AssistantConfig createKey(String configKey, ConfigType type, String name, String actor) {
-        String prefix = type == ConfigType.SYSTEM_PROMPT ? "system." : "instruction.";
-        if (!configKey.startsWith(prefix)) {
-            throw invalidInput("configType");
+        boolean keyMatchesType = type == ConfigType.SYSTEM_PROMPT
+                ? AssistantConfig.SYSTEM_PROMPT_KEY.equals(configKey)
+                : configKey.startsWith(AssistantConfig.INSTRUCTION_KEY_PREFIX);
+        if (!keyMatchesType) {
+            throw invalidInput("configKey");
         }
-        if (repository.findLatest(configKey).isPresent()
-                || (type == ConfigType.SYSTEM_PROMPT && repository.existsByConfigType(ConfigType.SYSTEM_PROMPT))) {
+        if (repository.findLatest(configKey).isPresent()) {
             throw new AssistantException(ErrorCode.AI_CONFIG_INVALID_STATE);
         }
         String content = type == ConfigType.SYSTEM_INSTRUCTION ? instructionTemplate : "";
-        return repository.insert(AssistantConfig.newDraft(configKey, type, name, content, 1, actor, clock.instant()));
+        try {
+            return repository.insert(
+                    AssistantConfig.newDraft(configKey, type, name, content, 1, actor, clock.instant()));
+        } catch (AssistantException e) {
+            if (e.code() == ErrorCode.AI_CONFIG_CONFLICT) {
+                // A brand-new key has no docVersion to disagree on, so a conflict means someone created it first.
+                throw new AssistantException(ErrorCode.AI_CONFIG_INVALID_STATE);
+            }
+            throw e;
+        }
     }
 
     /** Copies the published version (or, if none, the latest one) into a new DRAFT. */
@@ -76,7 +86,7 @@ public class ConfigCommandService {
                 .or(() -> repository.findLatest(configKey))
                 .orElseThrow(ConfigCommandService::notFound);
         return repository.insert(AssistantConfig.newDraft(configKey, base.configType(), base.name(), base.content(),
-                nextVersion(configKey), actor, clock.instant()));
+                nextVersion(configKey), actor, clock.instant()).withBasedOnVersion(base.version()));
     }
 
     public AssistantConfig saveWorkingCopy(String configKey, SaveCommand cmd, String actor) {
@@ -115,8 +125,7 @@ public class ConfigCommandService {
         if (cmd.mode() == PublishMode.SCHEDULED) {
             return repository.save(wc.withStatus(ConfigStatus.SCHEDULED, cmd.scheduledAt()));
         }
-        // scheduledAt is kept as it was: publishing a SCHEDULED copy right away does not clear it.
-        AssistantConfig published = repository.publish(wc.withStatus(ConfigStatus.PUBLISHED, wc.scheduledAt()));
+        AssistantConfig published = repository.publish(wc.withStatus(ConfigStatus.PUBLISHED, null));
         cache.invalidate();
         return published;
     }
@@ -153,7 +162,8 @@ public class ConfigCommandService {
     }
 
     /**
-     * Publishes every SCHEDULED version whose time has come and returns how many were published. A version
+     * Publishes every SCHEDULED version whose time has come and returns how many were published. A version that
+     * no longer passes validation is reverted to DRAFT instead. A version
      * changed since it was read (or published by another instance) is skipped by the repository.
      */
     public int publishDue() {
@@ -161,6 +171,15 @@ public class ConfigCommandService {
         int published = 0;
         for (AssistantConfig due : repository.findScheduledDue(now)) {
             try {
+                List<ValidationError> errors = validator.validate(due.configType(), due.name(), due.changeNote(),
+                        due.content());
+                if (!errors.isEmpty()) {
+                    if (repository.revertScheduled(due, AssistantConfig.SYSTEM_ACTOR, now)) {
+                        log.warn("scheduled publish rejected configKey={} version={} rules={}", due.configKey(),
+                                due.version(), errors.stream().map(ValidationError::rule).distinct().toList());
+                    }
+                    continue;
+                }
                 if (repository.publishScheduled(due, now)) {
                     published++;
                 }

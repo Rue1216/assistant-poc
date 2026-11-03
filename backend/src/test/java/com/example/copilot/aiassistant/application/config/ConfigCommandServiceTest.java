@@ -9,6 +9,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.withSettings;
 import static org.springframework.data.mongodb.core.query.Criteria.where;
 
@@ -23,6 +24,7 @@ import com.example.copilot.aiassistant.domain.exception.AssistantException;
 import com.example.copilot.aiassistant.domain.exception.ErrorCode;
 import com.example.copilot.aiassistant.domain.exception.FieldDetail;
 import com.example.copilot.aiassistant.domain.exception.WorkingCopyDetail;
+import com.example.copilot.aiassistant.domain.prompt.ExampleQuestionParser;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
 import com.example.copilot.aiassistant.infrastructure.seed.SeedLoader;
 import com.mongodb.MongoException;
@@ -142,7 +144,7 @@ class ConfigCommandServiceTest extends IntegrationTestBase {
         assertThat(draft.name()).isEqualTo(v1.name());
         assertThat(draft.content()).isEqualTo(v1.content());
         assertThat(draft.configType()).isEqualTo(ConfigType.SYSTEM_INSTRUCTION);
-        assertThat(draft.basedOnVersion()).isNull();
+        assertThat(draft.basedOnVersion()).isEqualTo(1);
         assertThat(draft.changeNote()).isNull();
         assertThat(draft.scheduledAt()).isNull();
         assertThat(draft.createdBy()).isEqualTo(ACTOR);
@@ -162,6 +164,28 @@ class ConfigCommandServiceTest extends IntegrationTestBase {
         assertError(() -> service.createDraft(KEY, ACTOR), ErrorCode.AI_CONFIG_INVALID_STATE);
 
         assertThat(versionCount()).isEqualTo(2);
+    }
+
+    @Test
+    void createDraftRecordsSourceVersion() {
+        AssistantConfig first = service.createDraft(KEY, ACTOR);
+        assertThat(first.basedOnVersion()).isEqualTo(1);
+        service.discardDraft(KEY, first.docVersion(), ACTOR);
+
+        AssistantConfig published = publishV2();
+        assertThat(service.createDraft(KEY, ACTOR).basedOnVersion()).isEqualTo(published.version());
+    }
+
+    @Test
+    void createDraftWithoutPublishedUsesLatestAsSource() {
+        String key = "instruction.new-topic";
+        AssistantConfig v1 = service.createKey(key, ConfigType.SYSTEM_INSTRUCTION, "新分類", ACTOR);
+        service.discardDraft(key, v1.docVersion(), ACTOR);
+
+        AssistantConfig draft = service.createDraft(key, ACTOR);
+
+        assertThat(draft.version()).isEqualTo(2);
+        assertThat(draft.basedOnVersion()).isEqualTo(1);
     }
 
     @Test
@@ -489,6 +513,8 @@ class ConfigCommandServiceTest extends IntegrationTestBase {
         assertThat(published.status()).isEqualTo(ConfigStatus.PUBLISHED);
         assertThat(published.updatedBy()).isEqualTo(ACTOR);
         assertThat(published.updatedAt()).isEqualTo(NOW.plus(Duration.ofMinutes(5)));
+        assertThat(published.scheduledAt()).isNull();
+        assertThat(reload(published.version()).scheduledAt()).isNull();
         AssistantConfig v1 = reload(1);
         assertThat(v1.status()).isEqualTo(ConfigStatus.ARCHIVED);
         assertThat(v1.updatedAt()).isEqualTo(v1Before.updatedAt());
@@ -546,6 +572,75 @@ class ConfigCommandServiceTest extends IntegrationTestBase {
         assertThat(reload(2).status()).isEqualTo(ConfigStatus.SCHEDULED);
         assertThat(reload(1).status()).isEqualTo(ConfigStatus.PUBLISHED);
         verify(cache, never()).invalidate();
+    }
+
+    @Test
+    void publishDueRevertsInvalidScheduledVersion() {
+        AssistantConfig scheduled = schedule(service.createDraft(KEY, ACTOR), NOW.plus(Duration.ofMinutes(2)), OTHER);
+        repository.save(scheduled.withContent(scheduled.name(), INVALID_CONTENT, "note"));
+        clock.advance(Duration.ofMinutes(3));
+
+        assertThat(service.publishDue()).isZero();
+
+        AssistantConfig v2 = reload(2);
+        assertThat(v2.status()).isEqualTo(ConfigStatus.DRAFT);
+        assertThat(v2.scheduledAt()).isNull();
+        assertThat(v2.updatedBy()).isEqualTo(AssistantConfig.SYSTEM_ACTOR);
+        assertThat(reload(1).status()).isEqualTo(ConfigStatus.PUBLISHED);
+        verify(cache, never()).invalidate();
+    }
+
+    @Test
+    void publishDueRevertsWhenRulesChangedAfterScheduling() {
+        ConfigCommandService permissive = new ConfigCommandService(repository,
+                new ConfigValidator(new ExampleQuestionParser(), List.of("docs.example.com")), cache, clock,
+                properties);
+        ConfigCommandService strict = new ConfigCommandService(repository,
+                new ConfigValidator(new ExampleQuestionParser(), List.of()), cache, clock, properties);
+        AssistantConfig draft = permissive.createDraft(KEY, ACTOR);
+        draft = permissive.saveWorkingCopy(KEY, new SaveCommand(draft.name(),
+                draft.content() + "\n- 參考 https://docs.example.com/x\n", "note", SaveMode.KEEP_STATUS,
+                draft.docVersion()), ACTOR);
+        permissive.publish(KEY, new PublishCommand(PublishMode.SCHEDULED, NOW.plus(Duration.ofMinutes(2)),
+                draft.docVersion()), OTHER);
+        clock.advance(Duration.ofMinutes(3));
+
+        assertThat(strict.publishDue()).isZero();
+
+        assertThat(reload(2).status()).isEqualTo(ConfigStatus.DRAFT);
+        assertThat(reload(1).status()).isEqualTo(ConfigStatus.PUBLISHED);
+    }
+
+    @Test
+    void publishDuePublishesValidOnesInTheSameRun() {
+        String otherKey = "instruction.market-brief";
+        AssistantConfig otherDraft = service.createDraft(otherKey, ACTOR);
+        AssistantConfig other = service.publish(otherKey, new PublishCommand(PublishMode.SCHEDULED,
+                NOW.plus(Duration.ofMinutes(2)), otherDraft.docVersion()), OTHER);
+        AssistantConfig scheduled = schedule(service.createDraft(KEY, ACTOR), NOW.plus(Duration.ofMinutes(2)), OTHER);
+        repository.save(scheduled.withContent(scheduled.name(), INVALID_CONTENT, "note"));
+        clock.advance(Duration.ofMinutes(3));
+
+        assertThat(service.publishDue()).isEqualTo(1);
+
+        assertThat(repository.findVersion(otherKey, other.version()).orElseThrow().status())
+                .isEqualTo(ConfigStatus.PUBLISHED);
+        assertThat(service.findWorkingCopy(KEY).orElseThrow().status()).isEqualTo(ConfigStatus.DRAFT);
+        verify(cache).invalidate();
+    }
+
+    @Test
+    void saveAfterRevertWithStaleDocVersionConflicts() {
+        AssistantConfig scheduled = schedule(service.createDraft(KEY, ACTOR), NOW.plus(Duration.ofMinutes(2)), OTHER);
+        repository.save(scheduled.withContent(scheduled.name(), INVALID_CONTENT, "note"));
+        AssistantConfig preRevert = reload(2);
+        clock.advance(Duration.ofMinutes(3));
+        service.publishDue();
+
+        assertThat(reload(2).status()).isEqualTo(ConfigStatus.DRAFT);
+        assertThat(reload(2).docVersion()).isEqualTo(preRevert.docVersion() + 1);
+        assertError(() -> save(preRevert, "聯繫準備", validContent("過期"), SaveMode.KEEP_STATUS, ACTOR),
+                ErrorCode.AI_CONFIG_CONFLICT);
     }
 
     @Test
@@ -750,20 +845,38 @@ class ConfigCommandServiceTest extends IntegrationTestBase {
     }
 
     @Test
-    void createKeyRejectsSecondSystemPrompt() {
-        assertError(() -> service.createKey("system.second", ConfigType.SYSTEM_PROMPT, "第二份", ACTOR),
-                ErrorCode.AI_CONFIG_INVALID_STATE);
-        assertError(() -> service.createKey(KEY, ConfigType.SYSTEM_INSTRUCTION, "重複", ACTOR),
-                ErrorCode.AI_CONFIG_INVALID_STATE);
+    void createKeySystemPromptMustBeSystemMain() {
+        AssistantException e = assertError(
+                () -> service.createKey("system.second", ConfigType.SYSTEM_PROMPT, "第二份", ACTOR),
+                ErrorCode.AI_INPUT_INVALID);
+        assertThat(e.details()).containsExactly(new FieldDetail("configKey"));
         assertThat(repository.findLatest("system.second")).isEmpty();
     }
 
     @Test
-    void createKeyWithMismatchedTypeIsInputInvalid() {
+    void createKeyInstructionMustHaveInstructionPrefix() {
         AssistantException e = assertError(
-                () -> service.createKey("instruction.x", ConfigType.SYSTEM_PROMPT, "x", ACTOR),
+                () -> service.createKey("system.x", ConfigType.SYSTEM_INSTRUCTION, "x", ACTOR),
                 ErrorCode.AI_INPUT_INVALID);
-        assertThat(e.details()).containsExactly(new FieldDetail("configType"));
+        assertThat(e.details()).containsExactly(new FieldDetail("configKey"));
+    }
+
+    @Test
+    void createKeyExistingKeyIsInvalidState() {
+        assertError(() -> service.createKey("system.main", ConfigType.SYSTEM_PROMPT, "重複", ACTOR),
+                ErrorCode.AI_CONFIG_INVALID_STATE);
+        assertError(() -> service.createKey(KEY, ConfigType.SYSTEM_INSTRUCTION, "重複", ACTOR),
+                ErrorCode.AI_CONFIG_INVALID_STATE);
+    }
+
+    @Test
+    void createKeyLosingTheInsertRaceIsInvalidState() {
+        AssistantConfigRepository racing = mock(AssistantConfigRepository.class);
+        when(racing.findLatest("instruction.race")).thenReturn(Optional.empty());
+        when(racing.insert(any())).thenThrow(new AssistantException(ErrorCode.AI_CONFIG_CONFLICT));
+
+        assertError(() -> newService(racing).createKey("instruction.race", ConfigType.SYSTEM_INSTRUCTION, "x", ACTOR),
+                ErrorCode.AI_CONFIG_INVALID_STATE);
     }
 
     @Test

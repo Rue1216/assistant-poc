@@ -20,8 +20,9 @@
       "docVersion":     { "bsonType": "long" }
     }
   },
-  "$or": [
-    { "status": { "$ne": "SCHEDULED" } },
-    { "scheduledAt": { "$type": "date" } }
+  "$and": [
+    { "$or": [ { "status": { "$ne": "SCHEDULED" } }, { "scheduledAt": { "$type": "date" } } ] },
+    { "$or": [ { "configType": { "$ne": "SYSTEM_PROMPT" } }, { "configKey": "system.main" } ] },
+    { "$or": [ { "configType": { "$ne": "SYSTEM_INSTRUCTION" } }, { "configKey": { "$regex": "^instruction\\." } } ] }
   ]
 }

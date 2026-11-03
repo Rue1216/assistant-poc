@@ -94,6 +94,23 @@ class MongoSchemaTest extends IntegrationTestBase {
     }
 
     @Test
+    void validatorRejectsSystemPromptOtherThanSystemMain() {
+        Document other = rawDoc("DRAFT", null).append("configType", "SYSTEM_PROMPT")
+                .append("configKey", "system.other");
+        assertThatThrownBy(() -> mongo.getCollection(CONFIG).insertOne(other))
+                .isInstanceOf(MongoWriteException.class);
+        mongo.getCollection(CONFIG).insertOne(rawDoc("DRAFT", null).append("configType", "SYSTEM_PROMPT")
+                .append("configKey", "system.main"));
+    }
+
+    @Test
+    void validatorRejectsInstructionWithoutInstructionPrefix() {
+        Document bad = rawDoc("DRAFT", null).append("configKey", "system.raw");
+        assertThatThrownBy(() -> mongo.getCollection(CONFIG).insertOne(bad))
+                .isInstanceOf(MongoWriteException.class);
+    }
+
+    @Test
     void uniqueVersionPerKey() {
         repository.save(config("instruction.dup", 1, ConfigStatus.ARCHIVED));
         assertThatThrownBy(() -> repository.save(config("instruction.dup", 1, ConfigStatus.ARCHIVED)))

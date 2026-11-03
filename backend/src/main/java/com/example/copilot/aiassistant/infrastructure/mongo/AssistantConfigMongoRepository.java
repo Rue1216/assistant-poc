@@ -1,7 +1,6 @@
 package com.example.copilot.aiassistant.infrastructure.mongo;
 
 import com.example.copilot.aiassistant.domain.config.ConfigStatus;
-import com.example.copilot.aiassistant.domain.config.ConfigType;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
@@ -22,8 +21,6 @@ public interface AssistantConfigMongoRepository extends MongoRepository<Assistan
     Optional<AssistantConfigDocument> findTopByConfigKeyOrderByVersionDesc(String key);
 
     List<AssistantConfigDocument> findByStatus(ConfigStatus status);
-
-    boolean existsByConfigType(ConfigType type);
 
     List<AssistantConfigDocument> findByStatusAndScheduledAtLessThanEqual(ConfigStatus status, Instant time);
 }
