@@ -91,8 +91,8 @@ public class DomainBeanConfiguration {
     }
 
     @Bean
-    GetStockQuoteTool getStockQuoteTool(TwseGateway twse) {
-        return new GetStockQuoteTool(twse);
+    GetCompanyAnnouncementsTool getCompanyAnnouncementsTool(TwseGateway twse) {
+        return new GetCompanyAnnouncementsTool(twse);
     }
 
     @Bean
@@ -101,7 +101,7 @@ public class DomainBeanConfiguration {
     }
 
     @Bean
-    GetCompanyAnnouncementsTool getCompanyAnnouncementsTool(TwseGateway twse) {
-        return new GetCompanyAnnouncementsTool(twse);
+    GetStockQuoteTool getStockQuoteTool(TwseGateway twse) {
+        return new GetStockQuoteTool(twse);
     }
 }

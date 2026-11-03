@@ -267,7 +267,7 @@ v0.2 起，內部工具與平台 API 一對一（`getCustomer` ↔ `getCustomer`
 
 未列出的代碼視為非理財會員並記錄 warn log（不含顧客資料）。權益文字為示意。
 
-`DisplayFormat`（`aiassistant.tool.customer`，依平台 Format 欄位規則）：日期 `yyyy/MM/dd`；金額千分位、四捨五入到小數 2 位、去掉末尾 0、加「元」（`1000.345` → `1,000.35 元`）；百分比小數 2 位（`25.00%`）；百分點差帶正負號（`+16.60 個百分點`）；利率小數 3 位（`2.045%`）；布林「是／否」。
+`DisplayFormat`（`aiassistant.domain.tool.customer`，依平台 Format 欄位規則）：日期 `yyyy/MM/dd`；金額千分位、四捨五入到小數 2 位、去掉末尾 0、加「元」（`1000.345` → `1,000.35 元`）；百分比小數 2 位（`25.00%`）；百分點差帶正負號（`+16.60 個百分點`）；利率小數 3 位（`2.045%`）；布林「是／否」。
 
 ### 2.3 `getRealTimeCustomer`
 

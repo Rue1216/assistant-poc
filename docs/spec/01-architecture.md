@@ -1,6 +1,6 @@
 # 01 架構說明
 
-> 版本：v1.2（POC）・2026-10-30（新增 5.1 的 Clean Architecture 對應、第 7 節 UI 框架說明、第 9 節與 requirements.md 的差異；v1.1 2026-10-29 為個人 360 內容重寫：`CustomerDataPort` 對應平台兩支 API、每題資料暫存、本顧客註記、`certNo`、mock 帳號與 `scope`，見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
+> 版本：v1.3（POC）・2026-11-02（後端套件改為 domain／application／interfaces／infrastructure 四層，重寫 5.1 目錄樹、Clean Architecture 對應表與例外說明；v1.2 2026-10-30 新增 5.1 的 Clean Architecture 對應、第 7 節 UI 框架說明、第 9 節與 requirements.md 的差異；v1.1 2026-10-29 為個人 360 內容重寫：`CustomerDataPort` 對應平台兩支 API、每題資料暫存、本顧客註記、`certNo`、mock 帳號與 `scope`，見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
 
 ## 1. 系統元件
 
@@ -22,9 +22,9 @@ flowchart LR
     TR[ToolRegistry]
     TG[ToolGuard]
     T[工具們]
-    CS[ConfigService]
+    CS[ConfigCommandService<br/>ConfigQueryService]
     AU[AuditLogger]
-    FB[FeedbackController<br/>FeedbackService]
+    FB[FeedbackController<br/>FeedbackService<br/>FeedbackQueryService]
     EV[EvalController<br/>EvalRunService<br/>EvalRunner 評測執行緒]
     EJ[EvalJudge]
     MP[mockplatform<br/>假登入 / 範圍規則 / 假顧客]
@@ -250,28 +250,61 @@ backend/
 ├─ lib-repo/         專案內的 Maven repository：LangChain4j 和平台沒有的間接依賴（見 7.1）
 └─ src/main/java/com/example/copilot/
    ├─ aiassistant/
-   │  ├─ chat/       ChatController、SuggestionController、ChatOrchestrator（chat／evaluate）、EvaluationReport、DTO
-   │  ├─ answer/     AnswerSchema（每輪請求的回答 JSON Schema）、AnswerAssembler（驗證、去識別化、
-   │  │              重新編號、扁平化）、NumberChecker（數字核對）、AnswerBlock、BlockType
-   │  ├─ privacy/    CustomerContextFactory（含 forEvaluation，只供評測）、CustomerDeidentifier、PiiRedactor
-   │  ├─ tool/       AssistantTool、ToolRegistry、ToolGuard、ToolExecutor（配發引用編號）、ToolResult、
-   │  │              ToolContext、TurnCustomerData（每題資料暫存）、CitationDetail（工具對自己結果的引用說明）
-   │  │  ├─ customer/  2 個顧客工具 getCustomer(sections)、getRealTimeCustomer（皆無顧客參數）、CustomerSection、
-   │  │  │             DisplayFormat、MemberRankTable、sections/（各分組的格式化）
-   │  │  └─ market/    3 個市場工具、TwseClient
-   │  ├─ prompt/     PromptAssembler（snapshot／assemble）、InstructionSelection、AssembledPrompt、PromptVersion、
-   │  │              PublishedConfigCache、InstructionRouter、RouterPrompt、RouteDecision、RouteSource、
-   │  │              SafetyRules、CustomerNotes（本顧客註記）、AnswerFormatRules、ExampleQuestionParser
-   │  ├─ config/     AdminConfigController、ConfigService、ConfigValidator、Repository、
-   │  │              ScheduledPublishJob（每 30 秒發布到期的預約版本）
-   │  ├─ audit/      AuditLogger、AuditEntry、AuditRecord（含 token、promptVersions、routeSource、instructionKey）
-   │  ├─ feedback/   FeedbackController、FeedbackService、FeedbackRating、VersionFeedback（回饋與版本統計）
-   │  ├─ evaluation/ EvalController、EvalRunService、EvalRunner、EvalRunRepository、EvalDatasetLoader、
-   │  │              EvalCase／EvalDataset、CaseChecker、EvalJudge／EvalJudgePrompt、EvalMetrics、
-   │  │              EvalConfiguration（資料集與單一執行緒 executor）、dto
-   │  ├─ llm/        LlmConfiguration（建立 ChatModel）
-   │  ├─ port/       CurrentUserPort、CustomerAccessPort、CustomerDataPort、CustomerRecord、port/c360/（Customer360Record、RealTimeStatusRecord 與對應 CustomerDto 的 record）
-   │  └─ common/     ErrorCode、AssistantException、例外處理（只作用於 aiassistant 套件）
+   │  ├─ AiAssistantProperties        Spring Boot 組態綁定（只有 application 與 infrastructure 可用）
+   │  ├─ domain/
+   │  │  ├─ exception/   AssistantException、ErrorCode（HTTP 狀態為 int）
+   │  │  ├─ config/      AssistantConfig（record）、ConfigStatus、ConfigType、ValidationError、PromptVersion、
+   │  │  │               PublishedConfigs、ConfigValidator
+   │  │  ├─ customer/    AccessLevel、CustomerRecord、c360/（Customer360Record、RealTimeStatusRecord 等 record）
+   │  │  ├─ user/        UserContext
+   │  │  ├─ chat/        ChatResult、EvaluationReport
+   │  │  ├─ answer/      AnswerSchema（每輪請求的回答 JSON Schema）、AnswerAssembler（驗證、去識別化、
+   │  │  │               重新編號、扁平化）、NumberChecker（數字核對）、AssembledAnswer、AnswerBlock、BlockType
+   │  │  ├─ privacy/     CustomerContext、CustomerDeidentifier、PiiRedactor
+   │  │  ├─ prompt/      PromptAssembler（assemble）、AssembledPrompt、InstructionSelection、AnswerFormatRules、
+   │  │  │               SafetyRules、CustomerNotes（本顧客註記）、ExampleQuestionParser、RouterPrompt、
+   │  │  │               RouteDecision、RouteSource、SummaryPrompt、SummaryResult、SummaryStatus
+   │  │  ├─ tool/        AssistantTool、ToolRegistry、ToolGuard、ToolExecutor（配發引用編號）、ToolResult、
+   │  │  │               ToolContext、ToolOutcome、ToolStatus、CitationDetail（工具對自己結果的引用說明）、
+   │  │  │               CitationIds、Source、NoArgs、TurnCustomerData（每題資料暫存）
+   │  │  │  ├─ customer/  2 個顧客工具 getCustomer(sections)、getRealTimeCustomer（皆無顧客參數）、CustomerSection、
+   │  │  │  │             DisplayFormat、MemberRankTable、RadarFacts、sections/（各分組的格式化）
+   │  │  │  └─ market/    3 個市場工具、MarketTool、TwseGateway（介面）、TwseParsing、TwseException
+   │  │  ├─ audit/       AuditEntry、AuditRecord（含 token、promptVersions、routeSource、instructionKey）、CredentialMasker
+   │  │  ├─ eval/        EvalRun、EvalStatus、EvalSummary、EvalMetrics、EvalCase、EvalCaseRecord、EvalDataset、
+   │  │  │               EvalDatasetLoader、EvalErrors、CaseResult、CaseChecker、RuleChecks、JudgeVerdict、EvalJudgePrompt
+   │  │  ├─ feedback/    FeedbackRating
+   │  │  └─ repository/  AssistantConfigRepository、AuditRepository、EvalRunRepository（介面）
+   │  ├─ application/
+   │  │  ├─ port/        CurrentUserPort、CustomerAccessPort、CustomerDataPort（小幫手對平台的唯一依賴）
+   │  │  ├─ support/     ClasspathText、RequestContext（MDC requestId）
+   │  │  ├─ llm/         LlmErrorMapper、LlmRequestParameters
+   │  │  ├─ chat/        ChatOrchestrator（chat／evaluate）、ChatCommand、CustomerContextFactory（含 forEvaluation，
+   │  │  │               只供評測）、InstructionRouter、HistorySummarizer、SuggestionService
+   │  │  ├─ config/      ConfigCommandService、ConfigQueryService、ConfigQueryRepository（介面）、ConfigSummary、
+   │  │  │               VersionHistoryEntry、PublishedConfigCache、SaveCommand、PublishCommand、ApplyCommand、
+   │  │  │               SaveMode、PublishMode
+   │  │  ├─ audit/       AuditLogger
+   │  │  ├─ evaluation/  EvalRunService、EvalRunner、EvalJudge
+   │  │  └─ feedback/    FeedbackService（評分）、FeedbackQueryService、FeedbackStatsQueryRepository（介面）、VersionFeedback
+   │  ├─ interfaces/rest/
+   │  │  ├─ ApiError、AssistantExceptionHandler（只作用於 aiassistant 套件）、RequestIdFilter、
+   │  │  │  PerUserRateLimiter、RateLimitConfiguration
+   │  │  ├─ chat/        ChatController、SuggestionController、dto/
+   │  │  ├─ config/      AdminConfigController、dto/
+   │  │  ├─ evaluation/  EvalController、dto/
+   │  │  └─ feedback/    FeedbackController、dto/
+   │  └─ infrastructure/
+   │     ├─ config/      DomainBeanConfiguration（domain 類別的 @Bean）、ClockConfiguration、
+   │     │               EvalConfiguration（資料集與單一執行緒 executor）
+   │     ├─ llm/         LlmConfiguration（建立 ChatModel）
+   │     ├─ market/      TwseClient（implements TwseGateway）
+   │     ├─ mongo/       AssistantConfigDocument、AssistantConfigMapper、AssistantConfigMongoRepository（Spring Data）、
+   │     │               AssistantConfigRepositoryImpl、ConfigQueryRepositoryImpl、AuditRecordMapper、
+   │     │               AuditRepositoryImpl、FeedbackStatsQueryRepositoryImpl、EvalRunRepositoryImpl、
+   │     │               MongoConfiguration、MongoSchemaInitializer
+   │     ├─ seed/        SeedLoader
+   │     └─ scheduler/   ScheduledPublishJob（每 30 秒發布到期的預約版本）
    └─ mockplatform/  SecurityConfig、MockUserDirectory（9 個員工帳號、5 個業務角色碼與 `scope`）、
                      MockCustomerAccessAdapter（依 `scope` 的範圍規則、停止利用個資一律 NONE）、
                      MockCustomerDataAdapter、MockCustomerData／MockCustomer360Data（7 位假顧客與
@@ -280,17 +313,24 @@ backend/
 
 > 套件名稱 `com.example.copilot` 是 POC 暫定，整合時依平台規範調整。
 
-**與 Clean Architecture 的對應**（需求第 2 節）：套件依功能切分，依賴方向一律由外向內，平台能力只經 `port/` 進入：
+**與 Clean Architecture 的對應**（需求第 2 節；平台守則見 [questions-for-manager](../questions-for-manager.md) S2）：套件分成 `domain / application / interfaces / infrastructure` 四層，依賴方向一律由外向內（interfaces、infrastructure → application → domain），平台能力只經 `application/port/` 進入。`aiassistant` 底下只允許這四個子套件與 `AiAssistantProperties`：
 
-| 層 | 套件 | 說明 |
-|---|---|---|
-| 介面（inbound adapter） | `chat`、`config`、`feedback`、`evaluation` 的 Controller 與 `dto/` | REST 入口；只做參數驗證與 DTO 轉換，不含業務規則 |
-| 應用（use case） | `ChatOrchestrator`、`ConfigService`、`FeedbackService`、`EvalRunService`／`EvalRunner` | 一次提問、發布、評測的流程；只依賴下兩層與 port |
-| 領域（domain） | `answer`、`privacy`、`prompt`、`tool`（含 `customer/`、`market/`）、`audit` 的規則類別 | 去識別化、prompt 組裝、工具驗證、回答組裝、稽核內容；不依賴 Spring Web、不知道平台 |
-| 出站介面（output port） | `port/`（`CurrentUserPort`、`CustomerAccessPort`、`CustomerDataPort`） | 小幫手對平台的唯一依賴，由平台實作 |
-| 基礎設施（outbound adapter） | `llm`（LangChain4j `ChatModel`）、`market/TwseClient`、各 Repository、`mockplatform`（POC 替身） | 對外連線與資料庫；`mockplatform` 整合時刪除 |
+| 層 | 套件 | 允許依賴 | 本專案的類別舉例 |
+|---|---|---|---|
+| Domain | `aiassistant.domain` | 只依賴自己與 JDK 及下述允許的函式庫；不得依賴 Spring、MongoDB、`jakarta.servlet`、`AiAssistantProperties`、其他三層與 `mockplatform` | `AssistantConfig`（record）、`ConfigValidator`、`PromptAssembler`、`AnswerAssembler`、`PiiRedactor`、`CustomerDeidentifier`、`ToolExecutor`、`GetCustomerTool`、`EvalRun`；`repository/` 的 `AssistantConfigRepository`、`AuditRepository`、`EvalRunRepository` 介面 |
+| Application | `aiassistant.application` | domain、`application/port/`、`AiAssistantProperties`、Spring 的 `@Service`／`@Component` 等標註；不得依賴 `org.springframework.data`、`transaction`、MongoDB、`jakarta.servlet`、interfaces、infrastructure | `ChatOrchestrator`、`InstructionRouter`、`ConfigCommandService`／`ConfigQueryService`、`FeedbackService`／`FeedbackQueryService`、`EvalRunService`、`AuditLogger`、`PublishedConfigCache`；`port/` 的 `CurrentUserPort`、`CustomerAccessPort`、`CustomerDataPort`；`ConfigQueryRepository`、`FeedbackStatsQueryRepository` 介面 |
+| Interfaces | `aiassistant.interfaces.rest` | domain 的資料型別（record、enum、`AssistantException`／`ErrorCode`）與 application；不得依賴 `domain.repository`、infrastructure、Spring Data、MongoDB 與 `mockplatform` | `ChatController`、`AdminConfigController`、`EvalController`、`FeedbackController`、各 `dto/`、`AssistantExceptionHandler`、`PerUserRateLimiter` |
+| Infrastructure | `aiassistant.infrastructure` | domain、application 與外部函式庫；不得依賴 interfaces 與 `mockplatform` | `AssistantConfigDocument`（Mongo document）、`AssistantConfigMapper`、`AssistantConfigRepositoryImpl`、`ConfigQueryRepositoryImpl`、`AuditRepositoryImpl`、`TwseClient`、`LlmConfiguration`、`DomainBeanConfiguration`、`ScheduledPublishJob`、`SeedLoader` |
 
-套件沒有照 `adapter / application / domain` 命名分資料夾，整合時依平台既有模組的分層命名調整（questions-for-manager S2）；類別的職責與依賴方向不變。
+`mockplatform` 是 POC 替身，不分層，整合時刪除；它實作 `application/port/` 的三個介面。四層名稱已對齊平台守則；整合時若平台模組另有命名，只需調整套件前綴，類別的職責與依賴方向不變。
+
+**例外與驗證**
+
+- **Domain 允許的第三方函式庫**：LangChain4j（`dev.langchain4j.*`）、Jackson（`tools.jackson.*`、`com.fasterxml.jackson.annotation.*`）、Bean Validation（`jakarta.validation.*`）、SLF4J、SnakeYAML。理由：守則明列的禁止項只有 Spring 與 MongoDB；LangChain4j 是本文第 1 節已定的 AI orchestration 決策，工具的 `ToolSpecification` 與回答的 JSON Schema 都與它綁定，包成 port 的成本高於收益；Jackson 與 Bean Validation 只用標註與資料綁定，不帶入執行環境。
+- **Domain 類別不加 `@Component`**：由 `infrastructure/config/DomainBeanConfiguration` 以 `@Bean` 建立；需要設定值的類別改由建構子接收，不讀 `AiAssistantProperties`。
+- **`ArchitectureRulesTest`**（`backend/src/test/java/com/example/copilot/aiassistant/`）掃描 `src/main/java` 的 `import` 行，不引入 ArchUnit（公司環境無法下載新套件）。固定規則：(1) domain 不得 import `org.springframework.`、`com.mongodb.`、`org.bson.`、`jakarta.servlet.`、`jakarta.annotation.`、`AiAssistantProperties`、application／interfaces／infrastructure 與 `mockplatform`；(2) application 不得 import `org.springframework.data.`、`org.springframework.transaction.`、`com.mongodb.`、`org.bson.`、`jakarta.servlet.`、interfaces、infrastructure 與 `mockplatform`；(3) interfaces 不得 import `domain.repository.`、infrastructure、`org.springframework.data.`、`com.mongodb.`、`org.bson.` 與 `mockplatform`；(4) infrastructure 不得 import interfaces 與 `mockplatform`；(5) infrastructure 中實作 `domain.repository.*` 或 `application.*QueryRepository` 的類別，檔名必須以 `Impl` 結尾；(6) `aiassistant` 底下只能有 `domain`、`application`、`interfaces`、`infrastructure` 四個子套件與 `AiAssistantProperties.java`；(7) 不得存在 `app/` 套件。
+- **CQRS 的套用範圍**：config 與 feedback 拆成命令側與查詢側。config 為 `ConfigCommandService`（存草稿、發布、套用）與 `ConfigQueryService`，列表與版本歷程（不含 `content` 的投影）經 `ConfigQueryRepository`，由 `infrastructure/mongo/ConfigQueryRepositoryImpl` 實作；feedback 為 `FeedbackService`（只負責評分）與 `FeedbackQueryService`，版本統計經 `FeedbackStatsQueryRepository`。evaluation 不另建投影：查詢回傳的就是整個 `EvalRun` 聚合（`recent` 已排除 `cases`），沒有可以省下的欄位；chat 本來就只有命令側。
+- **Mongo 模型分離**：`AssistantConfigDocument`（infrastructure，Mongo 對應）經 `AssistantConfigMapper` 與 `AssistantConfig`（domain record）互轉；domain 與 application 看不到 Mongo 型別，交易邊界由 infrastructure 的 Repository 實作負責。
 
 ### 5.2 前端
 

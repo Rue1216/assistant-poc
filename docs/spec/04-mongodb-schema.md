@@ -116,7 +116,7 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_CONFIG", {
 });
 ```
 
-> validator 可以同時使用 `$jsonSchema` 和查詢運算子；上面的 `$or` 確保 `SCHEDULED` 一定有 `scheduledAt`。`ConfigService` 也會在寫入前檢查。
+> validator 可以同時使用 `$jsonSchema` 和查詢運算子；上面的 `$or` 確保 `SCHEDULED` 一定有 `scheduledAt`。`ConfigCommandService` 也會在寫入前檢查。
 
 ### 2.4 版本策略
 

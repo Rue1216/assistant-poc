@@ -6,10 +6,12 @@ import com.example.copilot.IntegrationTestBase;
 import com.example.copilot.aiassistant.domain.answer.AnswerAssembler;
 import com.example.copilot.aiassistant.domain.audit.CredentialMasker;
 import com.example.copilot.aiassistant.domain.config.ConfigValidator;
+import com.example.copilot.aiassistant.domain.customer.AccessLevel;
 import com.example.copilot.aiassistant.domain.privacy.PiiRedactor;
 import com.example.copilot.aiassistant.domain.prompt.CustomerNotes;
 import com.example.copilot.aiassistant.domain.prompt.ExampleQuestionParser;
 import com.example.copilot.aiassistant.domain.prompt.PromptAssembler;
+import com.example.copilot.aiassistant.domain.tool.AssistantTool;
 import com.example.copilot.aiassistant.domain.tool.ToolExecutor;
 import com.example.copilot.aiassistant.domain.tool.ToolGuard;
 import com.example.copilot.aiassistant.domain.tool.ToolRegistry;
@@ -30,6 +32,13 @@ class DomainBeanConfigurationTest extends IntegrationTestBase {
     void registersAllFiveTools() {
         assertThat(registry.names()).containsExactlyInAnyOrder(
                 "getCustomer", "getRealTimeCustomer", "getStockQuote", "getMarketIndex", "getCompanyAnnouncements");
+    }
+
+    /** The order is the order the tool definitions reach the model; it matches the pre-refactor component scan. */
+    @Test
+    void toolsAreOfferedInThePreRefactorOrder() {
+        assertThat(registry.toolsFor(AccessLevel.FULL).stream().map(AssistantTool::name).toList()).containsExactly(
+                "getCustomer", "getRealTimeCustomer", "getCompanyAnnouncements", "getMarketIndex", "getStockQuote");
     }
 
     @Test

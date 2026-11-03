@@ -430,7 +430,7 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
         assertThat(repository.findWorkingCopy("instruction.nope")).isEmpty();
     }
 
-    /** The stored document keeps the fields and the {@code _class} value written before the domain/document split. */
+    /** The stored document keeps the fields and the pre-refactor {@code _class} class name. */
     @Test
     void storedDocumentShapeIsUnchanged() {
         AssistantConfig draft = insertDraft(OTHER);
@@ -442,7 +442,7 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
         assertThat(raw.keySet()).containsExactly("_id", "configKey", "configType", "name", "content", "status",
                 "version", "createdBy", "createdAt", "updatedBy", "updatedAt", "docVersion", "_class");
         assertThat(raw.getObjectId("_id").toHexString()).isEqualTo(draft.id());
-        assertThat(raw.getString("_class")).isEqualTo("com.example.copilot.aiassistant.domain.config.AssistantConfig");
+        assertThat(raw.getString("_class")).isEqualTo("com.example.copilot.aiassistant.config.AssistantConfig");
         assertThat(raw.getString("status")).isEqualTo("DRAFT");
         assertThat(raw.get("docVersion")).isEqualTo(0L);
     }

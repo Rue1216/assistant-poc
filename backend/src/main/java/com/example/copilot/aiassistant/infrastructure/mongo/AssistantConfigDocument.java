@@ -9,11 +9,11 @@ import org.springframework.data.annotation.Version;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 /**
- * Stored form of {@code AssistantConfig}. The type alias keeps the {@code _class} value written before the class
- * moved out of the domain, so documents look the same whichever version wrote them.
+ * Stored form of {@code AssistantConfig}. The type alias pins the {@code _class} value to the pre-refactor class name
+ * (the class used to live in the config package), so documents look the same whichever version wrote them.
  */
 @Document("COLL_ICRM_AI_ASSISTANT_CONFIG")
-@TypeAlias("com.example.copilot.aiassistant.domain.config.AssistantConfig")
+@TypeAlias("com.example.copilot.aiassistant.config.AssistantConfig")
 public class AssistantConfigDocument {
 
     @Id
