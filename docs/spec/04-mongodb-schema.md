@@ -1,6 +1,6 @@
 # 04 MongoDB Schema
 
-> 版本：v1.2（POC）・2026-10-30（2.5 顧客編號禁止規則改為 `certNo` 格式、補未納入的越權指令樣式；v1.1 2026-10-29 為 audit 移除顧客編號欄位與索引 `IX_ICRM_AI_AUDIT_3`；seed 改為 7 個問題分類；範例帳號改為員工帳號；見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md)）
+> 版本：v1.3（POC）・2026-11-03（Prompt 管理 review 修正：2.1 `basedOnVersion`、`scheduledAt`、`content` 單位；2.3 validator 加入類型與 key 一致性規則；2.4 建立草稿記錄來源、立即發布清空預約時間、排程到期先驗證；2.5 名稱與修改說明每次儲存都檢查；2.7 多機首次啟動的限制，見 [Prompt 管理 review 修正設計](../superpowers/specs/2026-11-02-prompt-admin-review-fixes-design.md)；v1.2 2026-10-30：2.5 顧客編號禁止規則改為 `certNo` 格式、補未納入的越權指令樣式；v1.1 2026-10-29 為 audit 移除顧客編號欄位與索引 `IX_ICRM_AI_AUDIT_3`；seed 改為 7 個問題分類；範例帳號改為員工帳號；見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md)）
 
 ## 1. Collection 總覽
 
@@ -27,16 +27,16 @@
 | `configKey` | string | ✓ | `^(system\|instruction)\.[a-z0-9-]{1,50}$` |
 | `configType` | string | ✓ | `SYSTEM_PROMPT`（只有一份 `system.main`）或 `SYSTEM_INSTRUCTION`（每份一個問題分類） |
 | `name` | string | ✓ | 顯示名稱，1–50 字 |
-| `content` | string | ✓ | Markdown 內容，最多 65,536 字元（API 另檢查 UTF-8 bytes） |
+| `content` | string | ✓ | Markdown 內容。Mongo validator 以字元計算，最多 65,536 字元；API 與發布前驗證以 UTF-8 bytes 計算，最多 65,536 bytes，這是實際生效的限制。任何字元編碼成 UTF-8 至少 1 byte，所以通過 API 的內容一定通過 Mongo；validator 只是防止繞過 API 的寫入 |
 | `status` | string | ✓ | `DRAFT`（草稿）、`SCHEDULED`（已排程）、`PUBLISHED`（已發布）、`ARCHIVED`（已封存：曾上線、後被新版取代）、`DISCARDED`（已捨棄：未上線就被捨棄或被套用取代） |
 | `version` | int | ✓ | 內部流水號，同一個 `configKey` 從 1 開始遞增；只用於 API 路徑、排序與唯一索引（需求 3-5），**畫面不顯示** |
-| `basedOnVersion` | int \| null | | 套用歷史版本時記錄來源版本的流水號 |
+| `basedOnVersion` | int \| null | | 建立草稿或套用時的來源版本流水號；新增設定的 v1 草稿與初始資料為 null |
 | `changeNote` | string \| null | | 修改說明，最多 200 字 |
 | `createdBy` | string | ✓ | |
 | `createdAt` | date | ✓ | |
 | `updatedBy` | string | ✓ | 最後一次變更這份版本的人：儲存、套用、預約、發布會更新；**封存不更新**（見 2.4） |
 | `updatedAt` | date | ✓ | 最後一次變更的時間；已發布 / 已封存版本即為生效時間，畫面以它辨識版本 |
-| `scheduledAt` | date \| null | | 預約發布時間。`SCHEDULED` 必填；退回草稿時清空；排程發布後保留，作為「原預約時間」紀錄 |
+| `scheduledAt` | date \| null | | 預約發布時間。`SCHEDULED` 必填；退回草稿或立即發布時清空；排程器到期發布後保留，作為「原預約時間」紀錄 |
 | `docVersion` | long | ✓ | Spring Data `@Version` 樂觀鎖，每次更新加 1 |
 
 > 後台管理人員和 IT 管理人員都可以發布，不另設審核關卡；不另設 `publishedBy`、`publishedAt`，發布資訊記在 `updatedBy`、`updatedAt`，以版本歷程追溯每次變更。
@@ -107,16 +107,21 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_CONFIG", {
         docVersion:     { bsonType: "long" }
       }
     },
-    // SCHEDULED 必須有預約時間
-    $or: [
-      { status: { $ne: "SCHEDULED" } },
-      { scheduledAt: { $type: "date" } }
+    $and: [
+      // SCHEDULED 必須有預約時間
+      { $or: [ { status: { $ne: "SCHEDULED" } }, { scheduledAt: { $type: "date" } } ] },
+      // SYSTEM_PROMPT 的 key 只能是 system.main
+      { $or: [ { configType: { $ne: "SYSTEM_PROMPT" } }, { configKey: "system.main" } ] },
+      // SYSTEM_INSTRUCTION 的 key 必須以 instruction. 開頭
+      { $or: [ { configType: { $ne: "SYSTEM_INSTRUCTION" } }, { configKey: { $regex: "^instruction\\." } } ] }
     ]
   }
 });
 ```
 
-> validator 可以同時使用 `$jsonSchema` 和查詢運算子；上面的 `$or` 確保 `SCHEDULED` 一定有 `scheduledAt`。`ConfigCommandService` 也會在寫入前檢查。
+> validator 可以同時使用 `$jsonSchema` 和查詢運算子；上面的 `$and` 以三條 `$or` 規則確保 `SCHEDULED` 一定有 `scheduledAt`，且 `configType` 與 `configKey` 一致。`ConfigCommandService` 也會在寫入前檢查。實際內容見 `backend/src/main/resources/mongo/config-validator.json`。
+>
+> `maxLength` 以字元計算，上限 65,536 字元；API 以 UTF-8 bytes 計算（見 2.1 `content`），所以通過 API 的內容一定通過這裡。`validationLevel: strict` 會讓既有文件在下次更新時也受檢查；初始資料都符合規則，不需要資料遷移。
 
 ### 2.4 版本策略
 
@@ -142,14 +147,14 @@ stateDiagram-v2
 
 | 操作 | 對象 | 行為 | `updatedBy` / `updatedAt` |
 |---|---|---|---|
-| 建立草稿 | — | 已有 `DRAFT` 或 `SCHEDULED` → 409。否則複製目前已發布版本的 `name`、`content`，新增 `version = 最大值 + 1`、`status = DRAFT` | 操作者 / 現在 |
-| 儲存 | DRAFT | 更新內容，維持 `DRAFT` | 操作者 / 現在 |
-| 儲存 | SCHEDULED | 更新內容，**保留排程**；先執行發布前驗證，不通過 → 422 | 操作者 / 現在（視為由此人重新確認排程） |
+| 建立草稿 | — | 已有 `DRAFT` 或 `SCHEDULED` → 409。否則複製目前已發布版本（沒有已發布版本時為最新版本）的 `name`、`content`，新增 `version = 最大值 + 1`、`status = DRAFT`，`basedOnVersion` 記錄來源版本 | 操作者 / 現在 |
+| 儲存 | DRAFT | 更新內容，維持 `DRAFT`；`name`、`changeNote` 含禁止內容 → 422 | 操作者 / 現在 |
+| 儲存 | SCHEDULED | 更新內容，**保留排程**；先執行發布前驗證（含 `name`、`changeNote`），不通過 → 422 | 操作者 / 現在（視為由此人重新確認排程） |
 | 取消排程（`saveMode = DRAFT`） | DRAFT | 同「儲存」（畫面只在已排程時提供「取消排程」） | 操作者 / 現在 |
 | 取消排程（`saveMode = DRAFT`） | SCHEDULED | 更新內容，`status = DRAFT`、清空 `scheduledAt`（取消排程） | 操作者 / 現在 |
-| 立即發布 | DRAFT、SCHEDULED | 先驗證；在交易中把舊的 PUBLISHED 改成 ARCHIVED、編輯中版本改成 PUBLISHED | 新版：操作者 / 現在；**舊版：不改動** |
+| 立即發布 | DRAFT、SCHEDULED | 先驗證；在交易中把舊的 PUBLISHED 改成 ARCHIVED、編輯中版本改成 PUBLISHED，同時清空 `scheduledAt` | 新版：操作者 / 現在；**舊版：不改動** |
 | 預約發布 | DRAFT、SCHEDULED | 先驗證；`status = SCHEDULED`、寫入 `scheduledAt`（已排程時即修改預約時間） | 操作者 / 現在 |
-| 排程到期 | SCHEDULED | 排程器在交易中把舊的 PUBLISHED 改成 ARCHIVED、SCHEDULED 改成 PUBLISHED；`scheduledAt` 保留 | 新版：**維持預約者** / 實際生效時間；舊版：不改動 |
+| 排程到期 | SCHEDULED | 排程器先重新驗證。通過：在交易中把舊的 PUBLISHED 改成 ARCHIVED、SCHEDULED 改成 PUBLISHED；`scheduledAt` 保留。不通過：退回 `DRAFT`（見下方排程器） | 新版：**維持預約者** / 實際生效時間；舊版：不改動 |
 | 套用 | 來源：PUBLISHED、ARCHIVED、DISCARDED | 已有編輯中版本且未帶 `confirmOverwrite: true` → 409 `AI_CONFIG_OVERWRITE_PENDING`。否則在交易中：(1) 既有的編輯中版本改為 `DISCARDED`（`scheduledAt` 保留，作為「原預約時間」紀錄）；(2) 新增一份 `DRAFT`：`version = 最大值 + 1`，`name`、`content` 取自來源版本，`basedOnVersion = 來源版本`，`changeNote` 空。來源版本本身不變 | 新草稿：操作者 / 現在（`createdBy` 也是操作者）；被取代的版本：操作者 / 現在 |
 | 捨棄草稿 | DRAFT | `status = DISCARDED`，內容保留，不刪除；`SCHEDULED` 需先取消排程才能捨棄 | 操作者 / 現在 |
 
@@ -169,6 +174,9 @@ stateDiagram-v2
 
 - 每 30 秒查詢 `status = SCHEDULED` 且 `scheduledAt <= 現在` 的版本，逐筆在交易中發布，最多延遲約 30 秒。
 - 以條件更新（`status` 仍為 `SCHEDULED` 且 `docVersion` 相符）確保多台機器同時執行時只會發布一次；失敗的一方直接略過。
+- 每筆到期版本先做完整的發布前驗證（含 `name`、`changeNote`、`content`），因為驗證規則會變（例如 `allowed-url-hosts` 調整或新增禁止樣式），排程中儲存時的驗證只保證當下合格。
+- 驗證不通過時，以條件更新（`_id` 相符、`status` 仍為 `SCHEDULED`、`docVersion` 相符）退回草稿：`status = DRAFT`、`scheduledAt = null`、`updatedBy = "system"`、`updatedAt = 現在`、`docVersion` 加 1。這是單一文件的更新，不需要交易；舊的已發布版本不動，快取不清除。條件更新沒有命中（已被改動或已被另一台機器處理）則略過。
+- 退回成功時記 WARN log，只含 configKey、version 與未通過的規則代碼（例如 `FORBIDDEN_CONTENT`），不含內容或訊息文字。
 - 發布成功後清除 prompt 快取。
 - 發布失敗（例如交易衝突）會在下一輪重試，並記 WARN log（只含 configKey、version、錯誤類型）。
 
@@ -208,9 +216,10 @@ stateDiagram-v2
 | 顧客編號 | 與 `PiiRedactor` 規則 7 同一組樣式（`PiiRedactor.CERT_NO_REGEX`）：`[A-Z][12]\d{8}`、`[A-Z]{3}\d{6}`、`&[A-Z]\d{8}`，前後不得緊接英數字或 `&`（見 [03-tool-catalog.md](03-tool-catalog.md) 1.6；後兩種為推定，整合時換成平台實際格式） |
 
 - 白名單與 tool call 的 `market.twse.allowed-hosts` 各自獨立：後者管後端程式可連線的對象，前者管 prompt 裡可以寫的連結。修改清單需改設定並重新啟動。
-- 名稱（`name`）也套用同一組禁止內容規則。
+- 名稱（`name`）與修改說明（`changeNote`）也套用同一組禁止內容規則，且**每次儲存都檢查**（任何狀態、任何 `saveMode`），不通過回 422 `AI_CONFIG_VALIDATION_FAILED`；`content` 維持只在發布前（及 `SCHEDULED` 以 `KEEP_STATUS` 儲存時）檢查。`changeNote` 為 null 或空字串時略過。錯誤排列順序：內容、名稱、修改說明。
 - **未納入的樣式**：需求 3-5 的「可繞過權限的指令」（例如「忽略以上規則」）目前不在禁止清單：這類自然語言樣式誤判率高，且安全規則寫死在程式碼並放在 prompt 最後（[01-architecture.md](01-architecture.md) 第 4 節），要求模型忽略使用者與資料中的指令。列為待辦，若之後需要再以 regex 加入（questions-for-manager M24）。
 - 錯誤訊息格式（`rule` 為 `FORBIDDEN_CONTENT`）：`第 {n} 行疑似包含{類型}，請移除`，類型直接接在「疑似包含」後面，例如 `第 12 行疑似包含未允許的網址，請移除`、`第 12 行疑似包含IP 位址，請移除`、`第 12 行疑似包含API key 或 token，請移除`。
+- 名稱與修改說明的錯誤訊息（`rule` 為 `FORBIDDEN_CONTENT`）：`名稱疑似包含{類型}，請移除`、`修改說明疑似包含{類型}，請移除`，例如 `修改說明疑似包含手機號碼，請移除`。
 - 其他驗證訊息：`缺少必要章節「## 適用問題」`、`「## 適用問題」不可空白`、`「範例問題」最多 5 題，目前有 {n} 題`、`「範例問題」每題最多 40 字`。
 
 ### 2.6 讀取與快取
@@ -237,6 +246,7 @@ stateDiagram-v2
 - 完整內容見 [07-prompt-examples.md](07-prompt-examples.md)（內容與 `seed/*.md` 一致）。`seed/manifest.json` 的順序是匯入順序；快捷按鈕與管理頁清單一律依 `configKey` 排序。
 - `SeedLoader` 在設定 collection 已有資料時**跳過**，所以舊資料庫不會載入新 seed；改版後要先清空 MongoDB（見 [setup.md](../setup.md)）。
 - 初始資料的 `createdBy`、`updatedBy` 為 `system`。
+- 多台機器同時首次啟動時，初始資料匯入會撞唯一索引；POC 不處理，正式環境改用 migration。
 
 ### 2.8 資料生命週期
 

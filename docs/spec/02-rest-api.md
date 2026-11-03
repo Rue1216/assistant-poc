@@ -1,6 +1,6 @@
 # 02 REST API 規格
 
-> 版本：v1.2（POC）・2026-10-30（評測集 34 題、`toolCalls` 不顯示的理由；v1.1 2026-10-29 為個人 360 內容重寫：員工帳號與業務角色碼、`scope`、`{certNo}` 路徑、三支 mock 端點，見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
+> 版本：v1.3（POC）・2026-11-03（Prompt 管理 API review 修正：3 節權限前提與內容上限單位、3.1 `published` 補 `status` 與 `scheduledAt`、3.2 System Prompt key 規則、3.3／3.5 `basedOnVersion`、3.6／3.8 儲存與檢查名稱及修改說明、3.9 立即發布清空 `scheduledAt`、3.10 回 201，見 [Prompt 管理 review 修正設計](../superpowers/specs/2026-11-02-prompt-admin-review-fixes-design.md)；v1.2 2026-10-30 評測集 34 題、`toolCalls` 不顯示的理由；v1.1 2026-10-29 為個人 360 內容重寫：員工帳號與業務角色碼、`scope`、`{certNo}` 路徑、三支 mock 端點，見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
 
 ## 1. 共通規則
 
@@ -338,12 +338,15 @@ Request：
     - 查詢類（3.1、3.3、3.4、3.11、3.13–3.16）：`AI_CONFIG_READ`
     - 編輯類（3.2、3.5–3.8、3.10、3.12 開始評測）：`AI_CONFIG_EDIT`
     - 發布類（3.9）：`AI_CONFIG_PUBLISH`
+    - 權限前提：後台管理人員與 IT 人員同時擁有 `AI_CONFIG_EDIT` 與 `AI_CONFIG_PUBLISH`（M26）。已排程版本以 `KEEP_STATUS` 儲存只需要編輯權限，但內容會在到期時上線；若日後把編輯與發布拆給不同的人，這個操作要改為需要發布權限。
 - **版本的辨識**：`version` 是內部流水號，只用於 API 路徑與唯一索引（需求 3-5），**畫面上不顯示**。畫面一律以時間辨識版本：已發布 / 已封存的版本顯示 `updatedAt`（即生效時間）與 `updatedBy`，草稿顯示「最後儲存」時間，已捨棄的版本顯示捨棄時間與捨棄者。
 - **設定類型**：
     - `SYSTEM_PROMPT`：只有一份 `system.main`，定義角色、安全規則、回答格式
     - `SYSTEM_INSTRUCTION`：可以有多份，**每份代表一個問題分類**，包含適用問題、回答套版、範例問題
 - **`configKey` 格式**：`^(system|instruction)\.[a-z0-9-]{1,50}$`
 - **內容上限**：`content` UTF-8 編碼後最多 65,536 bytes
+    - API 與發布前驗證以 UTF-8 bytes 計算，這是實際生效的限制；Mongo validator 的 `maxLength` 以字元計算，上限同為 65,536 字元。
+    - 任何字元編碼成 UTF-8 至少 1 byte，所以通過 API 的內容一定通過 Mongo；validator 只是防止繞過 API 的寫入，例如手動修改資料庫。
 - **狀態與操作**：每個 key 同時只有一份「編輯中版本」（`DRAFT` 或 `SCHEDULED`）。狀態轉換與 `updatedBy` 規則見 [04-mongodb-schema.md](04-mongodb-schema.md) 2.4。
 
 ### 3.0 編輯頁操作與 API 對照
@@ -403,6 +406,8 @@ Request：
         "name": "主要系統提示",
         "published": {
             "version": 2,
+            "status": "PUBLISHED",
+            "scheduledAt": null,
             "updatedBy": "EEE22222",
             "updatedAt": "2026-10-19T09:30:00+08:00"
         },
@@ -420,6 +425,8 @@ Request：
         "name": "聯繫準備",
         "published": {
             "version": 1,
+            "status": "PUBLISHED",
+            "scheduledAt": null,
             "updatedBy": "system",
             "updatedAt": "2026-10-19T08:00:00+08:00"
         },
@@ -434,6 +441,7 @@ Request：
 ]
 ```
 
+- `published` 是已發布版本，`status` 固定為 `PUBLISHED`；`scheduledAt` 在到期自動發布的版本保留原預約時間，其他為 `null`。
 - `workingCopy` 是編輯中版本（`DRAFT` 或 `SCHEDULED`），沒有時為 `null`。
 - 設定選單上以標籤顯示「草稿」或「已排程 10/24 09:00」；`version` 只供後續 API 呼叫使用，不顯示。
 
@@ -443,13 +451,19 @@ Request：
 
 | 欄位         | 型別   | 必填 | 規則                                                                                         |
 | ------------ | ------ | ---- | -------------------------------------------------------------------------------------------- |
-| `configKey`  | string | ✓    | 格式如上；不可與既有 key 重複                                                                |
-| `configType` | string | ✓    | `SYSTEM_PROMPT` 或 `SYSTEM_INSTRUCTION`，且必須和 key 前綴一致（`system.` / `instruction.`） |
+| `configKey`  | string | ✓    | 格式如上；不可與既有 key 重複；`SYSTEM_PROMPT` 只能是 `system.main`                          |
+| `configType` | string | ✓    | `SYSTEM_PROMPT` 或 `SYSTEM_INSTRUCTION`，且必須和 key 一致（`system.main` / `instruction.` 開頭） |
 | `name`       | string | ✓    | 1–50 字，例如「聯繫準備」                                                                    |
 
 - 新增的草稿內容預設帶入該類型的範本（見 [07-prompt-examples.md](07-prompt-examples.md)），方便 IT 人員填寫。
 - **201**：回傳新草稿（格式同 3.4）
-- **409** `AI_CONFIG_INVALID_STATE`：key 已存在；或要新增第二份 `SYSTEM_PROMPT`
+
+| 情境                                                                  | 回應                                                           |
+| --------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `configType = SYSTEM_PROMPT` 但 `configKey` 不是 `system.main`        | 400 `AI_INPUT_INVALID`，`details: [{ "field": "configKey" }]`  |
+| `configType = SYSTEM_INSTRUCTION` 但 `configKey` 不是 `instruction.` 開頭 | 400 `AI_INPUT_INVALID`，`details: [{ "field": "configKey" }]`  |
+| `configKey` 已存在任何版本                                            | 409 `AI_CONFIG_INVALID_STATE`                                  |
+| 兩人同時建立同一個 key，後到者撞上唯一索引 `UK_ICRM_AI_CFG_1`         | 409 `AI_CONFIG_INVALID_STATE`                                  |
 
 ### 3.3 `GET /api/ai-assistant/admin/configs/{configKey}/versions`
 
@@ -491,7 +505,7 @@ Request：
 ```
 
 - 已封存版本的 `updatedAt` / `updatedBy` 是它當初生效的時間與操作者（封存時不改動，見 04 §2.4）。
-- `basedOnVersion` 不為 null 時，畫面顯示「套用自 {該版本的 updatedAt} 的版本」。
+- `basedOnVersion` 不為 null 時，畫面顯示「以 {該版本的 updatedAt} 的版本為底」；找不到該版本時顯示「以先前的版本為底」。建立草稿（3.5）與套用（3.10）都會記錄 `basedOnVersion`；新增設定的 v1 草稿與初始資料為 null。
 
 ### 3.4 `GET /api/ai-assistant/admin/configs/{configKey}/versions/{version}`
 
@@ -522,7 +536,7 @@ Request：
 
 ### 3.5 `POST /api/ai-assistant/admin/configs/{configKey}/draft`
 
-以目前已發布版本為底，建立草稿（`version` = 最大版本號 + 1）。
+以目前已發布版本為底，建立草稿（`version` = 最大版本號 + 1）。沒有已發布版本時，以最新版本為底。`basedOnVersion` 記錄複製來源的 `version`。
 
 - **201**：回傳草稿
 - **409** `AI_CONFIG_INVALID_STATE`：已經有編輯中版本（`DRAFT` 或 `SCHEDULED`）
@@ -549,7 +563,7 @@ Request：
 - **200**：回傳更新後的版本（`docVersion` 會加 1）
 - **404** `AI_CONFIG_NOT_FOUND`：`configKey` 不存在
 - **409** `AI_CONFIG_CONFLICT`：`docVersion` 不一致，或這個 `configKey` 已沒有編輯中版本，代表已被他人修改（包括排程剛好到期、已被系統發布，或已被他人捨棄、發布）
-- **422** `AI_CONFIG_VALIDATION_FAILED`：已排程版本的內容未通過驗證
+- **422** `AI_CONFIG_VALIDATION_FAILED`：任何狀態、任何 `saveMode` 下，`name` 或 `changeNote` 含禁止內容（`FORBIDDEN_CONTENT`），`details` 格式同 3.8 的 `errors`；或已排程版本的內容未通過驗證
 
 ### 3.7 `DELETE /api/ai-assistant/admin/configs/{configKey}/draft?docVersion={n}`
 
@@ -562,7 +576,7 @@ Request：
 
 ### 3.8 `POST /api/ai-assistant/admin/configs/{configKey}/draft/validate`
 
-不發布，只執行發布前驗證，讓管理頁事先顯示問題。
+不發布，只執行發布前驗證，讓管理頁事先顯示問題。檢查範圍包含 `content`、`name` 與 `changeNote`（修改說明為空時略過）。
 
 ```json
 {
@@ -604,7 +618,7 @@ Request：
 
 | `publishMode` | 結果                                                                                                                                     |
 | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `IMMEDIATE`   | 在同一個交易中：舊的 PUBLISHED → ARCHIVED（不改動它的 `updatedBy`、`updatedAt`），編輯中版本 → PUBLISHED。已排程的版本也可以提前立即發布 |
+| `IMMEDIATE`   | 在同一個交易中：舊的 PUBLISHED → ARCHIVED（不改動它的 `updatedBy`、`updatedAt`），編輯中版本 → PUBLISHED，同時清空 `scheduledAt`。已排程的版本也可以提前立即發布 |
 | `SCHEDULED`   | 編輯中版本 → `SCHEDULED`，寫入 `scheduledAt`；已排程時即修改預約時間。到期由排程器自動發布，`updatedBy` 維持預約者                       |
 
 - **200**：回傳發布後或排程後的版本
@@ -664,7 +678,7 @@ Request：
 
 **回應**
 
-- **200**：回傳套用後的草稿（格式同 3.4），前端切到內容分頁顯示它
+- **201**：回傳套用後的草稿（格式同 3.4），前端切到內容分頁顯示它
 - **404** `AI_CONFIG_NOT_FOUND`：來源版本不存在
 - **409** `AI_CONFIG_OVERWRITE_PENDING`：已有編輯中版本但未確認
 - **409** `AI_CONFIG_CONFLICT`：`workingCopyDocVersion` 不一致（有人剛修改，或排程剛到期而已發布）

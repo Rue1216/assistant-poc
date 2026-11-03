@@ -66,7 +66,7 @@ describe('VersionList', () => {
     expect(w.find('.pm-versions__hint').exists()).toBe(false)
     expect(w.text()).not.toContain('原作者')
     expect(w.text()).not.toContain('原預約')
-    expect(w.text()).not.toContain('套用自')
+    expect(w.text()).not.toContain('為底')
   })
 
   it('never puts a version number in any text or attribute', async () => {

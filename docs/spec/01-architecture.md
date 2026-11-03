@@ -1,6 +1,6 @@
 # 01 架構說明
 
-> 版本：v1.3（POC）・2026-11-02（後端套件改為 domain／application／interfaces／infrastructure 四層，重寫 5.1 目錄樹、Clean Architecture 對應表與例外說明；v1.2 2026-10-30 新增 5.1 的 Clean Architecture 對應、第 7 節 UI 框架說明、第 9 節與 requirements.md 的差異；v1.1 2026-10-29 為個人 360 內容重寫：`CustomerDataPort` 對應平台兩支 API、每題資料暫存、本顧客註記、`certNo`、mock 帳號與 `scope`，見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
+> 版本：v1.4（POC）・2026-11-03（5.1 `domain/exception/` 補錯誤細節介面與三種細節 record，見 [Prompt 管理 review 修正設計](../superpowers/specs/2026-11-02-prompt-admin-review-fixes-design.md) 4.1；v1.3 2026-11-02：後端套件改為 domain／application／interfaces／infrastructure 四層，重寫 5.1 目錄樹、Clean Architecture 對應表與例外說明；v1.2 2026-10-30 新增 5.1 的 Clean Architecture 對應、第 7 節 UI 框架說明、第 9 節與 requirements.md 的差異；v1.1 2026-10-29 為個人 360 內容重寫：`CustomerDataPort` 對應平台兩支 API、每題資料暫存、本顧客註記、`certNo`、mock 帳號與 `scope`，見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
 
 ## 1. 系統元件
 
@@ -252,7 +252,8 @@ backend/
    ├─ aiassistant/
    │  ├─ AiAssistantProperties        Spring Boot 組態綁定（只有 application 與 infrastructure 可用）
    │  ├─ domain/
-   │  │  ├─ exception/   AssistantException、ErrorCode（HTTP 狀態為 int）
+   │  │  ├─ exception/   AssistantException、ErrorCode（HTTP 狀態為 int）、ErrorDetail（錯誤細節介面）、
+   │  │  │               FieldDetail、WorkingCopyDetail、RunningEvalDetail（三種細節 record）
    │  │  ├─ config/      AssistantConfig（record）、ConfigStatus、ConfigType、ValidationError、PromptVersion、
    │  │  │               PublishedConfigs、ConfigValidator
    │  │  ├─ customer/    AccessLevel、CustomerRecord、c360/（Customer360Record、RealTimeStatusRecord 等 record）

@@ -57,8 +57,8 @@ describe('VersionViewer', () => {
   })
 
   it('shows where a version was applied from, or a fallback when the source is gone', () => {
-    expect(meta(mountViewer(ver('DRAFT', { basedOnVersion: 9111 })))).toContain('套用自 10/19 08:00 的版本')
-    expect(meta(mountViewer(ver('DRAFT', { basedOnVersion: 1 })))).toContain('套用自先前的版本')
+    expect(meta(mountViewer(ver('DRAFT', { basedOnVersion: 9111 })))).toContain('以 10/19 08:00 的版本為底')
+    expect(meta(mountViewer(ver('DRAFT', { basedOnVersion: 1 })))).toContain('以先前的版本為底')
   })
 
   it('edit action: hint, 編輯 emits edit, hidden without canEdit', async () => {

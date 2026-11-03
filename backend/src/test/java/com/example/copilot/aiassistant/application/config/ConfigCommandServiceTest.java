@@ -27,6 +27,7 @@ import com.example.copilot.aiassistant.domain.exception.WorkingCopyDetail;
 import com.example.copilot.aiassistant.domain.prompt.ExampleQuestionParser;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
 import com.example.copilot.aiassistant.infrastructure.seed.SeedLoader;
+import com.example.copilot.testsupport.LogCapture;
 import com.mongodb.MongoException;
 import com.mongodb.client.ClientSession;
 import com.mongodb.client.MongoClient;
@@ -39,6 +40,8 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.core.LogEvent;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.bson.types.ObjectId;
 import org.junit.jupiter.api.AfterEach;
@@ -258,6 +261,30 @@ class ConfigCommandServiceTest extends IntegrationTestBase {
         assertThat(e.details()).extracting(d -> ((ValidationError) d).message())
                 .contains("修改說明疑似包含手機號碼，請移除");
         assertThat(reload(2).docVersion()).isEqualTo(draft.docVersion());
+    }
+
+    private void assertScheduleUntouchedAfterForbiddenChangeNote(SaveMode mode) {
+        Instant at = NOW.plus(Duration.ofHours(1));
+        AssistantConfig scheduled = schedule(service.createDraft(KEY, OTHER), at, OTHER);
+
+        assertError(() -> service.saveWorkingCopy(KEY,
+                new SaveCommand("聯繫準備", scheduled.content(), "0912-345-678", mode, scheduled.docVersion()), ACTOR),
+                ErrorCode.AI_CONFIG_VALIDATION_FAILED);
+
+        AssistantConfig after = reload(2);
+        assertThat(after.status()).isEqualTo(ConfigStatus.SCHEDULED);
+        assertThat(after.scheduledAt()).isEqualTo(at);
+        assertThat(after.docVersion()).isEqualTo(scheduled.docVersion());
+    }
+
+    @Test
+    void saveScheduledKeepStatusRejectsForbiddenChangeNote() {
+        assertScheduleUntouchedAfterForbiddenChangeNote(SaveMode.KEEP_STATUS);
+    }
+
+    @Test
+    void saveScheduledAsDraftRejectsForbiddenChangeNote() {
+        assertScheduleUntouchedAfterForbiddenChangeNote(SaveMode.DRAFT);
     }
 
     @Test
@@ -614,11 +641,12 @@ class ConfigCommandServiceTest extends IntegrationTestBase {
     @Test
     void publishDuePublishesValidOnesInTheSameRun() {
         String otherKey = "instruction.market-brief";
+        // The invalid KEY version is due one minute earlier, so the revert is hit before the valid one.
+        AssistantConfig scheduled = schedule(service.createDraft(KEY, ACTOR), NOW.plus(Duration.ofMinutes(1)), OTHER);
+        repository.save(scheduled.withContent(scheduled.name(), INVALID_CONTENT, "note"));
         AssistantConfig otherDraft = service.createDraft(otherKey, ACTOR);
         AssistantConfig other = service.publish(otherKey, new PublishCommand(PublishMode.SCHEDULED,
                 NOW.plus(Duration.ofMinutes(2)), otherDraft.docVersion()), OTHER);
-        AssistantConfig scheduled = schedule(service.createDraft(KEY, ACTOR), NOW.plus(Duration.ofMinutes(2)), OTHER);
-        repository.save(scheduled.withContent(scheduled.name(), INVALID_CONTENT, "note"));
         clock.advance(Duration.ofMinutes(3));
 
         assertThat(service.publishDue()).isEqualTo(1);
@@ -627,6 +655,27 @@ class ConfigCommandServiceTest extends IntegrationTestBase {
                 .isEqualTo(ConfigStatus.PUBLISHED);
         assertThat(service.findWorkingCopy(KEY).orElseThrow().status()).isEqualTo(ConfigStatus.DRAFT);
         verify(cache).invalidate();
+    }
+
+    @Test
+    void publishDueRejectionIsLoggedAtWarnWithoutContent() {
+        AssistantConfig scheduled = schedule(service.createDraft(KEY, ACTOR), NOW.plus(Duration.ofMinutes(1)), OTHER);
+        repository.save(scheduled.withContent(scheduled.name(), scheduled.content(), "0912-345-678"));
+        clock.advance(Duration.ofMinutes(2));
+
+        List<LogEvent> events;
+        try (LogCapture log = LogCapture.of(ConfigCommandService.class, Level.DEBUG)) {
+            assertThat(service.publishDue()).isZero();
+            events = log.events();
+        }
+
+        assertThat(reload(2).status()).isEqualTo(ConfigStatus.DRAFT);
+        assertThat(events).hasSize(1).allSatisfy(e -> {
+            assertThat(e.getLevel()).isEqualTo(Level.WARN);
+            String message = e.getMessage().getFormattedMessage();
+            assertThat(message).contains(KEY, "version=2", "FORBIDDEN_CONTENT")
+                    .doesNotContain("疑似包含", "0912-345-678");
+        });
     }
 
     @Test

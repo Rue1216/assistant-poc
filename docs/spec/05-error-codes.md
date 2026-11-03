@@ -1,6 +1,6 @@
 # 05 錯誤碼清單
 
-> 版本：v1.0.1（POC）・2026-10-30（第 1 節補對話視窗不顯示工具呼叫的連結；內容同 v1.0 2026-10-26）
+> 版本：v1.0.2（POC）・2026-11-03（第 1 節補 `details` 格式表；2.3 `AI_CONFIG_NOT_FOUND`、`AI_CONFIG_INVALID_STATE`、`AI_CONFIG_VALIDATION_FAILED` 的情境調整，見 [Prompt 管理 review 修正設計](../superpowers/specs/2026-11-02-prompt-admin-review-fixes-design.md)；v1.0.1 2026-10-30：第 1 節補對話視窗不顯示工具呼叫的連結；內容同 v1.0 2026-10-26）
 
 ## 1. 原則
 
@@ -15,6 +15,17 @@
 ```json
 { "code": "AI_LLM_TIMEOUT", "message": "小幫手回應逾時，請稍後再試", "requestId": "a1b2c3d4", "details": [] }
 ```
+
+`details` 的格式依錯誤碼而定，沒有列在下表的錯誤碼，`details` 為空陣列：
+
+| 細節 | JSON | 用於 |
+|---|---|---|
+| 欄位錯誤 | `{ "field": "scheduledAt" }` | `AI_INPUT_INVALID` |
+| 驗證錯誤 | `{ "rule": "...", "message": "..." }` | `AI_CONFIG_VALIDATION_FAILED` |
+| 編輯中版本 | `{ "status": "SCHEDULED", "scheduledAt": "...+08:00", "updatedAt": "...+08:00", "docVersion": 7 }` | `AI_CONFIG_OVERWRITE_PENDING` |
+| 執行中的評測 | `{ "runId", "configKey", "triggeredBy", "completedCases", "totalCases" }` | `AI_EVAL_RUNNING` |
+
+- 編輯中版本細節的 `scheduledAt` 為 null 時照樣輸出 `"scheduledAt": null`。
 
 ## 2. API 錯誤碼
 
@@ -46,11 +57,11 @@
 
 | code | HTTP | 友善訊息 | 情境 |
 |---|---|---|---|
-| `AI_CONFIG_NOT_FOUND` | 404 | 找不到指定的設定或版本 | key、版本或草稿不存在 |
-| `AI_CONFIG_CONFLICT` | 409 | 內容已被他人更新，請重新載入後再編輯 | `docVersion` 不一致；同時發布造成 unique index 衝突；套用時編輯中版本已變更 |
-| `AI_CONFIG_INVALID_STATE` | 409 | 目前狀態無法執行此操作 | 已有編輯中版本卻要建立草稿；捨棄已排程的版本；套用的來源是草稿或已排程版本；key 已存在；要新增第二份 System Prompt |
+| `AI_CONFIG_NOT_FOUND` | 404 | 找不到指定的設定或版本 | key 或版本不存在。key 存在但沒有編輯中版本時回 `AI_CONFIG_CONFLICT`，不回此碼 |
+| `AI_CONFIG_CONFLICT` | 409 | 內容已被他人更新，請重新載入後再編輯 | `docVersion` 不一致；同時發布造成 unique index 衝突；套用時編輯中版本已變更；key 存在但沒有編輯中版本（已被排程器發布、或被他人捨棄或發布） |
+| `AI_CONFIG_INVALID_STATE` | 409 | 目前狀態無法執行此操作 | 已有編輯中版本卻要建立草稿；捨棄已排程的版本；套用的來源是草稿或已排程版本；key 已存在（含兩人同時建立同一個 key） |
 | `AI_CONFIG_OVERWRITE_PENDING` | 409 | 此設定已有編輯中的版本，套用後它會被標為已捨棄 | 套用歷史版本時已有草稿或排程，但未帶 `confirmOverwrite`；`details` 含編輯中版本的狀態、預約時間、最後儲存時間、`docVersion` |
-| `AI_CONFIG_VALIDATION_FAILED` | 422 | 內容未通過發布檢查，請依提示修正 | 發布前驗證失敗；`details` 列出每條規則 |
+| `AI_CONFIG_VALIDATION_FAILED` | 422 | 內容未通過發布檢查，請依提示修正 | 發布前驗證失敗；儲存時名稱或修改說明含禁止內容；`details` 列出每條規則 |
 
 `AI_CONFIG_VALIDATION_FAILED` 的 `details`：
 

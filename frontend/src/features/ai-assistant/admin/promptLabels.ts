@@ -66,7 +66,7 @@ export function versionMeta(v: ConfigVersion | VersionHistoryItem, versions: Ver
   if (v.changeNote) parts.push(v.changeNote)
   if (v.basedOnVersion != null) {
     const source = versions.find((x) => x.version === v.basedOnVersion)
-    parts.push(source ? `套用自 ${formatTaipeiShort(source.updatedAt)} 的版本` : '套用自先前的版本')
+    parts.push(source ? `以 ${formatTaipeiShort(source.updatedAt)} 的版本為底` : '以先前的版本為底')
   }
   if (v.status === 'DISCARDED' && v.scheduledAt) parts.push(`原預約 ${formatTaipeiShort(v.scheduledAt)}`)
   if (v.status === 'ARCHIVED') {

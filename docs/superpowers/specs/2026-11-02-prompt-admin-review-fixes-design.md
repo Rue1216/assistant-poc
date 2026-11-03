@@ -2,7 +2,7 @@
 
 - 日期：2026-11-02
 - 版本：v0.2
-- 狀態：待審
+- 狀態：已實作
 - 起因：2026-11-02 對 Prompt 管理的 API endpoint、錯誤碼與 Mongo schema 做架構 review，挑出需要修正的項目。
 - 前提：[Clean Architecture 分層對齊](2026-11-02-clean-architecture-layering-design.md) 已完成（commit `bef958c`–`660eea2`）。本次修正寫在分層後的結構上，各項的落點見第 9 節，且必須維持 `ArchitectureRulesTest` 全綠。
 - v0.2（2026-11-03）：依重構後的程式調整 4.1（錯誤細節的型別放在 domain，時區轉換留在 interfaces 層）、4.2（重複 key 的判斷方式）、3.2（到期退回的落點），並以第 9 節「實作落點」取代原本的「與分層重構的順序」。

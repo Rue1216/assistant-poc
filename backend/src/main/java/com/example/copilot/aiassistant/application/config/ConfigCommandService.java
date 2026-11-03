@@ -162,9 +162,9 @@ public class ConfigCommandService {
     }
 
     /**
-     * Publishes every SCHEDULED version whose time has come and returns how many were published. A version that
-     * no longer passes validation is reverted to DRAFT instead. A version
-     * changed since it was read (or published by another instance) is skipped by the repository.
+     * Publishes every SCHEDULED version whose time has come and returns how many were published.
+     * A version that no longer passes validation is reverted to DRAFT instead.
+     * A version changed since it was read (or published by another instance) is skipped by the repository.
      */
     public int publishDue() {
         Instant now = clock.instant();
