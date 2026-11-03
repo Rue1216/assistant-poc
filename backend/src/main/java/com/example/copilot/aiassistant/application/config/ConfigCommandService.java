@@ -9,13 +9,13 @@ import com.example.copilot.aiassistant.domain.config.ConfigValidator;
 import com.example.copilot.aiassistant.domain.config.ValidationError;
 import com.example.copilot.aiassistant.domain.exception.AssistantException;
 import com.example.copilot.aiassistant.domain.exception.ErrorCode;
+import com.example.copilot.aiassistant.domain.exception.FieldDetail;
+import com.example.copilot.aiassistant.domain.exception.WorkingCopyDetail;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.EnumSet;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -81,11 +81,12 @@ public class ConfigCommandService {
 
     public AssistantConfig saveWorkingCopy(String configKey, SaveCommand cmd, String actor) {
         AssistantConfig wc = requireWorkingCopy(configKey, cmd.docVersion());
-        if (wc.status() == ConfigStatus.SCHEDULED) {
-            if (cmd.saveMode() == SaveMode.KEEP_STATUS) {
-                // The schedule stays, so the new content must still be publishable when it falls due.
-                requireValid(wc.configType(), cmd.name(), cmd.content());
-            } else {
+        if (wc.status() == ConfigStatus.SCHEDULED && cmd.saveMode() == SaveMode.KEEP_STATUS) {
+            // The schedule stays, so the new content must still be publishable when it falls due.
+            requireValid(wc.configType(), cmd.name(), cmd.changeNote(), cmd.content());
+        } else {
+            requireMetadataValid(cmd.name(), cmd.changeNote());
+            if (wc.status() == ConfigStatus.SCHEDULED) {
                 wc = wc.withStatus(ConfigStatus.DRAFT, null);
             }
         }
@@ -109,7 +110,7 @@ public class ConfigCommandService {
             requireScheduleWindow(cmd.scheduledAt(), now);
         }
         AssistantConfig wc = requireWorkingCopy(configKey, cmd.docVersion());
-        requireValid(wc.configType(), wc.name(), wc.content());
+        requireValid(wc.configType(), wc.name(), wc.changeNote(), wc.content());
         wc = wc.touched(actor, now);
         if (cmd.mode() == PublishMode.SCHEDULED) {
             return repository.save(wc.withStatus(ConfigStatus.SCHEDULED, cmd.scheduledAt()));
@@ -176,7 +177,7 @@ public class ConfigCommandService {
 
     public List<ValidationError> validateWorkingCopy(String configKey) {
         AssistantConfig wc = existingWorkingCopy(configKey);
-        return validator.validate(wc.configType(), wc.name(), wc.content());
+        return validator.validate(wc.configType(), wc.name(), wc.changeNote(), wc.content());
     }
 
     /** The DRAFT or SCHEDULED version of the key, if any. */
@@ -215,8 +216,15 @@ public class ConfigCommandService {
         }
     }
 
-    private void requireValid(ConfigType type, String name, String content) {
-        List<ValidationError> errors = validator.validate(type, name, content);
+    private void requireValid(ConfigType type, String name, String changeNote, String content) {
+        failIfAny(validator.validate(type, name, changeNote, content));
+    }
+
+    private void requireMetadataValid(String name, String changeNote) {
+        failIfAny(validator.validateMetadata(name, changeNote));
+    }
+
+    private static void failIfAny(List<ValidationError> errors) {
         if (!errors.isEmpty()) {
             throw new AssistantException(ErrorCode.AI_CONFIG_VALIDATION_FAILED, List.copyOf(errors));
         }
@@ -234,13 +242,8 @@ public class ConfigCommandService {
         return repository.findLatest(configKey).map(c -> c.version() + 1).orElse(1);
     }
 
-    private static Map<String, Object> pendingDetail(AssistantConfig wc) {
-        Map<String, Object> detail = new LinkedHashMap<>();
-        detail.put("status", wc.status().name());
-        detail.put("scheduledAt", wc.scheduledAt());
-        detail.put("updatedAt", wc.updatedAt());
-        detail.put("docVersion", wc.docVersion());
-        return detail;
+    private static WorkingCopyDetail pendingDetail(AssistantConfig wc) {
+        return new WorkingCopyDetail(wc.status(), wc.scheduledAt(), wc.updatedAt(), wc.docVersion());
     }
 
     private static AssistantException notFound() {
@@ -248,6 +251,6 @@ public class ConfigCommandService {
     }
 
     private static AssistantException invalidInput(String field) {
-        return new AssistantException(ErrorCode.AI_INPUT_INVALID, List.of(Map.of("field", field)));
+        return new AssistantException(ErrorCode.AI_INPUT_INVALID, List.of(new FieldDetail(field)));
     }
 }

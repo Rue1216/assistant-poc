@@ -233,6 +233,17 @@ class AdminConfigControllerTest extends IntegrationTestBase {
     }
 
     @Test
+    void saveWithForbiddenChangeNoteIs422() throws Exception {
+        String draft = createDraft();
+        String request = "{\"name\":\"聯繫準備\",\"content\":" + quote(JsonPath.read(draft, "$.content"))
+                + ",\"changeNote\":\"0912-345-678\",\"saveMode\":\"DRAFT\",\"docVersion\":"
+                + docVersion(draft) + "}";
+        call(put(DRAFT_URL), request)
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.details[0].rule").value("FORBIDDEN_CONTENT"));
+    }
+
+    @Test
     void applyOverwriteHandshake() throws Exception {
         long wcDoc = docVersion(schedule(createDraft()));
         String applyUrl = VERSIONS_URL + "/1/apply";

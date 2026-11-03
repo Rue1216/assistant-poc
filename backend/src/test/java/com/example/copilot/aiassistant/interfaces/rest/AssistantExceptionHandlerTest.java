@@ -50,6 +50,22 @@ class AssistantExceptionHandlerTest extends IntegrationTestBase {
     }
 
     @Test
+    void detailsKeepTheirJsonShape() throws Exception {
+        assertBodyContains("field-detail", "[{\"field\":\"scheduledAt\"}]");
+        assertBodyContains("working-copy", "[{\"status\":\"DRAFT\",\"scheduledAt\":null,"
+                + "\"updatedAt\":\"2026-10-20T10:00:00+08:00\",\"docVersion\":3}]");
+        assertBodyContains("running-eval", "[{\"runId\":\"6719f0c2a4b5e6f7a8b9c0d1\","
+                + "\"configKey\":\"instruction.contact-prep\",\"triggeredBy\":\"EEE22222\","
+                + "\"completedCases\":7,\"totalCases\":34}]");
+        assertBodyContains("details", "[{\"rule\":\"NOT_EMPTY\",\"message\":\"內容不可為空\"}]");
+    }
+
+    private void assertBodyContains(String path, String details) throws Exception {
+        String body = call(path, "{}").andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertThat(body).contains("\"details\":" + details);
+    }
+
+    @Test
     void unknownExceptionBecomesInternalError() throws Exception {
         call("unknown", "{}")
                 .andExpect(status().isInternalServerError())

@@ -74,11 +74,21 @@ public class ConfigValidator {
         return !host.isEmpty() && allowedUrlHosts.contains(host);
     }
 
-    /** Validates the content and also keeps forbidden content (spec 04 section 2.5) out of the display name. */
-    public List<ValidationError> validate(ConfigType type, String name, String content) {
+    /** Content errors first, then forbidden content (spec 04 section 2.5) in the name and change note. */
+    public List<ValidationError> validate(ConfigType type, String name, String changeNote, String content) {
         List<ValidationError> errors = validate(type, content);
-        if (name != null) {
+        errors.addAll(validateMetadata(name, changeNote));
+        return errors;
+    }
+
+    /** Forbidden-content check for the display name and the change note; null or empty values are skipped. */
+    public List<ValidationError> validateMetadata(String name, String changeNote) {
+        List<ValidationError> errors = new ArrayList<>();
+        if (name != null && !name.isEmpty()) {
             checkForbidden("名稱", new String[] {name}, errors, false);
+        }
+        if (changeNote != null && !changeNote.isEmpty()) {
+            checkForbidden("修改說明", new String[] {changeNote}, errors, false);
         }
         return errors;
     }

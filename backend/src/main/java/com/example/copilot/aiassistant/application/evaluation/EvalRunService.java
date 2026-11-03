@@ -7,6 +7,7 @@ import com.example.copilot.aiassistant.domain.eval.EvalRun;
 import com.example.copilot.aiassistant.domain.eval.EvalStatus;
 import com.example.copilot.aiassistant.domain.exception.AssistantException;
 import com.example.copilot.aiassistant.domain.exception.ErrorCode;
+import com.example.copilot.aiassistant.domain.exception.RunningEvalDetail;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
@@ -20,9 +21,7 @@ import com.example.copilot.aiassistant.domain.repository.EvalRunRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
@@ -86,7 +85,7 @@ public class EvalRunService {
             throw new AssistantException(ErrorCode.AI_CONFIG_CONFLICT);
         }
         List<ValidationError> errors = validator.validate(workingCopy.configType(), workingCopy.name(),
-                workingCopy.content());
+                workingCopy.changeNote(), workingCopy.content());
         if (!errors.isEmpty()) {
             throw new AssistantException(ErrorCode.AI_CONFIG_VALIDATION_FAILED, List.copyOf(errors));
         }
@@ -160,12 +159,7 @@ public class EvalRunService {
             return new AssistantException(ErrorCode.AI_EVAL_RUNNING);
         }
         EvalRun r = running.get();
-        Map<String, Object> details = new LinkedHashMap<>();
-        details.put("runId", r.id());
-        details.put("configKey", r.configKey());
-        details.put("triggeredBy", r.triggeredBy());
-        details.put("completedCases", r.completedCases());
-        details.put("totalCases", r.totalCases());
-        return new AssistantException(ErrorCode.AI_EVAL_RUNNING, List.of(details));
+        return new AssistantException(ErrorCode.AI_EVAL_RUNNING, List.of(new RunningEvalDetail(
+                r.id(), r.configKey(), r.triggeredBy(), r.completedCases(), r.totalCases())));
     }
 }

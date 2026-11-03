@@ -22,6 +22,7 @@ import com.example.copilot.aiassistant.domain.eval.EvalSummary;
 import com.example.copilot.aiassistant.domain.eval.JudgeVerdict;
 import com.example.copilot.aiassistant.domain.exception.AssistantException;
 import com.example.copilot.aiassistant.domain.exception.ErrorCode;
+import com.example.copilot.aiassistant.domain.exception.RunningEvalDetail;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
 import com.example.copilot.aiassistant.infrastructure.mongo.AssistantConfigMongoRepository;
@@ -44,7 +45,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -226,6 +226,18 @@ class EvalRunServiceTest extends IntegrationTestBase {
     }
 
     @Test
+    void forbiddenChangeNoteFailsValidation() {
+        AssistantConfig draft = configService.createDraft(KEY, ACTOR);
+        AssistantConfig stale = configs.save(draft.withContent(draft.name(), draft.content(), "0912-345-678"));
+
+        AssistantException e = thrown(() -> service.start(KEY, stale.docVersion(), ACTOR));
+
+        assertThat(e.code()).isEqualTo(ErrorCode.AI_CONFIG_VALIDATION_FAILED);
+        assertThat(e.details()).anyMatch(d -> d instanceof ValidationError v && v.rule().equals("FORBIDDEN_CONTENT"));
+        verify(runner, never()).run(any(), any());
+    }
+
+    @Test
     void secondStartIsRejectedWhileRunning() {
         AssistantConfig draft = draftWithMarker(KEY, "m");
         EvalRun first = service.start(KEY, draft.docVersion(), ACTOR);
@@ -233,12 +245,8 @@ class EvalRunServiceTest extends IntegrationTestBase {
         AssistantException e = thrown(() -> service.start(KEY, draft.docVersion(), "other.admin"));
 
         assertThat(e.code()).isEqualTo(ErrorCode.AI_EVAL_RUNNING);
-        assertThat(e.details()).hasSize(1);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> details = (Map<String, Object>) e.details().get(0);
-        assertThat(details).containsEntry("runId", first.id()).containsEntry("configKey", KEY)
-                .containsEntry("triggeredBy", ACTOR).containsEntry("completedCases", 0)
-                .containsEntry("totalCases", dataset.cases().size());
+        assertThat(e.details()).isEqualTo(
+                List.of(new RunningEvalDetail(first.id(), KEY, ACTOR, 0, dataset.cases().size())));
     }
 
     @Test

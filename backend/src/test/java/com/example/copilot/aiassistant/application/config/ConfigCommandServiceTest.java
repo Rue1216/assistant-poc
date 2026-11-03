@@ -21,6 +21,8 @@ import com.example.copilot.aiassistant.domain.config.ConfigValidator;
 import com.example.copilot.aiassistant.domain.config.ValidationError;
 import com.example.copilot.aiassistant.domain.exception.AssistantException;
 import com.example.copilot.aiassistant.domain.exception.ErrorCode;
+import com.example.copilot.aiassistant.domain.exception.FieldDetail;
+import com.example.copilot.aiassistant.domain.exception.WorkingCopyDetail;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
 import com.example.copilot.aiassistant.infrastructure.seed.SeedLoader;
 import com.mongodb.MongoException;
@@ -34,7 +36,6 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.bson.types.ObjectId;
@@ -215,6 +216,53 @@ class ConfigCommandServiceTest extends IntegrationTestBase {
         assertThat(after.status()).isEqualTo(ConfigStatus.SCHEDULED);
         assertThat(after.updatedBy()).isEqualTo(ACTOR);
         assertThat(after.docVersion()).isEqualTo(saved.docVersion());
+    }
+
+    private AssistantConfig staleDraftWithForbiddenChangeNote() {
+        AssistantConfig draft = service.createDraft(KEY, ACTOR);
+        return repository.save(draft.withContent(draft.name(), draft.content(), "0912-345-678"));
+    }
+
+    @Test
+    void saveDraftRejectsForbiddenNameOrChangeNote() {
+        AssistantConfig draft = service.createDraft(KEY, ACTOR);
+
+        AssistantException e = assertError(() -> service.saveWorkingCopy(KEY,
+                new SaveCommand("聯繫準備", draft.content(), "0912-345-678", SaveMode.DRAFT, draft.docVersion()), ACTOR),
+                ErrorCode.AI_CONFIG_VALIDATION_FAILED);
+
+        assertThat(e.details()).extracting(d -> ((ValidationError) d).message())
+                .contains("修改說明疑似包含手機號碼，請移除");
+        assertThat(reload(2).docVersion()).isEqualTo(draft.docVersion());
+    }
+
+    @Test
+    void saveDraftStillAllowsForbiddenContent() {
+        AssistantConfig draft = service.createDraft(KEY, ACTOR);
+
+        AssistantConfig saved = save(draft, "聯繫準備", validContent("內網 10.1.2.3"), SaveMode.DRAFT, ACTOR);
+
+        assertThat(saved.content()).contains("10.1.2.3");
+    }
+
+    @Test
+    void staleForbiddenChangeNoteCanBeFixedInTheSameSave() {
+        AssistantConfig stale = staleDraftWithForbiddenChangeNote();
+
+        AssistantConfig saved = service.saveWorkingCopy(KEY,
+                new SaveCommand("聯繫準備", stale.content(), "乾淨的說明", SaveMode.DRAFT, stale.docVersion()), ACTOR);
+
+        assertThat(saved.changeNote()).isEqualTo("乾淨的說明");
+    }
+
+    @Test
+    void publishRejectsForbiddenChangeNote() {
+        AssistantConfig stale = staleDraftWithForbiddenChangeNote();
+
+        AssistantException e = assertError(() -> publishNow(stale, ACTOR), ErrorCode.AI_CONFIG_VALIDATION_FAILED);
+
+        assertThat(e.details()).extracting(d -> ((ValidationError) d).message())
+                .contains("修改說明疑似包含手機號碼，請移除");
     }
 
     @Test
@@ -406,7 +454,7 @@ class ConfigCommandServiceTest extends IntegrationTestBase {
 
         for (Instant at : new Instant[] {NOW.plusSeconds(30), NOW.plus(Duration.ofDays(91)), null}) {
             AssistantException e = assertError(() -> schedule(draft, at, ACTOR), ErrorCode.AI_INPUT_INVALID);
-            assertThat(e.details()).containsExactly(Map.of("field", "scheduledAt"));
+            assertThat(e.details()).containsExactly(new FieldDetail("scheduledAt"));
         }
         assertThat(reload(2).status()).isEqualTo(ConfigStatus.DRAFT);
 
@@ -567,11 +615,11 @@ class ConfigCommandServiceTest extends IntegrationTestBase {
                     () -> service.applyVersion(KEY, new ApplyCommand(1, seen, false), ACTOR),
                     ErrorCode.AI_CONFIG_OVERWRITE_PENDING);
             assertThat(e.details()).hasSize(1);
-            Map<?, ?> pending = (Map<?, ?>) e.details().get(0);
-            assertThat(pending.get("status")).isEqualTo("DRAFT");
-            assertThat(pending.get("scheduledAt")).isNull();
-            assertThat(pending.get("updatedAt")).isEqualTo(NOW);
-            assertThat(pending.get("docVersion")).isEqualTo(draft.docVersion());
+            WorkingCopyDetail pending = (WorkingCopyDetail) e.details().get(0);
+            assertThat(pending.status()).isEqualTo(ConfigStatus.DRAFT);
+            assertThat(pending.scheduledAt()).isNull();
+            assertThat(pending.updatedAt()).isEqualTo(NOW);
+            assertThat(pending.docVersion()).isEqualTo(draft.docVersion());
         }
         assertThat(reload(3).status()).isEqualTo(ConfigStatus.DRAFT);
 
@@ -601,9 +649,9 @@ class ConfigCommandServiceTest extends IntegrationTestBase {
         AssistantException e = assertError(
                 () -> service.applyVersion(KEY, new ApplyCommand(1, scheduled.docVersion(), false), ACTOR),
                 ErrorCode.AI_CONFIG_OVERWRITE_PENDING);
-        Map<?, ?> pending = (Map<?, ?>) e.details().get(0);
-        assertThat(pending.get("status")).isEqualTo("SCHEDULED");
-        assertThat(pending.get("scheduledAt")).isEqualTo(at);
+        WorkingCopyDetail pending = (WorkingCopyDetail) e.details().get(0);
+        assertThat(pending.status()).isEqualTo(ConfigStatus.SCHEDULED);
+        assertThat(pending.scheduledAt()).isEqualTo(at);
 
         AssistantConfig applied = service.applyVersion(KEY, new ApplyCommand(1, scheduled.docVersion(), true), ACTOR);
 
@@ -715,7 +763,7 @@ class ConfigCommandServiceTest extends IntegrationTestBase {
         AssistantException e = assertError(
                 () -> service.createKey("instruction.x", ConfigType.SYSTEM_PROMPT, "x", ACTOR),
                 ErrorCode.AI_INPUT_INVALID);
-        assertThat(e.details()).containsExactly(Map.of("field", "configType"));
+        assertThat(e.details()).containsExactly(new FieldDetail("configType"));
     }
 
     @Test

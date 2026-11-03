@@ -5,13 +5,13 @@ import java.util.List;
 public class AssistantException extends RuntimeException {
 
     private final ErrorCode code;
-    private final List<Object> details;
+    private final List<ErrorDetail> details;
 
     public AssistantException(ErrorCode code) {
         this(code, List.of());
     }
 
-    public AssistantException(ErrorCode code, List<Object> details) {
+    public AssistantException(ErrorCode code, List<? extends ErrorDetail> details) {
         super(code.name());
         this.code = code;
         this.details = details == null ? List.of() : List.copyOf(details);
@@ -21,7 +21,7 @@ public class AssistantException extends RuntimeException {
         return code;
     }
 
-    public List<Object> details() {
+    public List<ErrorDetail> details() {
         return details;
     }
 }

@@ -2,8 +2,9 @@ package com.example.copilot.aiassistant.interfaces.rest;
 
 import com.example.copilot.aiassistant.domain.exception.AssistantException;
 import com.example.copilot.aiassistant.domain.exception.ErrorCode;
+import com.example.copilot.aiassistant.domain.exception.ErrorDetail;
+import com.example.copilot.aiassistant.domain.exception.FieldDetail;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,8 +32,8 @@ public class AssistantExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     ResponseEntity<ApiError> handleValidation(MethodArgumentNotValidException e) {
-        List<Object> details = e.getBindingResult().getFieldErrors().stream()
-                .map(fe -> (Object) Map.of("field", fe.getField()))
+        List<FieldDetail> details = e.getBindingResult().getFieldErrors().stream()
+                .map(fe -> new FieldDetail(fe.getField()))
                 .distinct()
                 .toList();
         log.warn("requestId={} code={}", RequestIdFilter.current(), ErrorCode.AI_INPUT_INVALID);
@@ -41,29 +42,29 @@ public class AssistantExceptionHandler {
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     ResponseEntity<ApiError> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
-        return invalid(List.of(Map.of("field", e.getName())));
+        return invalid(List.of(new FieldDetail(e.getName())));
     }
 
     @ExceptionHandler(MissingServletRequestParameterException.class)
     ResponseEntity<ApiError> handleMissingParam(MissingServletRequestParameterException e) {
-        return invalid(List.of(Map.of("field", e.getParameterName())));
+        return invalid(List.of(new FieldDetail(e.getParameterName())));
     }
 
     @ExceptionHandler(HandlerMethodValidationException.class)
     ResponseEntity<ApiError> handleMethodValidation(HandlerMethodValidationException e) {
         // A validated body reports its bad fields; a bare parameter (path variable, query) reports its own name.
-        List<Object> details = e.getParameterValidationResults().stream()
+        List<FieldDetail> details = e.getParameterValidationResults().stream()
                 .flatMap(r -> r instanceof ParameterErrors pe && !pe.getFieldErrors().isEmpty()
                         ? pe.getFieldErrors().stream().map(fe -> fe.getField())
                         : Stream.of(r.getMethodParameter().getParameterName()))
                 .filter(n -> n != null)
                 .distinct()
-                .map(n -> (Object) Map.of("field", n))
+                .map(n -> new FieldDetail(n))
                 .toList();
         return invalid(details);
     }
 
-    private ResponseEntity<ApiError> invalid(List<Object> details) {
+    private ResponseEntity<ApiError> invalid(List<FieldDetail> details) {
         log.warn("requestId={} code={}", RequestIdFilter.current(), ErrorCode.AI_INPUT_INVALID);
         return respond(ErrorCode.AI_INPUT_INVALID, details);
     }
@@ -87,7 +88,7 @@ public class AssistantExceptionHandler {
         return respond(ErrorCode.AI_INTERNAL_ERROR, List.of());
     }
 
-    private ResponseEntity<ApiError> respond(ErrorCode code, List<Object> details) {
+    private ResponseEntity<ApiError> respond(ErrorCode code, List<? extends ErrorDetail> details) {
         return ResponseEntity.status(code.status()).body(ApiError.of(code, details));
     }
 }

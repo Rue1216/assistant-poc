@@ -8,6 +8,7 @@ import com.example.copilot.aiassistant.interfaces.rest.chat.dto.ChatRequestBody;
 import com.example.copilot.aiassistant.interfaces.rest.chat.dto.ChatResponseBody;
 import com.example.copilot.aiassistant.domain.exception.AssistantException;
 import com.example.copilot.aiassistant.domain.exception.ErrorCode;
+import com.example.copilot.aiassistant.domain.exception.FieldDetail;
 import com.example.copilot.aiassistant.interfaces.rest.PerUserRateLimiter;
 import com.example.copilot.aiassistant.application.port.CurrentUserPort;
 import com.example.copilot.aiassistant.domain.user.UserContext;
@@ -16,7 +17,6 @@ import com.example.copilot.aiassistant.application.chat.CustomerContextFactory;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Pattern;
 import java.util.List;
-import java.util.Map;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -48,10 +48,10 @@ public class ChatController {
             @Valid @RequestBody ChatRequestBody body) {
         String message = body.message().strip();
         if (message.isEmpty() || message.codePointCount(0, message.length()) > limits.messageMaxChars()) {
-            throw new AssistantException(ErrorCode.AI_INPUT_INVALID, List.of(Map.of("field", "message")));
+            throw new AssistantException(ErrorCode.AI_INPUT_INVALID, List.of(new FieldDetail("message")));
         }
         if (body.history() != null && body.history().size() > limits.historyMaxTurns() * 2) {
-            throw new AssistantException(ErrorCode.AI_INPUT_INVALID, List.of(Map.of("field", "history")));
+            throw new AssistantException(ErrorCode.AI_INPUT_INVALID, List.of(new FieldDetail("history")));
         }
         String historySummary = body.historySummary() == null ? null : body.historySummary().strip();
         if (historySummary != null && historySummary.isEmpty()) {
@@ -59,7 +59,7 @@ public class ChatController {
         }
         if (historySummary != null
                 && historySummary.codePointCount(0, historySummary.length()) > limits.summaryMaxChars()) {
-            throw new AssistantException(ErrorCode.AI_INPUT_INVALID, List.of(Map.of("field", "historySummary")));
+            throw new AssistantException(ErrorCode.AI_INPUT_INVALID, List.of(new FieldDetail("historySummary")));
         }
         UserContext user = currentUser.currentUser();
         if (!rateLimiter.tryAcquire(user.userId())) {

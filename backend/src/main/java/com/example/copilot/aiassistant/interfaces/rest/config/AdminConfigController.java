@@ -11,7 +11,7 @@ import com.example.copilot.aiassistant.domain.config.ConfigType;
 import com.example.copilot.aiassistant.domain.config.ConfigValidator;
 import com.example.copilot.aiassistant.domain.exception.AssistantException;
 import com.example.copilot.aiassistant.domain.exception.ErrorCode;
-import com.example.copilot.aiassistant.interfaces.rest.config.dto.AdminTime;
+import com.example.copilot.aiassistant.domain.exception.FieldDetail;
 import com.example.copilot.aiassistant.interfaces.rest.config.dto.ApplyRequest;
 import com.example.copilot.aiassistant.interfaces.rest.config.dto.ConfigKeys;
 import com.example.copilot.aiassistant.interfaces.rest.config.dto.ConfigSummaryView;
@@ -29,9 +29,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -144,15 +142,8 @@ public class AdminConfigController {
                                    @PathVariable int version,
                                    @RequestBody(required = false) ApplyRequest request) {
         ApplyRequest body = request != null ? request : new ApplyRequest(null, null);
-        try {
-            return view(service.applyVersion(configKey,
-                    new ApplyCommand(version, body.workingCopyDocVersion(), body.confirmed()), actor()));
-        } catch (AssistantException e) {
-            if (e.code() == ErrorCode.AI_CONFIG_OVERWRITE_PENDING) {
-                throw new AssistantException(e.code(), withOffsets(e.details()));
-            }
-            throw e;
-        }
+        return view(service.applyVersion(configKey,
+                new ApplyCommand(version, body.workingCopyDocVersion(), body.confirmed()), actor()));
     }
 
     private ConfigVersionView view(AssistantConfig config) {
@@ -176,19 +167,7 @@ public class AdminConfigController {
         }
     }
 
-    /** The service reports Instants; the API shows them with the admin +08:00 offset like every other time. */
-    private static List<Object> withOffsets(List<Object> details) {
-        return details.stream().map(detail -> {
-            if (!(detail instanceof Map<?, ?> map)) {
-                return detail;
-            }
-            Map<String, Object> converted = new LinkedHashMap<>();
-            map.forEach((k, v) -> converted.put((String) k, v instanceof Instant i ? AdminTime.at(i) : v));
-            return (Object) converted;
-        }).toList();
-    }
-
     private static AssistantException invalidInput(String field) {
-        return new AssistantException(ErrorCode.AI_INPUT_INVALID, List.of(Map.of("field", field)));
+        return new AssistantException(ErrorCode.AI_INPUT_INVALID, List.of(new FieldDetail(field)));
     }
 }

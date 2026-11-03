@@ -74,7 +74,7 @@ class SeedLoaderTest extends IntegrationTestBase {
     @Test
     void everySeedPassesTheValidator() {
         assertThat(repository.findPublished()).allSatisfy(c ->
-                assertThat(validator.validate(c.configType(), c.configKey(), c.content()))
+                assertThat(validator.validate(c.configType(), c.name(), c.changeNote(), c.content()))
                         .as(c.configKey()).isEmpty());
     }
 
