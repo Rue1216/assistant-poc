@@ -195,7 +195,44 @@ class EvalDatasetLoaderTest {
                 .hasMessageContaining("重複的欄位");
     }
 
-    private static final Set<String> BUNDLED_TOOLS = Set.of("getCustomer", "getRealTimeCustomer",
+    private static String withOrder(String orderLine, String extra) {
+        return """
+                - id: O1
+                  group: 顧客經營
+                  accessLevel: FULL
+                  certNo: A123456789
+                  question: 整理顧客概況
+                  expect:
+                    tools: [getCustomer]
+                    %s
+                    %s
+                    refusal: false
+                  rubric:
+                    - 列出顧客概況
+                """.formatted(orderLine, extra);
+    }
+
+    @Test
+    void parsesToolOrder() {
+        EvalCase c = parse(withOrder("toolOrder: [getStockQuote, getCustomer]", "mustContain: [a]"), 30)
+                .cases().get(0);
+        assertThat(c.expect().toolOrder()).containsExactly("getStockQuote", "getCustomer");
+        assertThat(parse(valid("Q1"), 30).cases().get(0).expect().toolOrder()).isEmpty();
+    }
+
+    @Test
+    void rejectsUnknownToolInToolOrder() {
+        assertThatThrownBy(() -> parse(withOrder("toolOrder: [nope]", "mustContain: [a]"), 30))
+                .hasMessageContaining("O1.expect.toolOrder: 未知的工具：nope");
+    }
+
+    @Test
+    void rejectsToolOrderOverlappingForbiddenTools() {
+        assertThatThrownBy(() -> parse(withOrder("toolOrder: [getCustomer]", "forbiddenTools: [getCustomer]"), 30))
+                .hasMessageContaining("O1.expect.toolOrder: 與 expect.forbiddenTools 重複：getCustomer");
+    }
+
+    private static final Set<String> BUNDLED_TOOLS =Set.of("getCustomer", "getRealTimeCustomer",
             "getMarketIndex",
             "getStockQuote", "getCompanyAnnouncements");
 

@@ -7,7 +7,7 @@ import { RETIREE } from '../../../../testing/testCustomers'
 function kase(id: string, category?: string | null): EvalCase {
   return {
     id, group: '顧客經營', accessLevel: 'L1', certNo: RETIREE, question: '問題', rubric: [],
-    expect: { tools: [], forbiddenTools: [], refusal: false, mustContain: [], mustNotContain: [], ...(category !== undefined ? { category } : {}) },
+    expect: { tools: [], forbiddenTools: [], refusal: false, mustContain: [], mustNotContain: [], toolOrder: [], ...(category !== undefined ? { category } : {}) },
   }
 }
 
@@ -28,6 +28,18 @@ describe('EvaluationCasesDialog', () => {
     expect(cell(2)).toBe('—')
     expect(cell(3)).toBe('instruction.x')
     expect(cell(4)).toBe('—')
+  })
+
+  it('shows the expected tool order joined by arrows, and — when empty', () => {
+    const ordered = kase('A')
+    ordered.expect.toolOrder = ['a', 'b']
+    const w = mount(EvaluationCasesDialog, { props: { open: true, cases: { datasetHash: 'h', cases: [ordered, kase('B')] }, nameOf } })
+    const headers = w.findAll('thead th').map((h) => h.text())
+    const col = headers.indexOf('預期順序')
+    expect(col).toBe(headers.indexOf('預期工具') + 1)
+    const cell = (i: number) => w.findAll('tbody tr')[i]!.findAll('td')[col]!.text()
+    expect(cell(0)).toBe('a → b')
+    expect(cell(1)).toBe('—')
   })
 
   it('keeps the header cells on one line', () => {

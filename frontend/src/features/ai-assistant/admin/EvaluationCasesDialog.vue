@@ -27,6 +27,7 @@ watch(
 const expectedCategory = (key: string | null | undefined) => (key == null ? '—' : key === 'none' ? '無' : props.nameOf(key))
 
 const list = (items: string[]) => (items.length ? items.join('、') : '—')
+const order = (items: string[]) => (items.length ? items.join(' → ') : '—')
 </script>
 
 <template>
@@ -44,6 +45,7 @@ const list = (items: string[]) => (items.length ? items.join('、') : '—')
               <th class="ev-dialog__th" scope="col">存取等級／顧客</th>
               <th class="ev-dialog__th" scope="col">問題</th>
               <th class="ev-dialog__th" scope="col">預期工具</th>
+              <th class="ev-dialog__th" scope="col">預期順序</th>
               <th class="ev-dialog__th" scope="col">應拒答</th>
               <th class="ev-dialog__th" scope="col">預期分類</th>
               <th class="ev-dialog__th" scope="col">評分要點</th>
@@ -56,6 +58,7 @@ const list = (items: string[]) => (items.length ? items.join('、') : '—')
               <td>{{ c.accessLevel }}／{{ c.certNo }}</td>
               <td>{{ c.question }}</td>
               <td>{{ list(c.expect.tools) }}</td>
+              <td>{{ order(c.expect.toolOrder) }}</td>
               <td>{{ c.expect.refusal ? '是' : '否' }}</td>
               <td>{{ expectedCategory(c.expect.category) }}</td>
               <td>

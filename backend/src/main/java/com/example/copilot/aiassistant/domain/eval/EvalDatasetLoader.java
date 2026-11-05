@@ -36,7 +36,7 @@ public final class EvalDatasetLoader {
     private static final Set<String> CASE_KEYS = Set.of("id", "group", "accessLevel", "certNo", "question",
             "expect", "rubric");
     private static final Set<String> EXPECT_KEYS = Set.of("tools", "forbiddenTools", "refusal", "mustContain",
-            "mustNotContain", "category");
+            "mustNotContain", "category", "toolOrder");
     private static final Pattern CERT_NO = Pattern.compile("^[A-Z0-9&]{8,12}$");
     private static final Pattern CATEGORY = Pattern.compile("^(instruction\\.[a-z0-9-]{1,50}|none)$");
 
@@ -130,6 +130,12 @@ public final class EvalDatasetLoader {
                 errors.add(msg(label, "expect.forbiddenTools", "與 expect.tools 重複：" + name));
             }
         }
+        List<String> toolOrder = toolList(e.get("toolOrder"), "expect.toolOrder", label, toolNames, errors);
+        for (String name : toolOrder) {
+            if (forbidden.contains(name)) {
+                errors.add(msg(label, "expect.toolOrder", "與 expect.forbiddenTools 重複：" + name));
+            }
+        }
         boolean refusal = false;
         if (e.get("refusal") instanceof Boolean b) {
             refusal = b;
@@ -148,7 +154,8 @@ public final class EvalDatasetLoader {
                 errors.add(msg(label, "expect.category", "必須是 instruction.<名稱> 或 none"));
             }
         }
-        return new EvalCase.Expect(tools, forbidden, refusal, mustContain, mustNotContain, category);
+        return new EvalCase.Expect(tools, forbidden, refusal, mustContain, mustNotContain, category,
+                toolOrder);
     }
 
     private static List<String> toolList(Object value, String field, String label, Set<String> toolNames,

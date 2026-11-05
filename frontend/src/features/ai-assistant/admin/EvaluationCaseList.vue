@@ -47,7 +47,7 @@ function failures(r: CaseResult, c: EvalCaseRecord): string[] {
   const out: string[] = []
   if (r.missingPhrases.length) out.push(`未提到：${r.missingPhrases.join('、')}`)
   if (r.forbiddenPhrases.length) out.push(`出現禁止字詞：${r.forbiddenPhrases.join('、')}`)
-  if (!r.toolsOk) out.push('工具選擇不符')
+  if (!r.toolsOk) out.push('工具選擇或順序不符')
   if (!r.numbersOk) out.push('有未核對的數字')
   if (refusalMismatch(r, c)) out.push(expectRefusal ? '應拒答但未拒答' : '不應拒答卻拒答')
   return out

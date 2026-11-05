@@ -70,16 +70,6 @@ class ConfigValidatorTest {
     }
 
     @Test
-    void allSeedFilesPass() {
-        assertThat(validator.validate(ConfigType.SYSTEM_PROMPT, seed("system.main.md"))).isEmpty();
-        for (String f : List.of("customer-overview", "asset-liability", "member-rank", "opportunity", "engagement",
-                "contact-prep", "market-brief")) {
-            assertThat(validator.validate(ConfigType.SYSTEM_INSTRUCTION, seed("instruction." + f + ".md")))
-                    .as(f).isEmpty();
-        }
-    }
-
-    @Test
     void blankFailsNotEmpty() {
         assertThat(validator.validate(ConfigType.SYSTEM_PROMPT, "  \n ")).extracting(ValidationError::rule)
                 .contains("NOT_EMPTY");

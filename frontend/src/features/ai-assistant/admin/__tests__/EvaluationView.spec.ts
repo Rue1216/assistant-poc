@@ -35,7 +35,7 @@ const baseProps = {
 const dataset = (n: number): EvalCase[] =>
   Array.from({ length: n }, (_, i) => ({
     id: `Q${i}`, group: '顧客經營', accessLevel: 'A', certNo: '1', question: '問題', rubric: [],
-    expect: { tools: [], forbiddenTools: [], refusal: false, mustContain: [], mustNotContain: [], category: null },
+    expect: { tools: [], forbiddenTools: [], refusal: false, mustContain: [], mustNotContain: [], toolOrder: [], category: null },
   }))
 
 const scopes: EffectScope[] = []

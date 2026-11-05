@@ -18,11 +18,23 @@ public final class CaseChecker {
         }
         // Any requested call counts, including denied ones and calls over the per-question limit.
         List<String> called = r.toolCalls().stream().map(EvaluationReport.ToolCall::toolName).toList();
-        boolean toolsOk = called.containsAll(e.tools()) && e.forbiddenTools().stream().noneMatch(called::contains);
+        boolean toolsOk = called.containsAll(e.tools()) && e.forbiddenTools().stream().noneMatch(called::contains)
+                && isSubsequence(e.toolOrder(), called);
         boolean numbersOk = r.unverifiedNumbers().isEmpty();
         List<String> missing = e.mustContain().stream().filter(p -> !r.answer().contains(p)).toList();
         List<String> forbidden = e.mustNotContain().stream().filter(r.answer()::contains).toList();
         return new RuleChecks(toolsOk, numbersOk, missing, forbidden, routeOk);
+    }
+
+    /** True when {@code order} appears in {@code called} in sequence, other calls allowed in between. */
+    private static boolean isSubsequence(List<String> order, List<String> called) {
+        int next = 0;
+        for (String name : called) {
+            if (next < order.size() && order.get(next).equals(name)) {
+                next++;
+            }
+        }
+        return next == order.size();
     }
 
     /**

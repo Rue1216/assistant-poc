@@ -88,6 +88,39 @@ class CaseCheckerTest {
         assertThat(CaseChecker.check(routeCase(null), EvaluationReport.failed("X")).routeOk()).isNull();
     }
 
+    private static EvalCase orderCase(List<String> order) {
+        return new EvalCase("c1", "g", AccessLevel.values()[0], "C1", "q",
+                new EvalCase.Expect(List.of(), List.of(), false, List.of(), List.of(), null, order), List.of());
+    }
+
+    private static boolean toolsOk(EvalCase c, String... names) {
+        List<ToolCall> calls = java.util.Arrays.stream(names).map(n -> new ToolCall(n, "EXECUTED")).toList();
+        return CaseChecker.check(c, report("ok", calls, List.of())).toolsOk();
+    }
+
+    @Test
+    void toolOrderIsASubsequence() {
+        EvalCase c = orderCase(List.of("a", "b"));
+        assertThat(toolsOk(c, "a", "b")).isTrue();
+        assertThat(toolsOk(c, "a", "x", "b")).isTrue();
+        assertThat(toolsOk(c, "b", "a")).isFalse();
+        assertThat(toolsOk(c, "a")).isFalse();
+        assertThat(toolsOk(c, "b", "a", "b")).isTrue();
+    }
+
+    @Test
+    void emptyToolOrderChecksNothing() {
+        assertThat(toolsOk(orderCase(List.of()), "b", "a")).isTrue();
+        assertThat(toolsOk(orderCase(List.of()))).isTrue();
+    }
+
+    @Test
+    void deniedCallsCount() {
+        EvalCase c = orderCase(List.of("a", "b"));
+        assertThat(CaseChecker.check(c, report("ok", List.of(new ToolCall("a", "DENIED"),
+                new ToolCall("b", "EXECUTED")), List.of())).toolsOk()).isTrue();
+    }
+
     @Test
     void expectedCategoryMissingFromSnapshotFailsRouteCheck() {
         // The category was removed from the candidate snapshot, so the router can only answer "none" or fall back.

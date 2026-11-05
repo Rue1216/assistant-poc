@@ -316,6 +316,8 @@ export interface EvalCase {
     refusal: boolean
     mustContain: string[]
     mustNotContain: string[]
+    /** Tools that must be called in this order (a subsequence of the calls); empty means no order check */
+    toolOrder: string[]
     /** configKey, 'none', or absent/null (the backend serialises unchecked cases as null) */
     category?: string | null
   }

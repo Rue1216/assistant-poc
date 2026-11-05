@@ -116,7 +116,7 @@ describe('EvaluationCaseList', () => {
     const text = w.findAll('.ev-col')[1]!.text()
     expect(text).toContain('未提到：面談')
     expect(text).toContain('出現禁止字詞：王小明')
-    expect(text).toContain('工具選擇不符')
+    expect(text).toContain('工具選擇或順序不符')
     expect(text).toContain('有未核對的數字')
     expect(text).not.toContain('全部通過')
   })
@@ -126,7 +126,7 @@ describe('EvaluationCaseList', () => {
     const w = await mountList([rec('Q1', result(), bad)])
     await expand(w, 'Q1')
     const text = w.findAll('.ev-col')[1]!.text()
-    expect(text).toContain('工具選擇不符')
+    expect(text).toContain('工具選擇或順序不符')
     expect(text).toContain('評分要點未達成：列出待辦')
     expect(text).not.toContain('全部通過')
   })
@@ -237,7 +237,7 @@ describe('EvaluationCaseList', () => {
       await expand(w, 'R1')
       const items = w.findAll('.ev-col')[0]!.findAll('.ev-col__fails li').map((li) => li.text())
       expect(items[0]).toBe('分類不符：預期 接觸前準備，實際 無')
-      expect(items).toContain('工具選擇不符')
+      expect(items).toContain('工具選擇或順序不符')
     })
 
     it('names the actual category, or the key when unknown', async () => {

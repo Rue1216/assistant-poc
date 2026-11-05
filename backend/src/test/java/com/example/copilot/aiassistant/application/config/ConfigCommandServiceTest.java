@@ -26,6 +26,10 @@ import com.example.copilot.aiassistant.domain.exception.FieldDetail;
 import com.example.copilot.aiassistant.domain.exception.WorkingCopyDetail;
 import com.example.copilot.aiassistant.domain.prompt.ExampleQuestionParser;
 import com.example.copilot.aiassistant.domain.tool.ToolRegistry;
+import com.example.copilot.aiassistant.domain.privacy.PiiRedactor;
+import com.example.copilot.aiassistant.domain.tool.AssistantTool;
+import com.example.copilot.aiassistant.domain.tool.customer.GetCustomerTool;
+import com.example.copilot.aiassistant.domain.tool.customer.GetRealTimeCustomerTool;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
 import com.example.copilot.aiassistant.infrastructure.seed.SeedLoader;
 import com.example.copilot.testsupport.LogCapture;
@@ -618,13 +622,20 @@ class ConfigCommandServiceTest extends IntegrationTestBase {
         verify(cache, never()).invalidate();
     }
 
+    /** The contact-prep seed names these tools in its workflow markers, so the validator must know them. */
+    private static ToolRegistry contactPrepTools() {
+        PiiRedactor redactor = new PiiRedactor();
+        return new ToolRegistry(List.<AssistantTool<?>>of(new GetCustomerTool(redactor),
+                new GetRealTimeCustomerTool(redactor)));
+    }
+
     @Test
     void publishDueRevertsWhenRulesChangedAfterScheduling() {
         ConfigCommandService permissive = new ConfigCommandService(repository,
-                new ConfigValidator(new ExampleQuestionParser(), List.of("docs.example.com"), new ToolRegistry(List.of())), cache, clock,
+                new ConfigValidator(new ExampleQuestionParser(), List.of("docs.example.com"), contactPrepTools()), cache, clock,
                 properties);
         ConfigCommandService strict = new ConfigCommandService(repository,
-                new ConfigValidator(new ExampleQuestionParser(), List.of(), new ToolRegistry(List.of())), cache, clock, properties);
+                new ConfigValidator(new ExampleQuestionParser(), List.of(), contactPrepTools()), cache, clock, properties);
         AssistantConfig draft = permissive.createDraft(KEY, ACTOR);
         draft = permissive.saveWorkingCopy(KEY, new SaveCommand(draft.name(),
                 draft.content() + "\n- 參考 https://docs.example.com/x\n", "note", SaveMode.KEEP_STATUS,
