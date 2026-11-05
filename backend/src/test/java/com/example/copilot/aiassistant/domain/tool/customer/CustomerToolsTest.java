@@ -546,6 +546,55 @@ class CustomerToolsTest {
         assertThat(realTimeTool.purpose()).isEqualTo("查詢顧客即時註記與提醒");
     }
 
+    @Test
+    void noMarketingWithholdsManagementAndProductIntent() {
+        Map<String, Object> data = data(get(full(TestCustomers.NO_MARKETING), "management", "productIntent", "behavior"));
+
+        assertThat(data).containsKey("behavior").doesNotContainKeys("management", "productIntent");
+        assertThat(data.get("withheldSections")).isEqualTo(List.of("management", "productIntent"));
+        assertThat(data.get("restrictionNote")).isEqualTo("依本顧客註記，這些區塊不提供");
+    }
+
+    @Test
+    void onlyWithheldSectionsIsStillSuccess() {
+        ToolResult result = get(full(TestCustomers.NO_MARKETING), "management");
+
+        assertThat(result.status()).isEqualTo(ToolStatus.SUCCESS);
+        assertThat(result.citation().title()).isEqualTo("個人360・資料受註記限制");
+        assertThat(result.citation().resultCount()).isZero();
+    }
+
+    @Test
+    void unavailableNotesWithholdToo() {
+        TurnCustomerData noNotes = new TurnCustomerData(() -> port.findCustomer360(TestCustomers.RETIREE),
+                () -> {
+                    throw new IllegalStateException("boom");
+                });
+        ToolContext ctx = new ToolContext(new UserContext("u1", "User", "ROLE", Set.of()),
+                new CustomerContext(TestCustomers.RETIREE, AccessLevel.FULL, Set.of(TestCustomers.RETIREE),
+                        Set.of()), noNotes);
+
+        Map<String, Object> data = data(get(ctx, "management", "assetLiability"));
+
+        assertThat(data).containsKey("assetLiability").doesNotContainKey("management");
+        assertThat(data.get("withheldSections")).isEqualTo(List.of("management"));
+    }
+
+    @Test
+    void customerWithoutNoMarketingKeepsEverything() {
+        Map<String, Object> data = data(get(full(TestCustomers.RETIREE), "management", "productIntent"));
+
+        assertThat(data).containsKeys("management", "productIntent").doesNotContainKey("withheldSections");
+    }
+
+    @Test
+    void limitedIsUnchanged() {
+        Map<String, Object> data = data(get(context(port, TestCustomers.NO_MARKETING, AccessLevel.LIMITED),
+                "profile", "management"));
+
+        assertThat(data).containsKey("profile").doesNotContainKey("withheldSections");
+    }
+
     private static TurnCustomerData turnData(CustomerDataPort port, String certNo) {
         return new TurnCustomerData(() -> port.findCustomer360(certNo), () -> port.findRealTimeStatus(certNo));
     }

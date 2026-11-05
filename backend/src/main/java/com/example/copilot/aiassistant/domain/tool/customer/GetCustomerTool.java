@@ -1,6 +1,7 @@
 package com.example.copilot.aiassistant.domain.tool.customer;
 
 import com.example.copilot.aiassistant.domain.customer.AccessLevel;
+import com.example.copilot.aiassistant.domain.customer.CustomerRestrictions;
 import com.example.copilot.aiassistant.domain.customer.c360.Customer360Record;
 import com.example.copilot.aiassistant.domain.privacy.CustomerDeidentifier;
 import com.example.copilot.aiassistant.domain.privacy.PiiRedactor;
@@ -43,6 +44,11 @@ public class GetCustomerTool extends AbstractCustomerTool<GetCustomerTool.Custom
     }
 
     private static final Logger log = LoggerFactory.getLogger(GetCustomerTool.class);
+
+    /** Sections carrying product opportunities or sales talk, withheld when the notes forbid marketing. */
+    private static final Set<CustomerSection> MARKETING_SECTIONS =
+            EnumSet.of(CustomerSection.MANAGEMENT, CustomerSection.PRODUCT_INTENT);
+    private static final String RESTRICTION_NOTE = "依本顧客註記，這些區塊不提供";
 
     private final ManagementSection management;
 
@@ -113,9 +119,15 @@ public class GetCustomerTool extends AbstractCustomerTool<GetCustomerTool.Custom
         if (record.dataDate() != null) {
             data.put("dataDate", record.dataDate());
         }
+        CustomerRestrictions restrictions = CustomerRestrictions.of(context.customer(), context.data());
         List<CustomerSection> returned = new ArrayList<>();
         List<String> unavailable = new ArrayList<>();
+        List<String> withheld = new ArrayList<>();
         for (CustomerSection section : requested) {
+            if (restrictions.withholdMarketingData() && MARKETING_SECTIONS.contains(section)) {
+                withheld.add(section.key());
+                continue;
+            }
             Map<String, Object> rendered = renderOrNull(section, record, context);
             if (rendered == null) {
                 SectionSupport.missing(section.key());
@@ -125,11 +137,15 @@ public class GetCustomerTool extends AbstractCustomerTool<GetCustomerTool.Custom
                 returned.add(section);
             }
         }
-        if (returned.isEmpty()) {
+        if (returned.isEmpty() && withheld.isEmpty()) {
             return unavailable();
         }
         if (!unavailable.isEmpty()) {
             data.put("unavailableSections", unavailable);
+        }
+        if (!withheld.isEmpty()) {
+            data.put("withheldSections", withheld);
+            data.put("restrictionNote", RESTRICTION_NOTE);
         }
         return success(data, returned, record.dataDate());
     }
@@ -178,8 +194,8 @@ public class GetCustomerTool extends AbstractCustomerTool<GetCustomerTool.Custom
 
     /** Internal data: the citation names the returned sections and the data date, never an excerpt. */
     private static ToolResult success(Map<String, Object> data, List<CustomerSection> returned, String dataDate) {
-        String title = TITLE_PREFIX + returned.stream().map(CustomerSection::displayName)
-                .collect(Collectors.joining("、"));
+        String title = TITLE_PREFIX + (returned.isEmpty() ? "資料受註記限制"
+                : returned.stream().map(CustomerSection::displayName).collect(Collectors.joining("、")));
         String description = dataDate == null ? null : "資料日期 " + dataDate;
         return ToolResult.success(data, SOURCES, new CitationDetail(title, null, null, description, returned.size()));
     }

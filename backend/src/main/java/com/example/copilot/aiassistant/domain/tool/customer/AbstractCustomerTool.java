@@ -9,7 +9,7 @@ import java.time.Duration;
 import java.util.List;
 
 /** Shared parts of the customer-360 tools; the customer and its data always come from the tool context. */
-abstract class AbstractCustomerTool<A extends Record> implements AssistantTool<A> {
+abstract class AbstractCustomerTool<A extends Record> implements AssistantTool<A>, CustomerDataTool {
 
     static final String TITLE_PREFIX = "個人360・";
     static final List<Source> SOURCES = List.of(new Source("平台顧客資料（模擬）", null, null));

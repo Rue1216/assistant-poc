@@ -34,6 +34,8 @@ import com.example.copilot.aiassistant.domain.customer.AccessLevel;
 import com.example.copilot.aiassistant.application.port.CustomerDataPort;
 import com.example.copilot.aiassistant.domain.customer.CustomerRecord;
 import com.example.copilot.aiassistant.domain.customer.c360.Customer360Record;
+import com.example.copilot.aiassistant.domain.customer.c360.CustomFlagging;
+import com.example.copilot.aiassistant.domain.customer.c360.FlagType;
 import com.example.copilot.aiassistant.domain.user.UserContext;
 import com.example.copilot.aiassistant.domain.privacy.CustomerContext;
 import com.example.copilot.aiassistant.domain.privacy.PiiRedactor;
@@ -850,6 +852,97 @@ class ChatOrchestratorTest {
                 new CustomerContext(TestCustomers.NO_MARKETING, AccessLevel.LIMITED, Set.of(), Set.of()));
 
         assertThat(systemText(model.requests().get(0))).doesNotContain("本顧客註記");
+    }
+
+    private static final String NO_MARKETING_NOTICE = "本顧客有不宜行銷註記，以下不提供商品機會、推薦產品或行銷話術。";
+
+    @Test
+    void notesPrecedeTheAnswerWhenACustomerToolWasCalled() {
+        model.reply(toolCalls(100, call("c1", "getCustomer", "{\"sections\":[\"profile\"]}")))
+                .reply(answer(100, "整理如下。"));
+
+        ChatResult result = orchestrator.chat(new ChatCommand("概況？", List.of(), null), USER, noMarketingFull());
+
+        assertThat(result.answer()).startsWith(NO_MARKETING_NOTICE + "\n\n").endsWith("整理如下。");
+        assertThat(singleAudit().answer()).startsWith(NO_MARKETING_NOTICE);
+    }
+
+    @Test
+    void complaintNoticeKeepsTheSpecTextWithExpiry() {
+        CustomerDataPort real = MockCustomerPorts.adapter();
+        CustomerDataPort withExpiry = new CustomerDataPort() {
+            @Override
+            public Optional<CustomerRecord> findCustomer(String certNo) {
+                return real.findCustomer(certNo);
+            }
+
+            @Override
+            public Optional<Customer360Record> findCustomer360(String certNo) {
+                return real.findCustomer360(certNo);
+            }
+
+            @Override
+            public Optional<RealTimeStatusRecord> findRealTimeStatus(String certNo) {
+                return real.findRealTimeStatus(certNo).map(s -> new RealTimeStatusRecord(false, false,
+                        s.profilePhoto(), List.of(new CustomFlagging(FlagType.COMPLAINT, "客訴", "2026/12/31")),
+                        s.keyAlerts()));
+            }
+        };
+        ChatOrchestrator target = orchestrator(new ToolRegistry(List.of(new GetCustomerTool(redactor))),
+                new PromptAssembler(clock) {
+                    @Override
+                    public AssembledPrompt assemble(PublishedConfigs configs, InstructionSelection selection,
+                                                    String customerNotes) {
+                        return new AssembledPrompt(SYSTEM + "\n\n" + customerNotes, List.of());
+                    }
+                }, withExpiry);
+        model.reply(toolCalls(100, call("c1", "getCustomer", "{\"sections\":[\"profile\"]}")))
+                .reply(answer(100, "整理如下。"));
+
+        ChatResult result = target.chat(new ChatCommand("概況？", List.of(), null), USER,
+                new CustomerContext(TestCustomers.COMPLAINT, AccessLevel.FULL, Set.of(), Set.of()));
+
+        assertThat(result.answer()).startsWith("注意事項：本顧客有客訴註記（到期日 2026/12/31），請依規定程序處理。\n\n");
+    }
+
+    @Test
+    void marketOnlyQuestionHasNoNotes() {
+        model.reply(toolCalls(100, call("c1", "getMarketIndex", "{}"))).reply(answer(100, "大盤上漲。"));
+
+        ChatResult result = orchestrator.chat(new ChatCommand("大盤？", List.of(), null), USER, noMarketingFull());
+
+        assertThat(result.answer()).isEqualTo("大盤上漲。");
+    }
+
+    @Test
+    void noToolCallHasNoNotes() {
+        model.reply(answer(100, "好的。"));
+
+        ChatResult result = orchestrator.chat(new ChatCommand("你好", List.of(), null), USER, noMarketingFull());
+
+        assertThat(result.answer()).isEqualTo("好的。");
+    }
+
+    @Test
+    void failedCustomerToolStillShowsNotes() {
+        model.reply(toolCalls(100, call("c1", "getCustomer", "{\"sections\":[\"nonsense\"]}")))
+                .reply(answer(100, "查詢失敗。"));
+
+        ChatResult result = orchestrator.chat(new ChatCommand("概況？", List.of(), null), USER, noMarketingFull());
+
+        assertThat(result.toolCalls()).extracting(ToolCallSummary::status).doesNotContain("SUCCESS");
+        assertThat(result.answer()).startsWith(NO_MARKETING_NOTICE);
+    }
+
+    @Test
+    void limitedCustomerHasNoNotes() {
+        model.reply(toolCalls(100, call("c1", "getCustomer", "{\"sections\":[\"profile\"]}")))
+                .reply(answer(100, "基本輪廓。"));
+
+        ChatResult result = orchestrator.chat(new ChatCommand("概況？", List.of(), null), USER,
+                new CustomerContext(TestCustomers.NO_MARKETING, AccessLevel.LIMITED, Set.of(), Set.of()));
+
+        assertThat(result.answer()).isEqualTo("基本輪廓。");
     }
 
     private static final String SUMMARY_REPLY = "{\"summary\":\"- 摘要內容\"}";

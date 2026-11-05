@@ -230,6 +230,76 @@ class AnswerAssemblerTest {
         assertThat(r.annotatedAnswer()).isEqualTo("x [1][2]");
     }
 
+    private static final String NOTICE = "注意事項：本顧客有客訴註記，到期日 2026/12/31，請依規定程序處理。";
+
+    private AssembledAnswer withNotices(String modelText, List<String> notices, ToolOutcome... successful) {
+        return assembler.assemble(modelText, List.of(successful), customer, false, notices);
+    }
+
+    @Test
+    void noticesComeFirstAsParagraphsWithoutCitations() {
+        List<String> notices = List.of("第一則說明", "第二則說明");
+        AssembledAnswer r = withNotices(json(block("paragraph", "內容", "S1")), notices, s("S1"));
+
+        assertThat(r.blocks()).hasSize(3);
+        assertThat(r.blocks().subList(0, 2)).allSatisfy(b -> {
+            assertThat(b.type()).isEqualTo(BlockType.PARAGRAPH);
+            assertThat(b.citations()).isEmpty();
+        });
+        assertThat(r.blocks()).extracting(AnswerBlock::text).containsExactly("第一則說明", "第二則說明", "內容");
+        assertThat(r.blocks().get(2).citations()).containsExactly(1);
+        assertThat(r.answer()).startsWith("第一則說明\n\n第二則說明\n\n");
+        assertThat(r.annotatedAnswer()).startsWith("第一則說明\n\n第二則說明\n\n").endsWith("內容 [1]");
+    }
+
+    @Test
+    void noticesAreNotTruncated() {
+        AssembledAnswer r = withNotices(json(block("paragraph", "字".repeat(8001))), List.of(NOTICE));
+
+        assertThat(r.truncated()).isTrue();
+        assertThat(r.blocks().get(0).text()).isEqualTo(NOTICE);
+        assertThat(r.blocks().get(1).text()).hasSize(8000);
+    }
+
+    @Test
+    void noticesSkipTheNumberCheck() {
+        AssembledAnswer r = withNotices(json(block("paragraph", "內容")), List.of(NOTICE));
+        assertThat(r.unverifiedNumbers()).isEmpty();
+    }
+
+    @Test
+    void specNoticeKeepsItsFullWidthParentheses() {
+        String spec = "注意事項：本顧客有客訴註記（到期日 2026/12/31），請依規定程序處理。";
+        AssembledAnswer r = withNotices(json(block("paragraph", "內容")), List.of(spec));
+
+        assertThat(r.blocks().get(0).text()).isEqualTo(spec);
+        assertThat(r.answer()).startsWith(spec + "\n\n");
+        assertThat(r.annotatedAnswer()).startsWith(spec + "\n\n");
+    }
+
+    @Test
+    void modelNumbersAreStillChecked() {
+        AssembledAnswer r = withNotices(json(block("paragraph", "目標 3000")), List.of(NOTICE));
+        assertThat(r.unverifiedNumbers()).containsExactly("3000");
+    }
+
+    @Test
+    void programAnswerHasOnlyTheTexts() {
+        AssembledAnswer r = assembler.programAnswer(List.of("甲", "乙"));
+
+        assertThat(r.blocks()).extracting(AnswerBlock::text).containsExactly("甲", "乙");
+        assertThat(r.blocks()).allSatisfy(b -> {
+            assertThat(b.type()).isEqualTo(BlockType.PARAGRAPH);
+            assertThat(b.citations()).isEmpty();
+        });
+        assertThat(r.answer()).isEqualTo("甲\n\n乙");
+        assertThat(r.annotatedAnswer()).isEqualTo("甲\n\n乙");
+        assertThat(r.citationNumbers()).isEmpty();
+        assertThat(r.cited()).isEmpty();
+        assertThat(r.unverifiedNumbers()).isEmpty();
+        assertThat(r.truncated()).isFalse();
+    }
+
     @Test
     void unverifiedNumbersComeFromNonHeadingBlocks() {
         AssembledAnswer r = assemble(json(block("heading", "2025 年回顧"),

@@ -34,6 +34,7 @@ import com.example.copilot.aiassistant.domain.prompt.RouteDecision;
 import com.example.copilot.aiassistant.domain.prompt.RouteSource;
 import com.example.copilot.aiassistant.domain.prompt.SummaryResult;
 import com.example.copilot.aiassistant.domain.prompt.SummaryStatus;
+import com.example.copilot.aiassistant.domain.customer.CustomerRestrictions;
 import com.example.copilot.aiassistant.domain.tool.AssistantTool;
 import com.example.copilot.aiassistant.domain.tool.CitationDetail;
 import com.example.copilot.aiassistant.domain.tool.CitationIds;
@@ -43,6 +44,7 @@ import com.example.copilot.aiassistant.domain.tool.ToolExecutor;
 import com.example.copilot.aiassistant.domain.tool.ToolOutcome;
 import com.example.copilot.aiassistant.domain.tool.ToolRegistry;
 import com.example.copilot.aiassistant.domain.tool.TurnCustomerData;
+import com.example.copilot.aiassistant.domain.tool.customer.CustomerDataTool;
 import com.example.copilot.aiassistant.domain.tool.market.MarketTool;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
@@ -456,13 +458,21 @@ public class ChatOrchestrator {
             }
             String disclaimer = marketData ? AnswerAssembler.MARKET_DISCLAIMER : null;
             assembled = answerAssembler.assemble(rawAnswer,
-                    successful.values().stream().map(ExecutedTool::outcome).toList(), customer, disclaimer != null);
+                    successful.values().stream().map(ExecutedTool::outcome).toList(), customer, disclaimer != null,
+                    programNotices());
             List<CitationView> citations = assembled.citationNumbers().entrySet().stream()
                     .map(e -> citation(e.getValue(), successful.get(e.getKey()),
                             assembled.cited().contains(e.getKey())))
                     .toList();
             return new ChatResult(requestId, assembled.blocks(), assembled.answer(), citations, queriedAt,
                     disclaimer, toolCalls, newSummary);
+        }
+
+        /** The note notices go in front of the answer once the turn has used customer data, even if the call failed. */
+        private List<String> programNotices() {
+            boolean customerData = executed.stream().anyMatch(t -> registry.find(t.outcome().toolName())
+                    .filter(CustomerDataTool.class::isInstance).isPresent());
+            return customerData ? CustomerRestrictions.of(customer, data).notices() : List.of();
         }
 
         /** Tool-provided texts may echo anything, so they go through the same redaction as the answer. */

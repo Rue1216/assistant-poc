@@ -1,6 +1,7 @@
 package com.example.copilot.aiassistant.domain.prompt;
 
 import com.example.copilot.aiassistant.domain.customer.AccessLevel;
+import com.example.copilot.aiassistant.domain.customer.CustomerRestrictions;
 import com.example.copilot.aiassistant.domain.customer.c360.CustomFlagging;
 import com.example.copilot.aiassistant.domain.customer.c360.FlagType;
 import com.example.copilot.aiassistant.domain.customer.c360.RealTimeStatusRecord;
@@ -9,7 +10,6 @@ import com.example.copilot.aiassistant.domain.tool.TurnCustomerData;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,9 +23,6 @@ public class CustomerNotes {
 
     private static final String HEADING = "# 本顧客註記\n";
     private static final String UNAVAILABLE = HEADING + "- 無法取得註記，涉及商品或行銷的回答請先參考平台畫面上的註記";
-
-    /** An expiry date is put into the system message only in the platform's yyyy/MM/dd form. */
-    private static final Pattern EXPIRY_DATE = Pattern.compile("^\\d{4}/\\d{2}/\\d{2}$");
 
     /** Flagging types that are listed, in this order (high asset, zone and professional-investor flags are not). */
     private static final List<FlagType> LISTED_FLAGS = List.of(FlagType.NO_MARKETING, FlagType.COMPLAINT);
@@ -66,11 +63,14 @@ public class CustomerNotes {
         if (status.attentionCustomer()) {
             lines.add(line("應注意名單", null));
         }
-        return HEADING + (lines.isEmpty() ? "- 無" : String.join("\n", lines));
+        if (lines.isEmpty()) {
+            return HEADING + "- 無";
+        }
+        // The code lists the notes at the top of the answer itself, so the model must not repeat them.
+        return HEADING + String.join("\n", lines) + "\n程式會在回答最前面列出以上註記，回答中不要重複。";
     }
 
     private static String line(String name, String expiryDate) {
-        return expiryDate == null || !EXPIRY_DATE.matcher(expiryDate).matches() ? "- " + name
-                : "- " + name + "（到期日 " + expiryDate + "）";
+        return CustomerRestrictions.validExpiry(expiryDate) ? "- " + name + "（到期日 " + expiryDate + "）" : "- " + name;
     }
 }

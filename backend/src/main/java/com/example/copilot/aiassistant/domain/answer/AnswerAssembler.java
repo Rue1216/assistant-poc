@@ -63,6 +63,15 @@ public class AnswerAssembler {
      */
     public AssembledAnswer assemble(String modelText, List<ToolOutcome> successful, CustomerContext customer,
                                     boolean dropDisclaimer) {
+        return assemble(modelText, successful, customer, dropDisclaimer, List.of());
+    }
+
+    /**
+     * @param programNotices program-made texts put in front of the answer; never cut, cited, number-checked or
+     *        redacted, so they must never carry customer data
+     */
+    public AssembledAnswer assemble(String modelText, List<ToolOutcome> successful, CustomerContext customer,
+                                    boolean dropDisclaimer, List<String> programNotices) {
         List<Draft> drafts = new ArrayList<>(parse(modelText));
         drafts.removeIf(d -> d.text().isEmpty());
         if (drafts.isEmpty()) {
@@ -114,8 +123,23 @@ public class AnswerAssembler {
                 .toList();
         List<String> unverified = NumberChecker.unverified(texts, toolData(successful));
 
+        // Added last so the limit, the citation numbers and the number check only ever see the model's blocks.
+        blocks.addAll(0, paragraphs(programNotices));
+
         return new AssembledAnswer(blocks, flatten(blocks, false), flatten(blocks, true), numbers, cited,
                 truncated, unverified);
+    }
+
+    /** An answer made only of program texts: no citations, no number check. */
+    public AssembledAnswer programAnswer(List<String> texts) {
+        List<AnswerBlock> blocks = paragraphs(texts);
+        String flat = flatten(blocks, false);
+        return new AssembledAnswer(blocks, flat, flat, Map.of(), Set.of(), false, List.of());
+    }
+
+    /** Program texts are shown as given: fixed text only, never customer data, so they skip the redactor. */
+    private static List<AnswerBlock> paragraphs(List<String> texts) {
+        return texts.stream().map(t -> new AnswerBlock(BlockType.PARAGRAPH, t, List.of())).toList();
     }
 
     private List<Draft> parse(String modelText) {
