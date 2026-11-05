@@ -2,6 +2,7 @@ package com.example.copilot.aiassistant.domain.config;
 
 import com.example.copilot.aiassistant.domain.prompt.ExampleQuestionParser;
 import com.example.copilot.aiassistant.domain.privacy.PiiRedactor;
+import com.example.copilot.aiassistant.domain.tool.ToolRegistry;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -39,9 +40,12 @@ public class ConfigValidator {
     private final ExampleQuestionParser exampleQuestionParser;
     private final Set<String> allowedUrlHosts;
     private final List<Forbidden> forbidden;
+    private final WorkflowValidator workflowValidator;
 
     /** A null or empty host list allows no URL at all. */
-    public ConfigValidator(ExampleQuestionParser exampleQuestionParser, Collection<String> allowedUrlHosts) {
+    public ConfigValidator(ExampleQuestionParser exampleQuestionParser, Collection<String> allowedUrlHosts,
+                           ToolRegistry registry) {
+        this.workflowValidator = new WorkflowValidator(registry);
         this.exampleQuestionParser = exampleQuestionParser;
         this.allowedUrlHosts = allowedUrlHosts == null ? Set.of()
                 : allowedUrlHosts.stream().map(h -> h.toLowerCase(Locale.ROOT)).collect(Collectors.toUnmodifiableSet());
@@ -107,6 +111,7 @@ public class ConfigValidator {
             checkScope(lines, errors);
             checkExamples(content, errors);
         }
+        errors.addAll(workflowValidator.validate(type, content));
         checkForbidden(lines, errors);
         return errors;
     }

@@ -60,8 +60,8 @@ public class DomainBeanConfiguration {
     }
 
     @Bean
-    ConfigValidator configValidator(ExampleQuestionParser parser, AiAssistantProperties props) {
-        return new ConfigValidator(parser, props.config().allowedUrlHosts());
+    ConfigValidator configValidator(ExampleQuestionParser parser, AiAssistantProperties props, ToolRegistry registry) {
+        return new ConfigValidator(parser, props.config().allowedUrlHosts(), registry);
     }
 
     @Bean

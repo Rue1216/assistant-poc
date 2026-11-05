@@ -36,6 +36,11 @@ public enum CustomerSection {
         return key + "（" + displayName + "）：" + description;
     }
 
+    /** What the section holds, without the key and name. */
+    public String contents() {
+        return description;
+    }
+
     public static Optional<CustomerSection> fromKey(String key) {
         return Arrays.stream(values()).filter(s -> s.key.equals(key)).findFirst();
     }

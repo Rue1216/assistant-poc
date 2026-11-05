@@ -62,9 +62,10 @@ public class PromptAssembler {
         if (selection.kind() == InstructionSelection.Kind.NONE) {
             sb.append(NO_INSTRUCTION).append("\n\n");
         }
+        boolean queried = selection.kind() == InstructionSelection.Kind.ONLY;
         for (AssistantConfig instruction : instructions) {
             sb.append("## ").append(instruction.name()).append('\n')
-                    .append(instruction.content().strip()).append("\n\n");
+                    .append(WorkflowParser.render(instruction.content().strip(), queried)).append("\n\n");
             versions.add(new PromptVersion(instruction.configKey(), instruction.version()));
         }
         if (customerNotes != null) {

@@ -34,6 +34,8 @@ import com.example.copilot.aiassistant.domain.prompt.RouteDecision;
 import com.example.copilot.aiassistant.domain.prompt.RouteSource;
 import com.example.copilot.aiassistant.domain.prompt.SummaryResult;
 import com.example.copilot.aiassistant.domain.prompt.SummaryStatus;
+import com.example.copilot.aiassistant.domain.prompt.WorkflowParser;
+import com.example.copilot.aiassistant.domain.prompt.WorkflowStep;
 import com.example.copilot.aiassistant.domain.customer.CustomerRestrictions;
 import com.example.copilot.aiassistant.domain.tool.AssistantTool;
 import com.example.copilot.aiassistant.domain.tool.CitationDetail;
@@ -81,6 +83,8 @@ import org.springframework.stereotype.Component;
  * answer, raw model output or tool data (05 section 5). Each turn first picks the one instruction to load, through
  * a quick-question chip's key or {@link InstructionRouter}, and then assembles the system message from that choice.
  * When the history exceeds its limits, the older part is first folded into a summary by {@link HistorySummarizer}.
+ * When the chosen instruction has tool markers, {@link WorkflowRunner} runs them before the first answer round; they
+ * count toward the tool-call cap but use no round, and a missing required input ends the turn with a request for it.
  */
 @Component
 public class ChatOrchestrator {
@@ -101,6 +105,7 @@ public class ChatOrchestrator {
     private final CustomerDataPort port;
     private final InstructionRouter router;
     private final HistorySummarizer summarizer;
+    private final WorkflowRunner workflowRunner;
     private final AnswerAssembler answerAssembler;
     private final AuditLogger auditLogger;
     private final LlmErrorMapper errorMapper;
@@ -112,8 +117,8 @@ public class ChatOrchestrator {
     public ChatOrchestrator(ChatModel chatModel, ToolRegistry registry, ToolExecutor executor, PiiRedactor redactor,
                             PromptAssembler promptAssembler, PublishedConfigCache cache, CustomerNotes customerNotes,
                             CustomerDataPort port,
-                            InstructionRouter router, HistorySummarizer summarizer, AnswerAssembler answerAssembler,
-                            AuditLogger auditLogger, LlmErrorMapper errorMapper,
+                            InstructionRouter router, HistorySummarizer summarizer, WorkflowRunner workflowRunner,
+                            AnswerAssembler answerAssembler, AuditLogger auditLogger, LlmErrorMapper errorMapper,
                             AiAssistantProperties props, Clock clock) {
         this.chatModel = chatModel;
         this.registry = registry;
@@ -125,6 +130,7 @@ public class ChatOrchestrator {
         this.port = port;
         this.router = router;
         this.summarizer = summarizer;
+        this.workflowRunner = workflowRunner;
         this.answerAssembler = answerAssembler;
         this.auditLogger = auditLogger;
         this.errorMapper = errorMapper;
@@ -228,6 +234,10 @@ public class ChatOrchestrator {
         private HistorySummary newSummary;
         /** Set once the final answer passed validation; the audit's answer and citation data come from here. */
         private AssembledAnswer assembled;
+        /** Set when a workflow step lacks a required input: the turn answers with these texts and no model round. */
+        private List<String> programTexts;
+        /** One per workflow step that did not succeed or was dropped; shown after the note notices. */
+        private List<String> workflowNotices = List.of();
 
         Turn(UserContext user, CustomerContext customer, boolean audited) {
             this.user = user;
@@ -253,8 +263,8 @@ public class ChatOrchestrator {
             if (!split.overflow().isEmpty()) {
                 summarize(split.overflow());
             }
-            prompt = promptAssembler.assemble(configs, route(command.categoryKey(), split.kept()),
-                    customerNotes.section(customer, data));
+            InstructionSelection selection = route(command.categoryKey(), split.kept());
+            prompt = promptAssembler.assemble(configs, selection, customerNotes.section(customer, data));
             List<ChatMessage> messages = new ArrayList<>();
             messages.add(SystemMessage.from(prompt.text()));
             if (currentSummary != null) {
@@ -266,6 +276,10 @@ public class ChatOrchestrator {
             List<AssistantTool<?>> tools = registry.toolsFor(customer.accessLevel());
             List<ToolSpecification> specifications = tools.stream().map(AssistantTool::specification).toList();
             Set<String> offered = tools.stream().map(AssistantTool::name).collect(Collectors.toUnmodifiableSet());
+
+            if (!runWorkflow(selection, split.kept(), messages, offered)) {
+                return ""; // result() answers with programTexts instead
+            }
 
             int toolRounds = 0;
             while (true) {
@@ -299,15 +313,71 @@ public class ChatOrchestrator {
             routeSource = decision.source().name();
             instructionKey = decision.instructionKey();
             if (decision.modelCalled()) {
-                modelCalls++;
-                totalTokens += decision.totalTokens();
-                inputTokens += decision.inputTokens();
-                outputTokens += decision.outputTokens();
-                if (totalTokens > limits.tokenBudget()) {
-                    throw new AssistantException(ErrorCode.AI_TOKEN_BUDGET_EXCEEDED);
-                }
+                countLightCall(decision.inputTokens(), decision.outputTokens(), decision.totalTokens());
             }
             return decision.selection();
+        }
+
+        /** A routing or extraction call: it counts toward the budget like an answer round. */
+        private void countLightCall(long input, long output, long total) {
+            modelCalls++;
+            totalTokens += total;
+            inputTokens += input;
+            outputTokens += output;
+            if (totalTokens > limits.tokenBudget()) {
+                throw new AssistantException(ErrorCode.AI_TOKEN_BUDGET_EXCEEDED);
+            }
+        }
+
+        /**
+         * Runs the routed instruction's tool markers and adds each call and result to {@code messages}, as if the
+         * model had asked for them. A fallback that loaded every instruction runs none (spec 3.3).
+         *
+         * @return false when a required input is missing: nothing ran and {@code programTexts} holds the answer
+         */
+        private boolean runWorkflow(InstructionSelection selection, List<ChatMessage> redactedHistory,
+                                    List<ChatMessage> messages, Set<String> offered) {
+            List<WorkflowStep> steps = workflowSteps(selection);
+            if (steps.isEmpty()) {
+                return true;
+            }
+            checkDeadline();
+            WorkflowRunner.Prepared prepared = workflowRunner.prepare(steps, redactedQuestion, redactedHistory,
+                    currentSummary, offered);
+            StepArgumentExtractor.Result extraction = prepared.extraction();
+            if (extraction.modelCalled()) {
+                countLightCall(extraction.inputTokens(), extraction.outputTokens(), extraction.totalTokens());
+            }
+            if (!prepared.inputRequests().isEmpty()) {
+                programTexts = prepared.inputRequests();
+                return false;
+            }
+            List<WorkflowRunner.StepExecution> executions = new ArrayList<>();
+            for (ToolExecutionRequest request : prepared.requests()) {
+                // One at a time: a step that already ran stays in the audit when the deadline stops a later one.
+                for (WorkflowRunner.StepExecution execution : workflowRunner.execute(List.of(redactArguments(request)),
+                        toolContext, offered, citationIds, this::checkDeadline)) {
+                    executed.add(new ExecutedTool(execution.outcome(), clock.instant()));
+                    messages.add(AiMessage.from(List.of(execution.request())));
+                    messages.add(ToolExecutionResultMessage.from(execution.request(),
+                            execution.outcome().payloadForModel()));
+                    executions.add(execution);
+                }
+            }
+            workflowNotices = Stream.concat(workflowRunner.failureNotices(executions).stream(),
+                    prepared.droppedNotices().stream()).toList();
+            return true;
+        }
+
+        private List<WorkflowStep> workflowSteps(InstructionSelection selection) {
+            if (selection.kind() != InstructionSelection.Kind.ONLY) {
+                return List.of();
+            }
+            return configs.instructions().stream()
+                    .filter(instruction -> instruction.configKey().equals(selection.configKey()))
+                    .findFirst()
+                    .map(instruction -> WorkflowParser.steps(instruction.content()))
+                    .orElse(List.of());
         }
 
         /**
@@ -432,6 +502,15 @@ public class ChatOrchestrator {
                     .arguments(redact(request.arguments())).build();
         }
 
+        /**
+         * A workflow step's name was checked against the registry, so it is a code constant: redacting it could only
+         * corrupt it, when it happens to contain the customer's name. Its arguments may hold model-extracted text.
+         */
+        private ToolExecutionRequest redactArguments(ToolExecutionRequest request) {
+            return ToolExecutionRequest.builder().id(request.id()).name(request.name())
+                    .arguments(redact(request.arguments())).build();
+        }
+
         private void checkDeadline() {
             if (!clock.instant().isBefore(deadline)) {
                 throw new AssistantException(ErrorCode.AI_REQUEST_TIMEOUT);
@@ -457,9 +536,10 @@ public class ChatOrchestrator {
                         .isPresent();
             }
             String disclaimer = marketData ? AnswerAssembler.MARKET_DISCLAIMER : null;
-            assembled = answerAssembler.assemble(rawAnswer,
-                    successful.values().stream().map(ExecutedTool::outcome).toList(), customer, disclaimer != null,
-                    programNotices());
+            assembled = programTexts != null ? answerAssembler.programAnswer(programTexts)
+                    : answerAssembler.assemble(rawAnswer,
+                            successful.values().stream().map(ExecutedTool::outcome).toList(), customer,
+                            disclaimer != null, programNotices());
             List<CitationView> citations = assembled.citationNumbers().entrySet().stream()
                     .map(e -> citation(e.getValue(), successful.get(e.getKey()),
                             assembled.cited().contains(e.getKey())))
@@ -468,11 +548,15 @@ public class ChatOrchestrator {
                     disclaimer, toolCalls, newSummary);
         }
 
-        /** The note notices go in front of the answer once the turn has used customer data, even if the call failed. */
+        /**
+         * The note notices go in front of the answer once the turn has used customer data, even if the call failed;
+         * the failed workflow steps follow them (spec 2.3).
+         */
         private List<String> programNotices() {
             boolean customerData = executed.stream().anyMatch(t -> registry.find(t.outcome().toolName())
                     .filter(CustomerDataTool.class::isInstance).isPresent());
-            return customerData ? CustomerRestrictions.of(customer, data).notices() : List.of();
+            List<String> notes = customerData ? CustomerRestrictions.of(customer, data).notices() : List.of();
+            return Stream.concat(notes.stream(), workflowNotices.stream()).toList();
         }
 
         /** Tool-provided texts may echo anything, so they go through the same redaction as the answer. */

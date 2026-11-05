@@ -53,6 +53,11 @@ public class GetCompanyAnnouncementsTool extends AbstractMarketTool<GetCompanyAn
     }
 
     @Override
+    public String inputRequest() {
+        return "請提供要查詢的股票代號（例如 2330）。";
+    }
+
+    @Override
     public Class<AnnouncementArgs> argsType() {
         return AnnouncementArgs.class;
     }

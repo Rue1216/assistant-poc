@@ -97,6 +97,24 @@ class OpenAiResponseFormatLiveTest {
         assertThat(root.get("blocks").isArray()).isTrue();
     }
 
+    /** The workflow runner sends tool calls the model never made; the provider must accept them as history. */
+    @Test
+    void acceptsProgramSuppliedToolHistory() throws Exception {
+        ToolExecutionRequest step = ToolExecutionRequest.builder().id("workflow-1").name("getStockQuote")
+                .arguments("{\"stockCode\":\"2330\"}").build();
+        List<ChatMessage> messages = List.of(UserMessage.from(QUESTION), AiMessage.from(List.of(step)),
+                ToolExecutionResultMessage.from(step, TOOL_RESULT));
+
+        AiMessage reply = chat(messages, List.of("S1")).aiMessage();
+
+        if (!reply.hasToolExecutionRequests()) {
+            JsonNode blocks = MAPPER.readTree(reply.text()).get("blocks");
+            assertThat(blocks).isNotNull();
+            assertThat(blocks.isArray()).isTrue();
+            assertThat(blocks).isNotEmpty();
+        }
+    }
+
     private static ChatResponse chat(List<ChatMessage> messages, List<String> citationIds) {
         return model.chat(ChatRequest.builder()
                 .messages(messages)

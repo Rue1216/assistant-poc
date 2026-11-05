@@ -220,6 +220,21 @@ class PromptAssemblerTest extends IntegrationTestBase {
         assertThat(cache.current()).isSameAs(cache.current());
     }
 
+    @Test
+    void markersAreReplacedAndAnnotatedOnlyWhenTheInstructionIsSelected() {
+        AssistantConfig base = cache.loadFresh().instructions().get(0);
+        AssistantConfig withMarker = new AssistantConfig(null, base.configKey(), base.configType(), base.name(),
+                "## 適用問題\n先 {{getCustomer: management}}", base.status(), 99, null, null, null, null, null, null,
+                null, null);
+        PublishedConfigs given = new PublishedConfigs(null, List.of(withMarker));
+
+        String only = assembler.assemble(given, InstructionSelection.only(base.configKey()), null).text();
+        String all = assembler.assemble(given, InstructionSelection.all(), null).text();
+
+        assertThat(only).contains("getCustomer（系統已查詢）").doesNotContain("{{");
+        assertThat(all).contains("先 getCustomer").doesNotContain("（系統已查詢）").doesNotContain("{{");
+    }
+
     private static AssistantConfig copyOf(AssistantConfig source) {
         return new AssistantConfig(null, source.configKey(), source.configType(), source.name(),
                 "## 適用問題\n替換後內容", source.status(), 99, null, null, null, null, null, null, null, null);

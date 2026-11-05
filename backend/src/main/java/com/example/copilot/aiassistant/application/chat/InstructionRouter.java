@@ -44,8 +44,6 @@ public class InstructionRouter {
     private static final String SCHEMA_NAME = "route";
     private static final String NONE = "none";
     private static final String SCOPE_HEADING = "## 適用問題";
-    private static final int MAX_HISTORY = 4;
-    private static final int MAX_HISTORY_CODE_POINTS = 500;
 
     private final ChatModel chatModel;
     private final LlmErrorMapper errorMapper;
@@ -110,22 +108,7 @@ public class InstructionRouter {
 
     private ChatRequest request(String question, List<ChatMessage> history, String summary,
                                 List<AssistantConfig> instructions) {
-        ObjectNode user = mapper.createObjectNode();
-        user.put("question", question);
-        if (summary == null) {
-            user.putNull("summary");
-        } else {
-            user.put("summary", clip(summary, summaryMaxChars));
-        }
-        ArrayNode historyNode = user.putArray("history");
-        List<ChatMessage> recent = history.subList(Math.max(0, history.size() - MAX_HISTORY), history.size());
-        for (ChatMessage message : recent) {
-            switch (message) {
-                case UserMessage m -> historyNode.add(turn("user", m.singleText()));
-                case AiMessage m -> historyNode.add(turn("assistant", m.text()));
-                default -> { }
-            }
-        }
+        ObjectNode user = RoutingInput.of(mapper, question, history, summary, summaryMaxChars);
         ArrayNode categories = user.putArray("categories");
         for (AssistantConfig instruction : instructions) {
             ObjectNode category = categories.addObject();
@@ -137,21 +120,6 @@ public class InstructionRouter {
                 .messages(SystemMessage.from(RouterPrompt.TEXT), UserMessage.from(mapper.writeValueAsString(user)))
                 .parameters(LlmRequestParameters.of(responseFormat(instructions), reasoningEffort))
                 .build();
-    }
-
-    private ObjectNode turn(String role, String text) {
-        ObjectNode node = mapper.createObjectNode();
-        node.put("role", role);
-        node.put("content", clip(text == null ? "" : text, MAX_HISTORY_CODE_POINTS));
-        return node;
-    }
-
-    /** Keeps at most {@code maxCodePoints} code points, so a surrogate pair is never split. */
-    private static String clip(String text, int maxCodePoints) {
-        if (text.codePointCount(0, text.length()) > maxCodePoints) {
-            return text.substring(0, text.offsetByCodePoints(0, maxCodePoints));
-        }
-        return text;
     }
 
     /** The body of the "## 適用問題" section, or the instruction name when it is missing or empty. */

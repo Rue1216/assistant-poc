@@ -3,6 +3,7 @@ package com.example.copilot.aiassistant.domain.tool;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.copilot.IntegrationTestBase;
+import com.example.copilot.aiassistant.domain.tool.customer.CustomerSection;
 import dev.langchain4j.model.chat.request.json.JsonObjectSchema;
 import java.lang.reflect.RecordComponent;
 import java.util.Arrays;
@@ -42,6 +43,25 @@ class ToolSpecificationConsistencyTest extends IntegrationTestBase {
             assertThat(properties(tool)).as(tool.name())
                     .noneMatch(name -> name.toLowerCase().contains("customer"));
         }
+    }
+
+    @Test
+    void inputMetadataIsConsistent() {
+        for (AssistantTool<?> tool : tools) {
+            if (!tool.requiredInputs().isEmpty()) {
+                assertThat(tool.inputRequest()).as(tool.name()).isNotNull();
+            }
+        }
+        AssistantTool<?> customer = tool("getCustomer");
+        assertThat(customer.requiredInputs()).isEmpty();
+        assertThat(customer.options()).extracting(ToolOption::key)
+                .containsAll(Arrays.stream(CustomerSection.values()).map(CustomerSection::key).toList());
+        assertThat(tool("getStockQuote").requiredInputs()).containsExactly("stockCode");
+        assertThat(tool("getCompanyAnnouncements").requiredInputs()).containsExactly("stockCode");
+    }
+
+    private AssistantTool<?> tool(String name) {
+        return tools.stream().filter(t -> t.name().equals(name)).findFirst().orElseThrow();
     }
 
     private static Set<String> properties(AssistantTool<?> tool) {

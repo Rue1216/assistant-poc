@@ -7,6 +7,7 @@ import com.example.copilot.aiassistant.domain.privacy.CustomerDeidentifier;
 import com.example.copilot.aiassistant.domain.privacy.PiiRedactor;
 import com.example.copilot.aiassistant.domain.tool.CitationDetail;
 import com.example.copilot.aiassistant.domain.tool.ToolContext;
+import com.example.copilot.aiassistant.domain.tool.ToolOption;
 import com.example.copilot.aiassistant.domain.tool.ToolResult;
 import com.example.copilot.aiassistant.domain.tool.ToolStatus;
 import com.example.copilot.aiassistant.domain.tool.customer.sections.AssetLiabilitySection;
@@ -81,6 +82,17 @@ public class GetCustomerTool extends AbstractCustomerTool<GetCustomerTool.Custom
                 .parameters(JsonObjectSchema.builder().addProperty("sections", sections).required("sections")
                         .additionalProperties(false).build())
                 .build();
+    }
+
+    @Override
+    public List<ToolOption> options() {
+        return Arrays.stream(CustomerSection.values())
+                .map(s -> new ToolOption(s.key(), s.displayName(), s.contents())).toList();
+    }
+
+    @Override
+    public String optionsArgument() {
+        return "sections";
     }
 
     @Override

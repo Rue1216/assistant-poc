@@ -44,6 +44,11 @@ public class GetStockQuoteTool extends AbstractMarketTool<GetStockQuoteTool.Stoc
     }
 
     @Override
+    public String inputRequest() {
+        return "請提供要查詢的股票代號（例如 2330）。";
+    }
+
+    @Override
     public Class<StockArgs> argsType() {
         return StockArgs.class;
     }

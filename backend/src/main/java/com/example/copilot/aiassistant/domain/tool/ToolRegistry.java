@@ -24,6 +24,10 @@ public class ToolRegistry {
         return byName.values().stream().filter(t -> level.covers(t.requiredAccessLevel())).toList();
     }
 
+    public List<AssistantTool<?>> all() {
+        return List.copyOf(byName.values());
+    }
+
     /** Names of all registered tools. */
     public Set<String> names() {
         return Set.copyOf(byName.keySet());

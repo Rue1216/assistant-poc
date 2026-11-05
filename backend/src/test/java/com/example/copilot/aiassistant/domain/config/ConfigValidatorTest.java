@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.copilot.aiassistant.application.support.ClasspathText;
 import com.example.copilot.aiassistant.domain.prompt.ExampleQuestionParser;
+import com.example.copilot.aiassistant.domain.tool.ToolRegistry;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -12,9 +13,11 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 class ConfigValidatorTest {
 
-    private final ConfigValidator validator = new ConfigValidator(new ExampleQuestionParser(), List.of());
+    private final ConfigValidator validator =
+            new ConfigValidator(new ExampleQuestionParser(), List.of(), new ToolRegistry(List.of()));
     private final ConfigValidator allowing =
-            new ConfigValidator(new ExampleQuestionParser(), List.of("Docs.Example.com", "10.1.2.3"));
+            new ConfigValidator(new ExampleQuestionParser(), List.of("Docs.Example.com", "10.1.2.3"),
+                    new ToolRegistry(List.of()));
 
     private static String seed(String file) {
         return ClasspathText.read("seed/" + file);
@@ -191,6 +194,13 @@ class ConfigValidatorTest {
         assertThat(allowingWithLine3(ok)).isEmpty();
     }
 
+    @Test
+    void unknownWorkflowToolIsReported() {
+        List<ValidationError> errors = validator.validate(ConfigType.SYSTEM_INSTRUCTION,
+                "## 適用問題\n\n問題\n\n## 回答套版\n\n先 {{noSuchTool}}\n");
+        assertThat(errors).extracting(ValidationError::rule).containsExactly("WORKFLOW_INVALID");
+    }
+
     @ParameterizedTest
     @ValueSource(strings = { "https://docs.example.com.evil.com", "https://evil.com/docs.example.com",
             "https://docs.example.com@evil.com", "http://docs.example.com/a https://evil.com", "https://@evil.com" })
@@ -203,7 +213,8 @@ class ConfigValidatorTest {
 
     @Test
     void nullAllowlistAllowsNoUrl() {
-        ConfigValidator noList = new ConfigValidator(new ExampleQuestionParser(), (List<String>) null);
+        ConfigValidator noList =
+                new ConfigValidator(new ExampleQuestionParser(), (List<String>) null, new ToolRegistry(List.of()));
         List<ValidationError> errors = noList.validate(ConfigType.SYSTEM_PROMPT, "見 https://docs.example.com\n");
         assertThat(errors).hasSize(1);
         assertThat(errors.get(0).message()).isEqualTo("第 1 行疑似包含未允許的網址，請移除");

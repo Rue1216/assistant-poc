@@ -47,11 +47,14 @@ import com.example.copilot.aiassistant.domain.prompt.PromptAssembler;
 import com.example.copilot.aiassistant.domain.config.PublishedConfigs;
 import com.example.copilot.aiassistant.domain.config.PromptVersion;
 import com.example.copilot.aiassistant.domain.prompt.SummaryPrompt;
+import com.example.copilot.aiassistant.domain.tool.AssistantTool;
 import com.example.copilot.aiassistant.domain.tool.CitationDetail;
+import com.example.copilot.aiassistant.domain.tool.ToolContext;
 import com.example.copilot.aiassistant.domain.tool.ToolExecutor;
 import com.example.copilot.aiassistant.domain.tool.ToolGuard;
 import com.example.copilot.aiassistant.domain.tool.ToolRegistry;
 import com.example.copilot.aiassistant.domain.tool.ToolResult;
+import com.example.copilot.aiassistant.domain.tool.ToolStatus;
 import com.example.copilot.aiassistant.domain.tool.customer.GetCustomerTool;
 import com.example.copilot.aiassistant.domain.tool.customer.GetRealTimeCustomerTool;
 import com.example.copilot.aiassistant.domain.tool.market.GetCompanyAnnouncementsTool;
@@ -134,6 +137,7 @@ class ChatOrchestratorTest {
     private final ScriptedChatModel model = new ScriptedChatModel();
     private final List<AuditEntry> audits = new ArrayList<>();
     private ChatOrchestrator orchestrator;
+    private TwseClient twse;
 
     private record NoArgs() {
     }
@@ -147,7 +151,7 @@ class ChatOrchestratorTest {
     void setUp() throws IOException {
         MDC.put(RequestIdFilter.MDC_KEY, REQUEST_ID);
         CustomerDataPort port = MockCustomerPorts.adapter();
-        TwseClient twse = twseClient();
+        twse = twseClient();
         orchestrator = orchestrator(new ToolRegistry(List.of(new GetCustomerTool(redactor),
                 customerStandIn("standInAssets", Map.of("assets", "活存與定存")),
                 customerStandIn("standInNotes", Map.of("notes", "王小明詢問月配息商品，希望每月現金流約 3 萬")),
@@ -201,7 +205,8 @@ class ChatOrchestratorTest {
 
     private ChatOrchestrator orchestrator(ToolRegistry registry, PromptAssembler assembler, PublishedConfigCache cache,
                                           CustomerDataPort port, AiAssistantProperties props) {
-        ToolExecutor executor = new ToolExecutor(new ToolGuard(registry, VALIDATOR, mapper), redactor, mapper,
+        ToolGuard guard = new ToolGuard(registry, VALIDATOR, mapper);
+        ToolExecutor executor = new ToolExecutor(guard, redactor, mapper,
                 props.limits().toolTimeout(), props.limits().toolResultMaxBytes());
         AuditLogger auditLogger = new AuditLogger(null, clock, null, null, null) {
             @Override
@@ -212,6 +217,8 @@ class ChatOrchestratorTest {
         return new ChatOrchestrator(model, registry, executor, redactor, assembler, cache, new CustomerNotes(), port,
                 new InstructionRouter(model, new LlmErrorMapper(), mapper, props),
                 new HistorySummarizer(model, new LlmErrorMapper(), mapper, redactor, props),
+                new WorkflowRunner(registry, executor, guard,
+                        new StepArgumentExtractor(model, new LlmErrorMapper(), mapper, props), mapper),
                 new AnswerAssembler(redactor, mapper), auditLogger, new LlmErrorMapper(), props, clock);
     }
 
@@ -1767,6 +1774,507 @@ class ChatOrchestratorTest {
         assertThat(report.instructionKey()).isEqualTo(KEY_B);
         assertThat(EvaluationReport.failed("X").routeSource()).isNull();
         assertThat(EvaluationReport.failed("X").instructionKey()).isNull();
+    }
+
+    // ---- workflow steps ----
+
+    private static final String FLOW_KEY = "instruction.flow";
+    private static final String TWO_STEPS = "先看 {{getRealTimeCustomer}}，再看 {{getCustomer: management}}。";
+    private static final String STOCK_REQUEST = "請提供要查詢的股票代號（例如 2330）。";
+    private static final String REAL_TIME_FAILED = "未能完成「查詢顧客即時註記與提醒」，以下回答可能不完整。";
+
+    private static PublishedConfigs flow(String content) {
+        return new PublishedConfigs(config("system.main", 1, "系統", "MAIN-BODY"),
+                List.of(config(FLOW_KEY, 1, "流程", content)));
+    }
+
+    /** An orchestrator with the real assembler, the real workflow tools plus {@code extra}, and {@code content}. */
+    private ChatOrchestrator flowOrchestrator(String content, AssistantTool<?>... extra) {
+        List<AssistantTool<?>> tools = new ArrayList<>(List.of(new GetCustomerTool(redactor),
+                new GetMarketIndexTool(twse), new GetStockQuoteTool(twse), new GetCompanyAnnouncementsTool(twse)));
+        tools.addAll(List.of(extra));
+        if (tools.stream().noneMatch(t -> t.name().equals("getRealTimeCustomer"))) {
+            tools.add(new GetRealTimeCustomerTool(redactor));
+        }
+        PublishedConfigs configs = flow(content);
+        PublishedConfigCache cache = new PublishedConfigCache(null, clock) {
+            @Override
+            public PublishedConfigs current() {
+                return configs;
+            }
+        };
+        return orchestrator(new ToolRegistry(tools), new PromptAssembler(clock), cache);
+    }
+
+    private static ChatResult askChip(ChatOrchestrator target, String question, CustomerContext customer) {
+        return target.chat(new ChatCommand(question, List.of(), FLOW_KEY), USER, customer);
+    }
+
+    private static ChatResponse extraction(String stockCode, int tokens) {
+        return text("{\"step1\":{\"stockCode\":\"" + stockCode + "\"}}", tokens);
+    }
+
+    record FreeText(String query) {
+    }
+
+    /** Accepts any text as its required input, so an extracted value reaches the echoed tool call. */
+    private static final class FreeTextTool extends FakeTool<FreeText> {
+
+        private final List<String> received = new ArrayList<>();
+
+        FreeTextTool() {
+            super("freeText", FreeText.class, AccessLevel.LIMITED, Duration.ofSeconds(3),
+                    (args, context) -> ToolResult.success(Map.of("found", "yes"), List.of()));
+        }
+
+        @Override
+        public ToolSpecification specification() {
+            return ToolSpecification.builder().name(name()).description("test")
+                    .parameters(JsonObjectSchema.builder().addStringProperty("query").required("query")
+                            .additionalProperties(false).build())
+                    .build();
+        }
+
+        @Override
+        public ToolResult execute(FreeText args, ToolContext context) {
+            received.add(args.query());
+            return super.execute(args, context);
+        }
+    }
+
+    @Test
+    void stepsRunBeforeTheFirstModelCall() {
+        ChatOrchestrator target = flowOrchestrator(TWO_STEPS);
+        model.reply(answer(100, "整理如下。"));
+
+        askChip(target, "聯繫準備", RETIREE_FULL);
+
+        assertThat(model.requests()).hasSize(1);
+        ChatRequest first = model.requests().getFirst();
+        assertThat(systemText(first)).contains("getRealTimeCustomer（系統已查詢）", "getCustomer（系統已查詢）")
+                .doesNotContain("{{");
+        List<ChatMessage> messages = first.messages();
+        assertThat(messages).hasSize(6);
+        assertThat(((UserMessage) messages.get(1)).singleText()).isEqualTo("聯繫準備");
+        assertThat(((AiMessage) messages.get(2)).toolExecutionRequests()).singleElement().satisfies(r -> {
+            assertThat(r.id()).isEqualTo("workflow-1");
+            assertThat(r.name()).isEqualTo("getRealTimeCustomer");
+            assertThat(r.arguments()).isEqualTo("{}");
+        });
+        ToolExecutionResultMessage firstResult = (ToolExecutionResultMessage) messages.get(3);
+        assertThat(firstResult.id()).isEqualTo("workflow-1");
+        assertThat(firstResult.text()).contains("\"untrustedData\":true", "\"status\":\"SUCCESS\"");
+        assertThat(((AiMessage) messages.get(4)).toolExecutionRequests()).singleElement().satisfies(r -> {
+            assertThat(r.id()).isEqualTo("workflow-2");
+            assertThat(r.name()).isEqualTo("getCustomer");
+            assertThat(r.arguments()).isEqualTo("{\"sections\":[\"management\"]}");
+        });
+        assertThat(((ToolExecutionResultMessage) messages.get(5)).id()).isEqualTo("workflow-2");
+    }
+
+    @Test
+    void stepsAreAuditedInOrderAndCiteS1S2() {
+        ChatOrchestrator target = flowOrchestrator(TWO_STEPS);
+        model.reply(text(blocks(block("paragraph", "依即時註記與經營資料整理。", "S1", "S2")), 100));
+
+        ChatResult result = askChip(target, "聯繫準備", RETIREE_FULL);
+
+        assertThat(singleAudit().toolCalls()).extracting(o -> o.toolName(), o -> o.citationId())
+                .containsExactly(tuple("getRealTimeCustomer", "S1"), tuple("getCustomer", "S2"));
+        assertThat(((JsonEnumSchema) sourcesItems(model.requests().getFirst())).enumValues())
+                .containsExactly("S1", "S2");
+        assertThat(result.citations()).extracting(CitationView::id, CitationView::toolName)
+                .containsExactly(tuple(1, "getRealTimeCustomer"), tuple(2, "getCustomer"));
+    }
+
+    @Test
+    void repeatedMarkerCallsTheToolOnce() {
+        ChatOrchestrator target = flowOrchestrator("{{getCustomer: management}} 與 {{getCustomer: behavior}}");
+        model.reply(answer(100, "整理如下。"));
+
+        ChatResult result = askChip(target, "聯繫準備", RETIREE_FULL);
+
+        assertThat(result.toolCalls()).extracting(ToolCallSummary::name).containsExactly("getCustomer");
+        assertThat(((AiMessage) model.requests().getFirst().messages().get(2)).toolExecutionRequests())
+                .singleElement()
+                .satisfies(r -> assertThat(r.arguments()).isEqualTo("{\"sections\":[\"management\",\"behavior\"]}"));
+    }
+
+    @Test
+    void stepsCountTowardToolCallsNotRounds() {
+        ChatOrchestrator target = flowOrchestrator(TWO_STEPS);
+        model.reply(toolCalls(100, call("c1", "getMarketIndex", "{}")))
+                .reply(toolCalls(100, call("c2", "getMarketIndex", "{}")))
+                .reply(toolCalls(100, call("c3", "getMarketIndex", "{}"), call("c4", "getMarketIndex", "{}")))
+                .reply(answer(100, "整理如下。"));
+
+        ChatResult result = askChip(target, "聯繫準備", RETIREE_FULL);
+
+        assertThat(result.toolCalls()).extracting(ToolCallSummary::status)
+                .containsExactly("SUCCESS", "SUCCESS", "SUCCESS", "SUCCESS", "SUCCESS", "DENIED");
+        assertThat(singleAudit().toolCalls()).hasSize(5);
+        // The two steps used no round: the model still gets its three rounds with tools.
+        assertThat(model.requests()).hasSize(4);
+        assertThat(toolNames(model.requests().get(2))).isNotEmpty();
+        assertThat(toolNames(model.requests().get(3))).isEmpty();
+    }
+
+    @Test
+    void modelCanStillCallOtherTools() {
+        ChatOrchestrator target = flowOrchestrator("{{getRealTimeCustomer}}");
+        model.reply(toolCalls(100, call("c1", "getMarketIndex", "{}"))).reply(answer(100, "大盤上漲。"));
+
+        ChatResult result = askChip(target, "聯繫準備", RETIREE_FULL);
+
+        assertThat(result.toolCalls()).extracting(ToolCallSummary::name, ToolCallSummary::status)
+                .containsExactly(tuple("getRealTimeCustomer", "SUCCESS"), tuple("getMarketIndex", "SUCCESS"));
+        assertThat(toolNames(model.requests().getFirst())).contains("getMarketIndex");
+    }
+
+    @Test
+    void failedStepKeepsAnsweringWithANotice() {
+        GetRealTimeCustomerTool failing = new GetRealTimeCustomerTool(redactor) {
+            @Override
+            public ToolResult execute(com.example.copilot.aiassistant.domain.tool.NoArgs args, ToolContext context) {
+                return ToolResult.failure(ToolStatus.ERROR, "TOOL_EXECUTION_FAILED", "查詢失敗");
+            }
+        };
+        ChatOrchestrator target = flowOrchestrator("{{getRealTimeCustomer}} {{getMarketIndex}}", failing);
+        model.reply(answer(100, "依現有資料整理。"));
+
+        ChatResult result = askChip(target, "聯繫準備", RETIREE_FULL);
+
+        assertThat(result.answer()).isEqualTo(REAL_TIME_FAILED + "\n\n依現有資料整理。");
+        assertThat(result.toolCalls()).extracting(ToolCallSummary::name, ToolCallSummary::status)
+                .containsExactly(tuple("getRealTimeCustomer", "ERROR"), tuple("getMarketIndex", "SUCCESS"));
+        assertThat(model.requests()).hasSize(1);
+        assertThat(singleAudit().answer()).startsWith(REAL_TIME_FAILED);
+    }
+
+    @Test
+    void notesComeBeforeTheFailureNotice() {
+        ChatOrchestrator target = flowOrchestrator("{{getCustomer: profile}} {{removedTool}}");
+        model.reply(answer(100, "整理如下。"));
+
+        ChatResult result = askChip(target, "聯繫準備", noMarketingFull());
+
+        assertThat(result.answer()).isEqualTo(NO_MARKETING_NOTICE + "\n\n未能完成「未知工具」，以下回答可能不完整。\n\n整理如下。");
+    }
+
+    private static final String UNKNOWN_TOOL_NOTICE = "未能完成「未知工具」，以下回答可能不完整。";
+
+    @Test
+    void malformedMarkerIsNotEchoedAndTheTurnAnswers() {
+        ChatOrchestrator target = flowOrchestrator("{{查詢}} 與 {{getMarketIndex}}");
+        model.reply(toolCalls(100, call("c1", "getMarketIndex", "{}"))).reply(answer(100, "大盤上漲。"));
+
+        ChatResult result = askChip(target, "行情", RETIREE_FULL);
+
+        assertThat(model.requests()).hasSize(2);
+        List<String> echoedNames = model.requests().stream().flatMap(request -> request.messages().stream())
+                .filter(AiMessage.class::isInstance)
+                .flatMap(message -> ((AiMessage) message).toolExecutionRequests().stream())
+                .map(request -> request.name()).toList();
+        assertThat(echoedNames).contains("getMarketIndex").doesNotContain("查詢");
+        assertThat(((AiMessage) model.requests().getFirst().messages().get(2)).toolExecutionRequests())
+                .singleElement().satisfies(r -> {
+                    assertThat(r.id()).isEqualTo("workflow-1");
+                    assertThat(r.name()).isEqualTo("getMarketIndex");
+                });
+        assertThat(result.answer()).isEqualTo(UNKNOWN_TOOL_NOTICE + "\n\n大盤上漲。");
+        assertThat(result.toolCalls()).extracting(ToolCallSummary::name, ToolCallSummary::status)
+                .containsExactly(tuple("getMarketIndex", "SUCCESS"), tuple("getMarketIndex", "SUCCESS"));
+        AuditEntry audit = singleAudit();
+        assertThat(audit.outcome()).isEqualTo("ANSWERED");
+        assertThat(audit.toolCalls()).extracting(o -> o.toolName())
+                .containsExactly("getMarketIndex", "getMarketIndex");
+    }
+
+    @Test
+    void onlyDroppedStepsStillAnswerWithANotice() {
+        ChatOrchestrator target = flowOrchestrator("{{查詢}} 與 {{removedTool}}");
+        model.reply(answer(100, "依現有資料整理。"));
+
+        ChatResult result = askChip(target, "行情", RETIREE_FULL);
+
+        assertThat(model.requests().getFirst().messages()).hasSize(2);
+        assertThat(result.answer())
+                .isEqualTo(UNKNOWN_TOOL_NOTICE + "\n\n" + UNKNOWN_TOOL_NOTICE + "\n\n依現有資料整理。");
+        assertThat(result.toolCalls()).isEmpty();
+        assertThat(singleAudit().outcome()).isEqualTo("ANSWERED");
+    }
+
+    /** Redaction matches case-insensitively, so without this rule "Tim" would rewrite getRealTimeCustomer. */
+    @Test
+    void customerNameInsideAToolNameLeavesTheStepIntact() {
+        ChatOrchestrator target = flowOrchestrator("{{getRealTimeCustomer}}");
+        model.reply(answer(100, "依現有資料整理。"));
+        CustomerContext latinName = new CustomerContext(TestCustomers.NO_MARKETING, AccessLevel.FULL, Set.of("Tim"),
+                Set.of());
+
+        ChatResult result = askChip(target, "聯繫準備", latinName);
+
+        assertThat(result.toolCalls()).extracting(ToolCallSummary::name, ToolCallSummary::status)
+                .containsExactly(tuple("getRealTimeCustomer", "SUCCESS"));
+        assertThat(((AiMessage) model.requests().getFirst().messages().get(2)).toolExecutionRequests())
+                .singleElement().satisfies(r -> assertThat(r.name()).isEqualTo("getRealTimeCustomer"));
+        assertThat(((ToolExecutionResultMessage) model.requests().getFirst().messages().get(3)).toolName())
+                .isEqualTo("getRealTimeCustomer");
+        // The note notice appears only when the turn's executed tools include a CustomerDataTool.
+        assertThat(result.answer()).isEqualTo(NO_MARKETING_NOTICE + "\n\n依現有資料整理。").doesNotContain("未能完成");
+        assertThat(singleAudit().outcome()).isEqualTo("ANSWERED");
+    }
+
+    /** Arguments stay redacted as one text, so a name can corrupt a fixed option: that costs the step, not the turn. */
+    @Test
+    void customerNameInsideAFixedOptionFailsOnlyThatStep() {
+        ChatOrchestrator target = flowOrchestrator("{{getCustomer: management}} {{getMarketIndex}}");
+        model.reply(answer(100, "依現有資料整理。"));
+        CustomerContext latinName = new CustomerContext(TestCustomers.RETIREE, AccessLevel.FULL, Set.of("Man"),
+                Set.of());
+
+        ChatResult result = askChip(target, "聯繫準備", latinName);
+
+        assertThat(result.answer()).startsWith("未能完成「查詢顧客 360 資料」，以下回答可能不完整。");
+        assertThat(result.toolCalls()).extracting(ToolCallSummary::name)
+                .containsExactly("getCustomer", "getMarketIndex");
+        assertThat(singleAudit().outcome()).isEqualTo("ANSWERED");
+    }
+
+    @Test
+    void missingInputEndsTheTurn() {
+        ChatOrchestrator target = flowOrchestrator("{{getRealTimeCustomer}} {{getStockQuote}}");
+        model.reply(extraction("", 30));
+
+        ChatResult result = askChip(target, "行情", RETIREE_FULL);
+
+        assertThat(result.answer()).isEqualTo(STOCK_REQUEST);
+        assertThat(result.blocks()).containsExactly(new AnswerBlock(BlockType.PARAGRAPH, STOCK_REQUEST, List.of()));
+        assertThat(result.toolCalls()).isEmpty();
+        assertThat(result.citations()).isEmpty();
+        assertThat(result.disclaimer()).isNull();
+        assertThat(model.requests()).hasSize(1);
+        assertThat(((SystemMessage) model.requests().getFirst().messages().get(0)).text())
+                .doesNotContain("MAIN-BODY");
+        AuditEntry audit = singleAudit();
+        assertThat(audit.outcome()).isEqualTo("ANSWERED");
+        assertThat(audit.answer()).isEqualTo(STOCK_REQUEST);
+        assertThat(audit.toolCalls()).isEmpty();
+        assertThat(audit.modelCalls()).isEqualTo(1);
+        assertThat(audit.totalTokens()).isEqualTo(30);
+        assertThat(audit.unverifiedNumbers()).isEmpty();
+    }
+
+    @Test
+    void followUpCompletesTheFlow() {
+        ChatOrchestrator target = flowOrchestrator("{{getStockQuote}}");
+        model.reply(extraction("2330", 30)).reply(answer(100, "整理如下。"));
+        List<HistoryMessage> history = List.of(new HistoryMessage("user", "幫我查行情"),
+                new HistoryMessage("assistant", STOCK_REQUEST));
+
+        ChatResult result = target.chat(new ChatCommand("2330", history, FLOW_KEY), USER, RETIREE_FULL);
+
+        String extractionInput = ((UserMessage) model.requests().getFirst().messages().get(1)).singleText();
+        assertThat(extractionInput).contains("幫我查行情", "請提供要查詢的股票代號", "\"question\":\"2330\"");
+        assertThat(result.toolCalls()).extracting(ToolCallSummary::name, ToolCallSummary::status)
+                .containsExactly(tuple("getStockQuote", "SUCCESS"));
+        assertThat(toolResultText(model.requests().get(1))).contains("台積電");
+        assertThat(singleAudit().modelCalls()).isEqualTo(2);
+    }
+
+    @Test
+    void extractionFailureRunsOtherStepsAndAddsANotice() {
+        ChatOrchestrator target = flowOrchestrator("{{getMarketIndex}} {{getStockQuote}}");
+        model.fail(new IllegalStateException("provider down")).reply(answer(100, "依現有資料整理。"));
+
+        ChatResult result = askChip(target, "行情", RETIREE_FULL);
+
+        assertThat(result.toolCalls()).extracting(ToolCallSummary::name, ToolCallSummary::status)
+                .containsExactly(tuple("getMarketIndex", "SUCCESS"), tuple("getStockQuote", "DENIED"));
+        assertThat(result.answer()).startsWith("未能完成「查詢上市個股行情」，以下回答可能不完整。");
+        assertThat(singleAudit().modelCalls()).isEqualTo(2);
+    }
+
+    @Test
+    void withheldStepIsNotAFailure() {
+        ChatOrchestrator target = flowOrchestrator("{{getCustomer: management}}");
+        model.reply(answer(100, "改從關懷與服務的方向整理。"));
+
+        ChatResult result = askChip(target, "經營建議", noMarketingFull());
+
+        assertThat(result.answer()).startsWith(NO_MARKETING_NOTICE).doesNotContain("未能完成");
+        assertThat(result.toolCalls()).extracting(ToolCallSummary::status).containsExactly("SUCCESS");
+    }
+
+    @Test
+    void limitedUserStepIsDeniedWithANotice() {
+        ChatOrchestrator target = flowOrchestrator("{{getRealTimeCustomer}}");
+        model.reply(answer(100, "基本輪廓。"));
+
+        ChatResult result = askChip(target, "聯繫準備", retiree(AccessLevel.LIMITED));
+
+        assertThat(model.requests()).hasSize(1);
+        assertThat(result.answer()).isEqualTo(REAL_TIME_FAILED + "\n\n基本輪廓。");
+        assertThat(result.toolCalls()).extracting(ToolCallSummary::status).containsExactly("DENIED");
+    }
+
+    @Test
+    void limitedUserIsNotAskedForTheInputOfADeniedStep() {
+        FakeTool<FreeText> fullOnly = new FakeTool<>("fullOnly", FreeText.class, AccessLevel.FULL,
+                Duration.ofSeconds(3), (args, context) -> ToolResult.success(Map.of("a", "b"), List.of())) {
+            @Override
+            public ToolSpecification specification() {
+                return ToolSpecification.builder().name(name()).description("test")
+                        .parameters(JsonObjectSchema.builder().addStringProperty("query").required("query")
+                                .additionalProperties(false).build())
+                        .build();
+            }
+        };
+        ChatOrchestrator target = flowOrchestrator("{{fullOnly}}", fullOnly);
+        model.reply(answer(100, "基本輪廓。"));
+
+        ChatResult result = askChip(target, "聯繫準備", retiree(AccessLevel.LIMITED));
+
+        assertThat(model.requests()).hasSize(1);
+        assertThat(result.answer()).startsWith("未能完成「測試 fullOnly」");
+    }
+
+    @Test
+    void noneRouteRunsNoSteps() {
+        ChatOrchestrator target = flowOrchestrator(TWO_STEPS);
+        model.reply(route("none", 100, 10)).reply(answer(100, "回答"));
+
+        ChatResult result = target.chat(new ChatCommand("你好", List.of(), null), USER, RETIREE_FULL);
+
+        assertThat(result.toolCalls()).isEmpty();
+        assertThat(singleAudit().toolCalls()).isEmpty();
+        assertThat(model.requests().get(1).messages()).hasSize(2);
+    }
+
+    @Test
+    void fallbackRouteRunsNoSteps() {
+        ChatOrchestrator target = flowOrchestrator(TWO_STEPS);
+        model.fail(new IllegalStateException("provider down")).reply(answer(100, "回答"));
+
+        ChatResult result = target.chat(new ChatCommand("你好", List.of(), null), USER, RETIREE_FULL);
+
+        assertThat(result.toolCalls()).isEmpty();
+        assertThat(singleAudit().routeSource()).isEqualTo("FALLBACK");
+        assertThat(systemText(model.requests().get(1))).contains("getRealTimeCustomer", "getCustomer")
+                .doesNotContain("系統已查詢", "{{");
+    }
+
+    @Test
+    void chipRunsSteps() {
+        ChatOrchestrator target = flowOrchestrator(TWO_STEPS);
+        model.reply(answer(100, "回答"));
+
+        ChatResult result = askChip(target, "聯繫準備", RETIREE_FULL);
+
+        assertThat(singleAudit().routeSource()).isEqualTo("CHIP");
+        assertThat(result.toolCalls()).extracting(ToolCallSummary::name)
+                .containsExactly("getRealTimeCustomer", "getCustomer");
+    }
+
+    @Test
+    void routerPickRunsSteps() {
+        ChatOrchestrator target = flowOrchestrator(TWO_STEPS);
+        model.reply(route(FLOW_KEY, 100, 10)).reply(answer(100, "回答"));
+
+        ChatResult result = target.chat(new ChatCommand("聯繫準備", List.of(), null), USER, RETIREE_FULL);
+
+        assertThat(singleAudit().routeSource()).isEqualTo("ROUTER");
+        assertThat(result.toolCalls()).extracting(ToolCallSummary::name)
+                .containsExactly("getRealTimeCustomer", "getCustomer");
+    }
+
+    @Test
+    void evaluationRunsSteps() {
+        ChatOrchestrator target = flowOrchestrator(TWO_STEPS);
+        model.reply(route(FLOW_KEY, 100, 10)).reply(answer(100, "回答"));
+
+        EvaluationReport report = target.evaluate("聯繫準備", USER, RETIREE_FULL, flow(TWO_STEPS));
+
+        assertThat(report.outcome()).isEqualTo("ANSWERED");
+        assertThat(report.toolCalls()).extracting(EvaluationReport.ToolCall::toolName)
+                .containsExactly("getRealTimeCustomer", "getCustomer");
+        assertThat(audits).isEmpty();
+    }
+
+    @Test
+    void extractionTokensCountTowardBudget() {
+        ChatOrchestrator target = flowOrchestrator("{{getStockQuote}}");
+        model.reply(extraction("2330", 16001));
+
+        assertThatThrownBy(() -> askChip(target, "行情", RETIREE_FULL)).isInstanceOfSatisfying(AssistantException.class,
+                e -> assertThat(e.code()).isEqualTo(ErrorCode.AI_TOKEN_BUDGET_EXCEEDED));
+
+        assertThat(model.requests()).hasSize(1);
+        AuditEntry audit = singleAudit();
+        assertThat(audit.toolCalls()).isEmpty();
+        assertThat(audit.modelCalls()).isEqualTo(1);
+        assertThat(audit.totalTokens()).isEqualTo(16001);
+    }
+
+    @Test
+    void deadlineStopsBeforeExtraction() {
+        ChatOrchestrator target = flowOrchestrator("{{getStockQuote}}");
+        model.reply(request -> {
+            clock.advance(Duration.ofSeconds(61));
+            return route(FLOW_KEY, 100, 10);
+        });
+
+        assertThatThrownBy(() -> target.chat(new ChatCommand("行情", List.of(), null), USER, RETIREE_FULL))
+                .isInstanceOfSatisfying(AssistantException.class,
+                        e -> assertThat(e.code()).isEqualTo(ErrorCode.AI_REQUEST_TIMEOUT));
+
+        assertThat(model.requests()).hasSize(1);
+    }
+
+    @Test
+    void deadlineStopsLaterSteps() {
+        FakeTool<NoArgs> slow = new FakeTool<>("slowStep", NoArgs.class, AccessLevel.LIMITED, Duration.ofSeconds(3),
+                (args, context) -> {
+                    clock.advance(Duration.ofSeconds(61));
+                    return ToolResult.success(Map.of("a", "b"), List.of());
+                });
+        ChatOrchestrator target = flowOrchestrator("{{slowStep}} {{getMarketIndex}}", slow);
+
+        assertThatThrownBy(() -> askChip(target, "聯繫準備", RETIREE_FULL)).isInstanceOfSatisfying(AssistantException.class,
+                e -> assertThat(e.code()).isEqualTo(ErrorCode.AI_REQUEST_TIMEOUT));
+
+        assertThat(model.requests()).isEmpty();
+        // The step that ran stays on the record even though the turn failed.
+        AuditEntry audit = singleAudit();
+        assertThat(audit.outcome()).isEqualTo("FAILED");
+        assertThat(audit.toolCalls()).extracting(o -> o.toolName()).containsExactly("slowStep");
+    }
+
+    @Test
+    void extractedIdentifierFailingThePatternEndsTheTurn() {
+        ChatOrchestrator target = flowOrchestrator("{{getStockQuote}}");
+        model.reply(extraction("王小明", 30));
+
+        ChatResult result = askChip(target, "行情", RETIREE_FULL);
+
+        assertThat(result.answer()).isEqualTo(STOCK_REQUEST);
+        assertThat(model.requests()).hasSize(1);
+        assertThat(singleAudit().answer()).doesNotContain("王小明");
+    }
+
+    @Test
+    void extractedArgumentsAreRedacted() {
+        FreeTextTool tool = new FreeTextTool();
+        ChatOrchestrator target = flowOrchestrator("{{freeText}}", tool);
+        model.reply(text("{\"step1\":{\"query\":\"王小明 0912-000-111\"}}", 30)).reply(answer(100, "整理如下。"));
+
+        askChip(target, "查詢", RETIREE_FULL);
+
+        ChatRequest echoed = model.requests().get(1);
+        assertThat(((AiMessage) echoed.messages().get(2)).toolExecutionRequests()).isNotEmpty();
+        assertThat(echoed.messages().stream().flatMap(m -> ScriptedChatModel.texts(m).stream()))
+                .allSatisfy(t -> assertThat(t).doesNotContain(RETIREE_IDENTIFIERS));
+        assertThat(tool.received).singleElement().satisfies(q -> assertThat(q).doesNotContain(RETIREE_IDENTIFIERS));
     }
 
     /** A clock tests can move forward. */
