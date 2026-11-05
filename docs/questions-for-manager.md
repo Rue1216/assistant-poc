@@ -26,7 +26,7 @@
 - **問題**：既有 feature 模組怎麼分層，套件命名是什麼樣子（例如 `adapter / application / domain`，或 `controller / usecase / gateway`）？有沒有可以參考的模組？
 - **為何要問**：要能「複製貼上平移」，結構就必須和既有模組一致。
 - **預設假設**：比照一個既有 feature 模組的結構。
-- **回覆**：
+- **回覆**：平台守則為 `domain / application / interfaces / infrastructure`（reference.md §3），2026-11-02 已對齊，見 [01-architecture.md](spec/01-architecture.md) 5.1
 
 ### S3. 既有 API 是否自動過濾顧客資料範圍 ⚠️
 
@@ -80,9 +80,9 @@
 ### S10. MongoDB 慣例 ⚠️
 
 - **問題**：
-  1. ~~`COLL_PROJECT` 前綴的實際值是什麼？~~（SP 計畫已指定 `COLL_ICRM_`）collection 名稱常數寫在哪裡？
-  2. 是否使用 Spring Data MongoDB？有沒有既有的 `@Version` 樂觀鎖用法？
-  3. Index 和 JSON Schema Validation 由誰建立：程式啟動時建立、migration script，還是 DBA？
+    1. ~~`COLL_PROJECT` 前綴的實際值是什麼？~~（SP 計畫已指定 `COLL_ICRM_`）collection 名稱常數寫在哪裡？
+    2. 是否使用 Spring Data MongoDB？有沒有既有的 `@Version` 樂觀鎖用法？
+    3. Index 和 JSON Schema Validation 由誰建立：程式啟動時建立、migration script，還是 DBA？
 - **為何要問**：規格審查要求事先定義 collection、index 和 sharding。
 - **預設假設**：使用 Spring Data MongoDB，collection 名為 `COLL_ICRM_AI_ASSISTANT_CONFIG`，index 和 validation 用 migration script 建立。
 - **回覆**：
@@ -104,9 +104,9 @@
 ### S13. 既有依賴與版本
 
 - **問題**：
-  1. 有沒有引入 LangChain4j？是哪個版本，和 Spring Boot 4.1 / Java 25 相容嗎？
-  2. 前端有沒有 Markdown 渲染套件（markdown-it 或 marked）、sanitizer（DOMPurify）、Markdown 編輯器元件？
-  3. 既有平台怎麼管理第三方 jar（內部 Nexus / Artifactory 的匯入流程、專案內的 lib 資料夾，或其他方式）？Maven 的 `settings.xml` 有沒有設定 `mirrorOf`，值是什麼？
+    1. 有沒有引入 LangChain4j？是哪個版本，和 Spring Boot 4.1 / Java 25 相容嗎？
+    2. 前端有沒有 Markdown 渲染套件（markdown-it 或 marked）、sanitizer（DOMPurify）、Markdown 編輯器元件？
+    3. 既有平台怎麼管理第三方 jar（內部 Nexus / Artifactory 的匯入流程、專案內的 lib 資料夾，或其他方式）？Maven 的 `settings.xml` 有沒有設定 `mirrorOf`，值是什麼？
 - **為何要問**：新增依賴可能需要審核。LangChain4j 和 Spring Boot 4 的相容性需要確認。公司環境連不到外部 Maven repo，新依賴必須能離線建置；`mirrorOf` 設成 `*` 會攔截專案內的 repository。
 - **預設假設**：LangChain4j 只用核心套件 1.22.0（不用 beta 的 Spring Boot starter）；（已確定公司環境連不到外部 Maven repo）jar 放在專案內的 `backend/lib-repo/`，以 file repository 引用（見 [01-architecture.md](spec/01-architecture.md) 7.1）；前端 Markdown 渲染與 sanitizer 自行實作，不引入套件。
 - **回覆**：
@@ -141,10 +141,10 @@
 ### S18. MongoDB sharding 慣例 ⚠️
 
 - **問題**：
-  1. 叢集的 Hash Sharding 是所有 collection 都 shard，還是只有資料量大的 collection？既有 collection 的 shard key 怎麼選？
-  2. `sh.shardCollection` 由誰、在什麼時機執行（migration、DBA 手動）？新建的 collection 會不會預設 shard？
-  3. 在 sharded collection 上，既有程式怎麼處理 unique index（例如以 shard key 開頭）？
-  4. 應用程式是不是透過 mongos 連線？既有程式有沒有使用 transaction？
+    1. 叢集的 Hash Sharding 是所有 collection 都 shard，還是只有資料量大的 collection？既有 collection 的 shard key 怎麼選？
+    2. `sh.shardCollection` 由誰、在什麼時機執行（migration、DBA 手動）？新建的 collection 會不會預設 shard？
+    3. 在 sharded collection 上，既有程式怎麼處理 unique index（例如以 shard key 開頭）？
+    4. 應用程式是不是透過 mongos 連線？既有程式有沒有使用 transaction？
 - **為何要問**：全行開放後，稽核紀錄很可能需要 shard（見 M36）；設定 collection 依賴 unique index 和 transaction，不能隨意 shard（見 [04-mongodb-schema.md](spec/04-mongodb-schema.md) 第 5 節）。
 - **預設假設**：只有資料量大的 collection 才 shard，由 migration 或 DBA 執行；應用程式透過 mongos 連線，可使用 transaction。
 - **回覆**：
@@ -199,10 +199,10 @@
 
 - **問題**：需求要求限制 tool call 次數、遞迴深度、timeout 和 token，具體數值由誰決定？
 - **預設假設**：
-  - 單次提問最多 5 次 tool call，最多 3 輪模型往返
-  - 單次 GPT 呼叫 timeout 30 秒，整體上限 60 秒
-  - 單一 tool timeout 5 秒（顧客工具 3 秒）
-  - 單次提問累計 token 上限 16,000（含路由與所有回合），單次回應輸出上限 1,500 token（回答改為 JSON 輸出後調高；見 [01-architecture.md](spec/01-architecture.md) 第 6 節）
+    - 單次提問最多 5 次 tool call，最多 3 輪模型往返
+    - 單次 GPT 呼叫 timeout 30 秒，整體上限 60 秒
+    - 單一 tool timeout 5 秒（顧客工具 3 秒）
+    - 單次提問累計 token 上限 16,000（含路由與所有回合），單次回應輸出上限 1,500 token（回答改為 JSON 輸出後調高；見 [01-architecture.md](spec/01-architecture.md) 第 6 節）
 - **回覆**：
 
 #### M8. 是否需要串流回應
@@ -222,11 +222,11 @@
 #### M10. 可用的平台 API 清單 ⚠️
 
 - **問題**：哪些平台 API 可以列入 Allowlist？下列資料分別對應哪一支 API？
-  - 顧客基本資料
-  - 往來概況
-  - 既有標籤
-  - 近期互動紀錄
-  - 活動結果
+    - 顧客基本資料
+    - 往來概況
+    - 既有標籤
+    - 近期互動紀錄
+    - 活動結果
 - **為何要問**：Tool Catalog 的資料來源必須是核准過的 API。
 - **回覆**：
 
@@ -253,10 +253,10 @@
 
 - **問題**：需求 3-2 第 4 類「其他」可以自由發揮，主管有沒有偏好方向？
 - **候選方向**：
-  - 客群統計概況
-  - 依互動紀錄建議下次聯繫時機
-  - 商品持有概況
-  - 結合市場資訊準備聯繫話題
+    - 客群統計概況
+    - 依互動紀錄建議下次聯繫時機
+    - 商品持有概況
+    - 結合市場資訊準備聯繫話題
 - **預設假設**：（POC 已採用）做「電話開場白」（見 [06-conversation-scenarios.md](spec/06-conversation-scenarios.md) Q9），以及需求三類之外的「資產負債」「會員等級」「往來與通路」「市場快訊」分類。原本的「聯繫話題」（持股加市場資訊）因持股工具於 2026-10-28 移除而取消（ideas-backlog 想法 9）。
 - **回覆**：
 
@@ -290,9 +290,9 @@
 #### M19. Skill 的定位 ⚠️
 
 - **問題**：Skill Markdown 在系統裡扮演什麼角色？
-  - (a) 固定附加在 System Prompt 後面
-  - (b) 依問題類型動態載入
-  - (c) 和特定 tool 綁定，提供使用說明
+    - (a) 固定附加在 System Prompt 後面
+    - (b) 依問題類型動態載入
+    - (c) 和特定 tool 綁定，提供使用說明
 - **預設假設**：（POC 已採用）改稱 System Instructions：每份是一個問題分類，含適用問題、回答套版、範例問題；每次提問先以一次模型呼叫依「適用問題」選出分類（b 的做法），回答時只載入該分類，快捷按鈕直接指定分類，路由失敗才載入全部；模型再從可用工具中挑選（工具依存取等級提供）；範例問題顯示為快捷按鈕（見 [07-prompt-examples.md](spec/07-prompt-examples.md)、[01-architecture.md](spec/01-architecture.md) 4.1）。
 - **回覆**：
 
@@ -325,10 +325,10 @@
 
 - **問題**：「必要章節」「禁止內容」「大小上限」的具體規則由誰定義？
 - **預設假設**：（POC 已採用，見 [04-mongodb-schema.md](spec/04-mongodb-schema.md) 2.5）
-  - 大小上限 64KB
-  - 必要章節：System Prompt 不要求（安全規則與回答格式規則寫死在程式碼、固定附加在可編輯內容之後，管理者改壞 prompt 也不影響）；問題分類只要求 `## 適用問題`（路由依據），範例問題 0–5 題、每題 40 字內
-  - 禁止內容用 regex 檢查：疑似 API key 或 token、密碼字樣、未列入白名單的網址、IP、身分證號、手機號碼、顧客編號
-  - 「忽略以上規則」這類越權指令**尚未納入**：自然語言樣式誤判率高，且安全規則在 prompt 最後、要求忽略資料中的指令；若主管要求再加
+    - 大小上限 64KB
+    - 必要章節：System Prompt 不要求（安全規則與回答格式規則寫死在程式碼、固定附加在可編輯內容之後，管理者改壞 prompt 也不影響）；問題分類只要求 `## 適用問題`（路由依據），範例問題 0–5 題、每題 40 字內
+    - 禁止內容用 regex 檢查：疑似 API key 或 token、密碼字樣、未列入白名單的網址、IP、身分證號、手機號碼、顧客編號
+    - 「忽略以上規則」這類越權指令**尚未納入**：自然語言樣式誤判率高，且安全規則在 prompt 最後、要求忽略資料中的指令；若主管要求再加
 - **回覆**：
 
 #### M25. 版本保留與 sharding
@@ -340,13 +340,13 @@
 #### M26. 管理頁的位置與權限
 
 - **問題**：管理頁放在哪個後台應用或選單下？哪些角色可以編輯和發布？
-- **回覆**：
+- **回覆**：管理頁只有後台管理人員和IT人員可以進入，這兩個角色都先讓他們有編輯和發布的權限
 
 #### M27. 草稿試用功能
 
 - **問題**：要不要讓管理者用草稿版本先試問，再決定是否發布？
 - **預設假設**：核心功能不做，改用加分項「Prompt 評測集」比較發布前後的效果。
-- **回覆**：
+- **回覆**：不做
 
 ### F. 前端行為
 
@@ -390,11 +390,11 @@
 #### M34. 加分項與評分細項
 
 - **問題**：
-  1. 加分項目（回答引用、Prompt 評測集、回饋、可觀測性）是預期要做，還是選做？
-  2. SP 計畫評分表「安全與系統韌性 (25%)」的細項只有 8% + 9%，第 10 項（推算 8%）缺漏，內容是什麼？
-  3. 第 11 項「規格與測試」的檢核標準寫到「API、Tool、MongoDB 與」就斷了，完整內容是什麼？
+    1. 加分項目（回答引用、Prompt 評測集、回饋、可觀測性）是預期要做，還是選做？
+    2. SP 計畫評分表「安全與系統韌性 (25%)」的細項只有 8% + 9%，第 10 項（推算 8%）缺漏，內容是什麼？
+    3. 第 11 項「規格與測試」的檢核標準寫到「API、Tool、MongoDB 與」就斷了，完整內容是什麼？
 - **預設假設**：「回答引用」和核心功能一起做；「Prompt 評測集」視時程決定。
-- **回覆**：
+- **回覆**：回答引用、Prompt 評測集、回饋、可觀測性現在看起來時間上都來的及，做出來好了
 
 #### M35. 平移交付方式
 
@@ -407,10 +407,10 @@
 #### M36. 稽核紀錄的資料量與 sharding ⚠️
 
 - **問題**：
-  1. 預計開放給哪些人員（理專、AO、業務等）、大約多少人？每人每天大約提問幾次？
-  2. 稽核紀錄要保存多久（同 M4）？法遵是否要求保存 5 年以上？
-  3. 稽核紀錄是否要保存工具查到的原始資料？（目前不保存，只記錄工具名稱、狀態與耗時。）
-  4. 如果要 shard，shard key 由誰決定、誰審核？
+    1. 預計開放給哪些人員（理專、AO、業務等）、大約多少人？每人每天大約提問幾次？
+    2. 稽核紀錄要保存多久（同 M4）？法遵是否要求保存 5 年以上？
+    3. 稽核紀錄是否要保存工具查到的原始資料？（目前不保存，只記錄工具名稱、狀態與耗時。）
+    4. 如果要 shard，shard key 由誰決定、誰審核？
 - **為何要問**：這幾項決定稽核紀錄的資料量。以 1 萬人、每人每天 20 題、每筆 2 KB 估算：保存 180 天約 80 GB，保存 5～7 年約 0.8～1 TB；如果要保存工具原始資料，資料量會再放大 5～10 倍。估算細節見 [04-mongodb-schema.md](spec/04-mongodb-schema.md) 第 5 節。
 - **預設假設**：全行開放後，稽核紀錄很可能需要 shard，shard key 用 `{ userId: "hashed" }`；設定 collection 不 shard。**POC 階段先不改動作法**：程式不修改，`sh.shardCollection` 在整合時放進平台的 migration。
 - **回覆**：
@@ -438,19 +438,19 @@
 #### M39. 360 資料的推定項目（E1–E13）
 
 - **問題**：下列 13 項 `reference.md` 沒有定義的內容，是否與平台實際一致？
-  1. （E1）`RadarChartData.rank` 是否為 0–100 的指數；`info` 是否為顯示用原值文字（例如「180 萬」）。
-  2. （E2）`CategoryData` 的 `ratioList`、`amountList` 的順序是否為 [顧客, 客群平均, 客群 T10]。
-  3. （E3）`CustomFlagging` 的結構與類別：`{type, label, expiryDate?}`，`type` ∈ 不宜行銷、客訴、高資產、專區顧客、專投。
-  4. （E4）`KeyAlerts` 的結構與類別：`{items: [{type, title, detail, date?}]}`，`type` ∈ 理財會員降等、大額金流流入、資金活水、停利停損、其他待辦。
-  5. （E5）`ProfilePhoto` 是否為 `{tags: string[]}`（畫像標籤）。
-  6. （E6）`upgradeOrDownGradeAlert` 是否為一句文字，沒有提醒時為 null。
-  7. （E7）`memberRank` 是否另有等級代碼欄位 `memberRankCode`（P、Q、N…）。
-  8. （E8）`CustomerDto` 頂層是否有 `dataDate`（`yyyy/MM/dd`）。
-  9. （E9）各等級權益文案是否由平台提供；mock 沿用 prototype 的權益文字並標示「示意」。
-  10. （E10）`channelBehavior` 是否有回應率；DTO 目前只有顧客與客群指數，小幫手只回答「最常使用」，不回答「最有回應的通路」。
-  11. （E11）`productMix` 的 `ldr`、`casaAndWealthAumRatio` 是否為百分比數值（62 表示 62%）；`aumYield` 是否為百分比數字字串（`"1.86"`）；DTO 沒有客群的存量收益率。
-  12. （E12）`CampaignDetail.campaignEnabled` 是否為 `"Y"`／`"N"`。
-  13. （E13）信用卡額度：DTO 只有已使用額度（`ccBalance`），沒有額度；小幫手只回答已使用額度。
+    1. （E1）`RadarChartData.rank` 是否為 0–100 的指數；`info` 是否為顯示用原值文字（例如「180 萬」）。
+    2. （E2）`CategoryData` 的 `ratioList`、`amountList` 的順序是否為 [顧客, 客群平均, 客群 T10]。
+    3. （E3）`CustomFlagging` 的結構與類別：`{type, label, expiryDate?}`，`type` ∈ 不宜行銷、客訴、高資產、專區顧客、專投。
+    4. （E4）`KeyAlerts` 的結構與類別：`{items: [{type, title, detail, date?}]}`，`type` ∈ 理財會員降等、大額金流流入、資金活水、停利停損、其他待辦。
+    5. （E5）`ProfilePhoto` 是否為 `{tags: string[]}`（畫像標籤）。
+    6. （E6）`upgradeOrDownGradeAlert` 是否為一句文字，沒有提醒時為 null。
+    7. （E7）`memberRank` 是否另有等級代碼欄位 `memberRankCode`（P、Q、N…）。
+    8. （E8）`CustomerDto` 頂層是否有 `dataDate`（`yyyy/MM/dd`）。
+    9. （E9）各等級權益文案是否由平台提供；mock 沿用 prototype 的權益文字並標示「示意」。
+    10. （E10）`channelBehavior` 是否有回應率；DTO 目前只有顧客與客群指數，小幫手只回答「最常使用」，不回答「最有回應的通路」。
+    11. （E11）`productMix` 的 `ldr`、`casaAndWealthAumRatio` 是否為百分比數值（62 表示 62%）；`aumYield` 是否為百分比數字字串（`"1.86"`）；DTO 沒有客群的存量收益率。
+    12. （E12）`CampaignDetail.campaignEnabled` 是否為 `"Y"`／`"N"`。
+    13. （E13）信用卡額度：DTO 只有已使用額度（`ccBalance`），沒有額度；小幫手只回答已使用額度。
 - **為何要問**：小幫手的工具與 mock 以這些推定撰寫，與平台不一致時，數字與說法會錯。
 - **預設假設**：全部依上列推定項目實作；與平台實際不一致時，只需調整 `getCustomer` 的格式化對應與 mock 資料，工具介面、prompt、評測集不受影響。
 - **回覆**：
@@ -514,8 +514,8 @@
 #### M48. certNo 的完整格式與 LIMITED 遮罩寫法
 
 - **問題**：
-  1. 顧客編號 `certNo` 的完整格式（身分證、居留證、外籍人士證號、統編等）是什麼？
-  2. `LIMITED` 時的遮罩寫法：reference 範例 `A123****6789` 與規則文字（首碼＋後四碼）不一致，以哪個為準？
+    1. 顧客編號 `certNo` 的完整格式（身分證、居留證、外籍人士證號、統編等）是什麼？
+    2. `LIMITED` 時的遮罩寫法：reference 範例 `A123****6789` 與規則文字（首碼＋後四碼）不一致，以哪個為準？
 - **為何要問**：`PiiRedactor` 與 `ConfigValidator` 的 `certNo` 偵測規則、路徑參數驗證與畫面遮罩都依賴格式。
 - **預設假設**：路徑驗證 `^[A-Z0-9&]{8,12}$`（依 Format 規則 7 的範例 `A123456789`、`HKC123456`、`&F12345678` 推定，只接受大寫半形）；`PiiRedactor` 偵測 `[A-Z][12]\d{8}`、`[A-Z]{3}\d{6}`、`&[A-Z]\d{8}`（後兩者推定）；遮罩依規則文字「首碼＋後四碼」，例如 `A*****6789`。
 - **回覆**：

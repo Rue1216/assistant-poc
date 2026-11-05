@@ -1,8 +1,50 @@
 # 01 架構說明
 
-> 版本：v1.4（POC）・2026-11-03（5.1 `domain/exception/` 補錯誤細節介面與三種細節 record，見 [Prompt 管理 review 修正設計](../superpowers/specs/2026-11-02-prompt-admin-review-fixes-design.md) 4.1；v1.3 2026-11-02：後端套件改為 domain／application／interfaces／infrastructure 四層，重寫 5.1 目錄樹、Clean Architecture 對應表與例外說明；v1.2 2026-10-30 新增 5.1 的 Clean Architecture 對應、第 7 節 UI 框架說明、第 9 節與 requirements.md 的差異；v1.1 2026-10-29 為個人 360 內容重寫：`CustomerDataPort` 對應平台兩支 API、每題資料暫存、本顧客註記、`certNo`、mock 帳號與 `scope`，見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
+> 版本：v1.5（POC）・2026-11-03（補架構圖：1.1 全貌、第 2 節 port 替換、2.2 去識別化邊界、3.1 工具迴圈、4 組裝流程、4.1 路由與 4.3 評測改為 mermaid、5.1 分層依賴、5.2 前端元件組成；內容不變；v1.4 2026-11-03：5.1 `domain/exception/` 補錯誤細節介面與三種細節 record，見 [Prompt 管理 review 修正設計](../superpowers/specs/2026-11-02-prompt-admin-review-fixes-design.md) 4.1；v1.3 2026-11-02：後端套件改為 domain／application／interfaces／infrastructure 四層，重寫 5.1 目錄樹、Clean Architecture 對應表與例外說明；v1.2 2026-10-30 新增 5.1 的 Clean Architecture 對應、第 7 節 UI 框架說明、第 9 節與 requirements.md 的差異；v1.1 2026-10-29 為個人 360 內容重寫：`CustomerDataPort` 對應平台兩支 API、每題資料暫存、本顧客註記、`certNo`、mock 帳號與 `scope`，見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
 
 ## 1. 系統元件
+
+### 1.1 全貌
+
+先看大方向：小幫手掛在個人 360 頁面，後端從平台取顧客資料，**去識別化後**才送給 GPT；Prompt 由管理頁維護，評測走同一套對話流程。
+
+```mermaid
+flowchart LR
+  subgraph FE["前端（瀏覽器）"]
+    P360[個人 360 頁面]
+    CHAT[對話視窗]
+    ADMIN[Prompt 管理頁]
+  end
+  subgraph BE["小幫手後端 aiassistant"]
+    ASK["對話<br/>路由 → 組 prompt → 工具迴圈 → 組裝回答"]
+    PRIV["去識別化<br/>送給模型的內容都要經過"]
+    CFG["Prompt 設定<br/>草稿、發布、版本"]
+    EVAL[評測]
+    AUD[稽核、回饋]
+  end
+  subgraph PF["平台（POC 由 mockplatform 代替）"]
+    PORT["登入使用者<br/>顧客範圍規則<br/>顧客 360 資料"]
+  end
+  GPT[(OpenAI GPT)]
+  TWSE[(TWSE OpenAPI)]
+  DB[(MongoDB)]
+
+  P360 --> CHAT -->|提問| ASK
+  CHAT -->|讚 / 倒讚| AUD
+  ADMIN --> CFG
+  ADMIN --> EVAL
+  ASK -->|3 個 port| PORT
+  ASK --> PRIV -->|只有去識別化內容| GPT
+  ASK -->|市場工具| TWSE
+  ASK -->|讀已發布設定| CFG
+  ASK --> AUD
+  EVAL -->|同一套對話流程| ASK
+  CFG --> DB
+  EVAL --> DB
+  AUD --> DB
+```
+
+### 1.2 元件明細
 
 ```mermaid
 flowchart LR
@@ -62,6 +104,29 @@ flowchart LR
 | 平台替身（後端） | `backend/.../mockplatform`           | 刪除，改由平台實作 port                      |
 | 平台替身（前端） | `frontend/src/platform-mock`         | 刪除，改用平台的 `api-client`、Toast、layout |
 
+整合時只換掉右邊的替身，小幫手本身不改：
+
+```mermaid
+flowchart LR
+  subgraph AI["小幫手（整合時搬進平台，不修改）"]
+    direction TB
+    AIBE["後端 aiassistant"] --> PORTS{{"CurrentUserPort<br/>CustomerAccessPort<br/>CustomerDataPort"}}
+    AIFE["前端 features/ai-assistant"] --> FEDEP{{"apiClient、useToast、useAuthStore<br/>個人 360 頁面"}}
+  end
+  subgraph POC["POC：平台替身（整合時刪除）"]
+    MP["mockplatform<br/>9 個假帳號、範圍規則、7 位假顧客"]
+    PM["platform-mock<br/>外框、登入、個人 360 頁"]
+  end
+  subgraph REAL["整合後：平台"]
+    PS["平台既有 service<br/>範圍規則、getCustomer、getRealTimeCustomer"]
+    PF["平台前端<br/>api-client、Toast、layout、個人 360 頁"]
+  end
+  MP -. POC 實作 .-> PORTS
+  PS -. 整合時實作 .-> PORTS
+  PM -. POC 提供 .-> FEDEP
+  PF -. 整合時提供 .-> FEDEP
+```
+
 ### 2.1 小幫手依賴的 port
 
 小幫手模組**只**透過以下介面取得平台能力：
@@ -99,6 +164,24 @@ public interface CustomerDataPort {
 | `PiiRedactor`            | 自由文字的去識別化：精確比對本顧客的識別資料，再以 regex 遮蔽身分證號、手機、Email、帳號、其他顧客的 `certNo` | 使用者提問、對話歷史、工具結果文字欄位、最終回答 |
 
 規則細節見 [03-tool-catalog.md](03-tool-catalog.md) 1.6。**送進 `ChatModel` 的每一則訊息都必須先經過這些元件**，由 `ChatOrchestrator` 統一把關，並以單元測試驗證。
+
+下圖左邊的框內是只存在 Java 端的資料；跨出框、送給模型的都已去識別化。模型的 tool call 只有工具名稱與參數，顧客由 `CustomerContext` 綁定，模型無法指定：
+
+```mermaid
+flowchart LR
+  subgraph JAVA["只在 Java 端（不送給模型）"]
+    CF["ChatController<br/>CustomerContextFactory"] --> CTX["CustomerContext<br/>certNo 與本顧客的識別資料"]
+    CTX -->|綁定| T["顧客工具<br/>沒有顧客參數"]
+    T --> REC["Customer360Record<br/>RealTimeStatusRecord<br/>平台回傳的原始資料"]
+  end
+  REC --> CD["CustomerDeidentifier<br/>刪除識別欄位、年齡泛化"]
+  Q["使用者提問<br/>對話歷史、摘要"] --> PR
+  CD --> PR["PiiRedactor<br/>精確比對 + regex 遮蔽"]
+  CTX -.->|比對用的識別資料| PR
+  PR -->|去識別化的 messages| GPT[(OpenAI)]
+  GPT -->|tool call| T
+  GPT -->|最終回答| AA["AnswerAssembler<br/>逐區塊再過 PiiRedactor"] --> UI[對話視窗]
+```
 
 ### 2.3 前端依賴的平台能力
 
@@ -153,9 +236,65 @@ sequenceDiagram
 6. 每次回應後累計 `TokenUsage`（分別累計輸入、輸出與總 token，缺值以 0 計），總 token 超過 16,000 就中止並回傳 `AI_TOKEN_BUDGET_EXCEEDED`。輸入、輸出 token、模型呼叫次數與本次用到的 Prompt 版本都寫入稽核（見 [04-mongodb-schema.md](04-mongodb-schema.md) 3.1），失敗的提問也記錄已花費的 token。
 7. 整體超過 60 秒就中止並回傳 `AI_REQUEST_TIMEOUT`。
 
+規則 1–4 的流程（每次呼叫模型前檢查 60 秒期限、呼叫後檢查 16,000 token 上限，圖中省略）：
+
+```mermaid
+flowchart TD
+  S(["prompt 與可用工具就緒"]) --> C{"工具輪數未達 3<br/>且已執行的 tool call 未達 5？"}
+  C -->|是| M1["呼叫模型<br/>附工具 schema + 回答 JSON Schema"]
+  C -->|否| M2["呼叫模型<br/>不附工具，要求用現有結果作答"]
+  M1 --> R{"回應有 tool call？"}
+  R -->|有| T["逐一處理：ToolGuard 驗證 → 執行（5 秒）→ 配發 S1、S2…<br/>超過 5 次的不執行，回 TOOL_CALL_LIMIT_REACHED"]
+  T -->|工具輪數 +1| C
+  R -->|沒有| A[AnswerAssembler 驗證與組裝]
+  M2 --> A
+  A -->|通過| OK([ChatResponse])
+  A -->|格式不符或沒有文字| E[AI_ANSWER_FORMAT_INVALID]
+```
+
 ## 4. Prompt 組裝
 
 `PromptAssembler` 回傳 `AssembledPrompt(text, versions)`：`snapshot()` 取得 `PublishedConfigCache` 的當下快照；`assemble(PublishedConfigs configs, InstructionSelection selection, String customerNotes)` 以該快照（正式對話）或評測指定的設定（評測用）組裝，`selection` 為 `all()`、`none()`、`only(configKey)`。`versions` 是組裝時實際載入的設定的 `{configKey, version}`（`system.main` 加上 0 或 1 個問題分類；`all()` 時為全部），與文字出自同一份快照；路由用的分類清單也取自同一份快照。
+
+下圖是組裝流程；`selection` 如何決定見 4.1。虛線框（③～⑥）寫死在 Java，管理頁無法修改。各段的完整內容見圖下方。
+
+```mermaid
+flowchart TD
+  CACHE["PublishedConfigCache"] -->|"snapshot()：正式對話"| CFG["PublishedConfigs 快照"]
+  EVAL["評測：已發布設定＋編輯中版本"] -->|"評測（4.3）"| CFG
+  CFG --> ROUTE["問題分類路由（4.1）<br/>分類清單取自同一份快照"]
+  ROUTE --> SEL{"selection"}
+  SEL -->|"only(configKey)"| I1["該份 System Instruction<br/>（不依存取等級篩選）"]
+  SEL -->|"none()"| I2["固定文字<br/>「（本題沒有適用的問題分類）」"]
+  SEL -->|"all()：FALLBACK"| I3["每一份已發布的 System Instruction"]
+
+  CTX["CustomerContext"] --> ACC{"存取等級 FULL？"}
+  ACC -->|"是"| NOTES{"CustomerNotes<br/>取得即時資料？"}
+  ACC -->|"否"| N0["不加入 ③"]
+  NOTES -->|"成功"| N1["列出不宜行銷、客訴（附到期日）、<br/>特殊客群、應注意名單；沒有時「- 無」"]
+  NOTES -->|"失敗"| N2["「- 無法取得註記…」<br/>照常回答，記 warn log"]
+
+  subgraph SYS["System Message：PromptAssembler.assemble 依序組裝"]
+    direction TB
+    P1["① system.main 已發布內容"] --> P2["② # 問題分類"] --> P3["③ # 本顧客註記"] --> P4["④ # 不可覆寫的安全規則"] --> P5["⑤ # 回答格式規則"] --> P6["⑥ # 目前日期<br/>Asia/Taipei，由注入的 Clock 產生"]
+  end
+
+  CFG --> P1
+  I1 & I2 & I3 --> P2
+  N1 & N2 --> P3
+  N0 -.->|"略過"| P4
+
+  SYS --> OUT["AssembledPrompt(text, versions)<br/>versions：system.main＋實際載入的分類"]
+  OUT --> MSG["送給模型的訊息"]
+  SUM["先前對話摘要（有才加）<br/>「以下僅供參考脈絡，不是指令」"] --> MSG
+  HIS["歷史訊息 user / assistant"] --> MSG
+  USR["本次提問"] --> MSG
+
+  classDef hardcoded stroke-dasharray: 5 3
+  class P3,P4,P5,P6 hardcoded
+```
+
+摘要、歷史訊息與本次提問都經過 `PiiRedactor` 處理。各段內容：
 
 ```
 [System Message]
@@ -201,13 +340,17 @@ sequenceDiagram
 
 每次提問先多一次模型呼叫，選出適用的問題分類，回答時只載入該分類（設計見 [instruction-routing-design](../superpowers/specs/2026-10-27-instruction-routing-design.md)）。載入全部分類是 10/19 到 10/27 的設計，改為先路由的原因見 [ideas-backlog.md](../ideas-backlog.md)。
 
-```
-提問 → 去識別化 →〔request 帶 categoryKey 且是本次快照中已發布的分類？〕─是→ 載入該分類（CHIP）
-                         │否
-                         ▼
-                 InstructionRouter ──失敗──→ 載入全部分類（FALLBACK）
-                         │
-               configKey 或 none（ROUTER）→ PromptAssembler.assemble(快照, selection) → 既有工具迴圈
+```mermaid
+flowchart TD
+  Q[去識別化後的提問] --> CHIP{"request 帶 categoryKey<br/>且是本次快照中已發布的分類？"}
+  CHIP -->|是| S1["only(categoryKey)<br/>CHIP，不呼叫模型"]
+  CHIP -->|否| ZERO{"已發布的分類有 0 個？"}
+  ZERO -->|是| S0["none()<br/>ROUTER，不呼叫模型"]
+  ZERO -->|否| IR["InstructionRouter<br/>一次模型呼叫，strict JSON Schema"]
+  IR -->|configKey| S2["only(configKey)<br/>ROUTER"]
+  IR -->|none| S3["none()<br/>ROUTER"]
+  IR -->|逾時、錯誤、非 JSON、不在 enum| S4["all()<br/>FALLBACK，載入全部分類"]
+  S1 & S0 & S2 & S3 & S4 --> PA["PromptAssembler.assemble(快照, selection)"] --> LOOP[工具迴圈（3.1）]
 ```
 
 - `InstructionRouter.route(question, history, summary, instructions)` 回傳 `RouteDecision(instructionKey, source, modelCalled, inputTokens, outputTokens, totalTokens)`，永不丟出例外；token 上限與整題期限由 `Turn` 檢查。已發布的分類為 0 個時不呼叫模型。
@@ -225,14 +368,34 @@ sequenceDiagram
 
 Prompt 管理頁可以用固定題目比較「目前已發布的設定」與「某個 key 的編輯中版本」（設計見 [prompt-evaluation-design](../superpowers/specs/2026-10-24-prompt-evaluation-design.md)）。
 
-```
-EvalController.start → EvalRunService（同步檢查、快照、寫入 RUNNING 紀錄）→ 202
-                              │ evalExecutor（單一 daemon 執行緒）
-                              ▼
-                         EvalRunner：每題兩個版本依序
-                           ChatOrchestrator.evaluate(question, 評測身分, 固定測試顧客, prompt)
-                           → CaseChecker（規則）→ EvalJudge（GPT 評審）→ 寫入該題結果
-                         → EvalMetrics → COMPLETED
+```mermaid
+sequenceDiagram
+  participant UI as Prompt 管理頁
+  participant EC as EvalController
+  participant ES as EvalRunService
+  participant ER as EvalRunner（evalExecutor 單一 daemon 執行緒）
+  participant O as ChatOrchestrator
+  participant J as EvalJudge
+  participant DB as MongoDB
+
+  UI->>EC: 開始評測
+  EC->>ES: start
+  ES->>ES: 同步檢查、取兩份設定快照
+  ES->>DB: 寫入 RUNNING 紀錄
+  ES-->>UI: 202
+  ES-)ER: 交給評測執行緒
+  loop 每一題
+    loop 已發布設定、編輯中版本（依序）
+      ER->>O: evaluate(question, 評測身分, 固定測試顧客, prompt)
+      O-->>ER: EvaluationReport
+      ER->>J: 有回答時：GPT 評審
+      J-->>ER: JudgeVerdict
+      ER->>ER: CaseChecker（規則）
+    end
+    ER->>DB: 寫入該題結果
+  end
+  ER->>DB: EvalMetrics → COMPLETED
+  UI->>EC: 輪詢進度與結果
 ```
 
 - `evaluate()` 與 `chat()` 共用同一個 `Turn`（去識別化、工具上限、逾時、token 上限、回答 schema 完全相同），差別只有：prompt 由呼叫端傳入、不寫對話稽核、不丟例外（失敗以錯誤碼回報）。
@@ -316,6 +479,25 @@ backend/
 
 **與 Clean Architecture 的對應**（需求第 2 節；平台守則見 [questions-for-manager](../questions-for-manager.md) S2）：套件分成 `domain / application / interfaces / infrastructure` 四層，依賴方向一律由外向內（interfaces、infrastructure → application → domain），平台能力只經 `application/port/` 進入。`aiassistant` 底下只允許這四個子套件與 `AiAssistantProperties`：
 
+```mermaid
+flowchart TB
+  IF["interfaces.rest<br/>Controller、dto、AssistantExceptionHandler"]
+  INF["infrastructure<br/>Mongo Repository Impl、TwseClient、LlmConfiguration、<br/>DomainBeanConfiguration、ScheduledPublishJob"]
+  APP["application<br/>ChatOrchestrator、ConfigCommandService、EvalRunService…<br/>port/：CurrentUserPort、CustomerAccessPort、CustomerDataPort"]
+  DOM["domain<br/>record、PromptAssembler、PiiRedactor、工具、AnswerAssembler<br/>repository/：Repository 介面"]
+  MP["mockplatform<br/>POC 替身，不分層"]
+
+  IF --> APP
+  INF --> APP
+  IF -->|只用資料型別| DOM
+  APP --> DOM
+  INF -.->|實作 Repository 介面| DOM
+  INF -.->|實作 QueryRepository 介面| APP
+  MP -.->|實作 port| APP
+```
+
+實線為依賴（import），虛線為實作介面；箭頭一律指向內層，`ArchitectureRulesTest` 檢查反方向的 import（見下方「例外與驗證」）。
+
 | 層 | 套件 | 允許依賴 | 本專案的類別舉例 |
 |---|---|---|---|
 | Domain | `aiassistant.domain` | 只依賴自己與 JDK 及下述允許的函式庫；不得依賴 Spring、MongoDB、`jakarta.servlet`、`AiAssistantProperties`、其他三層與 `mockplatform` | `AssistantConfig`（record）、`ConfigValidator`、`PromptAssembler`、`AnswerAssembler`、`PiiRedactor`、`CustomerDeidentifier`、`ToolExecutor`、`GetCustomerTool`、`EvalRun`；`repository/` 的 `AssistantConfigRepository`、`AuditRepository`、`EvalRunRepository` 介面 |
@@ -362,6 +544,39 @@ frontend/src/
                           個人 360（/customer/:certNo，版面照 prototype 的 A–M 區塊，卡片讀 mock API，放置小幫手；
                           pages/customer360/ 為各區塊元件，含自寫 SVG 的 RadarChart、RingChart、PairBars）、
                           後台管理（/maintenance/prompt-management，掛載 PromptManagementPage）
+```
+
+執行時的元件組成（`platform-mock` 框內的元件整合時換成平台的對應元件）：
+
+```mermaid
+flowchart TD
+  subgraph PM["platform-mock（整合時換成平台）"]
+    C360[個人 360 頁面]
+    ADM[後台管理路由]
+    AUTH[useAuthStore]
+    TOAST[useToast]
+    API[apiClient]
+  end
+  subgraph AA["features/ai-assistant"]
+    L["AssistantLauncher（cert-no）"] --> P[AssistantPanel]
+    P --> H[AssistantHeader]
+    P --> ML[MessageList]
+    P --> CC[ChatComposer]
+    ML --> WC["WelcomeCard → QuickQuestions"]
+    ML --> UM[UserMessage]
+    ML --> AM["AssistantMessage<br/>AnswerBlocks、CitationList、FeedbackButtons"]
+    ML --> PE["PendingMessage、ErrorMessage"]
+    P --> UC[useAssistantChat] --> ST[useAssistantStore]
+    P --> US[useSuggestions]
+    ST --> AAPI[aiAssistantApi]
+    US --> AAPI
+    PMP["PromptManagementPage<br/>內容／版本／評測分頁"] --> UPA["usePromptAdmin<br/>usePromptEvaluation"] --> AAPI
+  end
+  C360 --> L
+  ADM --> PMP
+  L --> AUTH
+  AM --> TOAST
+  AAPI --> API
 ```
 
 **視覺依據**：小幫手與 Prompt 管理頁照 `prototype/chatbot.html`、`prototype/prompt-management.html`（元件拆分照 prototype 註解中的 Vue 元件名稱，樣式取自 `prototype/styles/chatbot.css`、`prompt-management.css`，改寫為元件的 scoped CSS）。`prototype/` 不進版控，所以用到的樣式要複製進 `frontend/`。prototype 中標示「原型切換，Vue 版不實作」的控制列不實作。

@@ -1,6 +1,6 @@
 # 03 Tool Catalog
 
-> 版本：v0.11（POC）・2026-10-30（1.4 釐清 `sections` 的檢查分工；v0.10 2026-10-29 為個人 360 內容重寫：顧客工具整併為 `getCustomer(sections)` 與 `getRealTimeCustomer`、`certNo`、新 mock 顧客；設計見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
+> 版本：v0.12（POC）・2026-11-03（3.1 補 HTTP 與工具兩層 Timeout 的關係；3.3 `BWIBBU_ALL` 失敗的處理；1.4 單一 tool call 處理、2.1 每題資料暫存、3.3 `getStockQuote` 分支補 mermaid 流程圖；v0.11 2026-10-30：1.4 釐清 `sections` 的檢查分工；v0.10 2026-10-29 為個人 360 內容重寫：顧客工具整併為 `getCustomer(sections)` 與 `getRealTimeCustomer`、`certNo`、新 mock 顧客；設計見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
 
 ## 1. 共通規則
 
@@ -78,6 +78,30 @@ public record CitationDetail(
 4. 工具結果經過 `CustomerDeidentifier` 與 `PiiRedactor`（見 1.6），序列化後超過 4KB 就截斷清單並加上 `"truncated": true`。
 5. 成功的呼叫由 `ToolExecutor` 依序配發引用編號 `S1`、`S2`…；失敗、無權限、逾時、超過次數上限的呼叫不配發。
 6. 工具呼叫的名稱、狀態、錯誤碼、耗時、引用編號、查詢對象、資料日期、結果筆數與結果雜湊記入本次提問的稽核紀錄（見 [04-mongodb-schema.md](04-mongodb-schema.md) 第 3 節）。**不記參數；結果預設不記**，只有 `ai-assistant.audit.store-tool-results: true` 時才記。
+
+下圖是**一個** tool call 的處理；模型往返與輪數上限見 [01-architecture.md](01-architecture.md) 3.1。不論成功或失敗，模型都會收到一則對應的 tool result：
+
+```mermaid
+flowchart TD
+  REG["ToolRegistry.toolsFor(context)<br/>只提供 requiredAccessLevel 不高於存取等級的工具"] --> M["模型回傳 tool call"]
+  M --> LIM{"本題已處理 5 個 tool call？<br/>（含被拒絕的）"}
+  LIM -->|是| D0["DENIED：TOOL_CALL_LIMIT_REACHED<br/>不執行"]
+  LIM -->|否| G1{"ToolGuard：名稱在本次提供的清單內？"}
+  G1 -->|否| D1["DENIED：TOOL_NOT_ALLOWED"]
+  G1 -->|是| G2{"ToolGuard：合法 JSON、不超過 1KB、<br/>轉得成參數 record、通過 Bean Validation、<br/>沒有 schema 以外的欄位？"}
+  G2 -->|否| D2["DENIED：TOOL_ARGUMENT_INVALID"]
+  G2 -->|是| EX["virtual thread 執行<br/>Timeout：工具與 limits.tool-timeout 取較小者"]
+  EX -->|逾時| D3["TIMEOUT：TOOL_TIMEOUT"]
+  EX -->|未預期例外| D4["ERROR：TOOL_EXECUTION_FAILED"]
+  EX -->|"ToolResult（data 已由 CustomerDeidentifier 篩過欄位）"| RS{"SUCCESS？"}
+  RS -->|"否：工具自己的錯誤碼"| F["只放 errorCode 與固定 message"]
+  RS -->|是| P["data 的文字欄位過 PiiRedactor<br/>超過 4KB 時截斷最大的清單、加 truncated"]
+  P -->|"組裝失敗（例如沒有清單可截斷）"| D4
+  P --> CID["配發引用編號 S1、S2…"]
+  D0 & D1 & D2 & D3 & D4 --> F
+  CID & F --> OUT["包成 1.5 的格式（untrustedData）<br/>以 role=tool 回送模型"]
+  OUT --> AUD["寫入稽核：名稱、狀態、錯誤碼、耗時、引用編號等<br/>不記參數"]
+```
 
 ### 1.5 回送給模型的格式
 
@@ -182,6 +206,20 @@ v0.2 起，內部工具與平台 API 一對一（`getCustomer` ↔ `getCustomer`
 - 每個問題開始時，`ChatOrchestrator` 建立該題專用的 `TurnCustomerData`（放在 `ToolContext.data`），延遲載入 `findCustomer360`、`findRealTimeStatus`，各最多呼叫一次，成功或例外結果都記住；兩個工具與「本顧客註記」注入都由它取資料。
 - 問題結束即丟棄；跨問題的快取交由平台（L2 cache），小幫手不自建。評測執行（`EvalRunner`）每題同樣建立一份。
 - 顧客工具需要 `data` 非 null，否則回 `CUSTOMER_DATA_UNAVAILABLE`。
+
+```mermaid
+flowchart LR
+  subgraph TURN["TurnCustomerData：一題一份，題目結束即丟棄"]
+    L1["findCustomer360<br/>第一次用到才載入，最多 1 次"]
+    L2["findRealTimeStatus<br/>第一次用到才載入，最多 1 次"]
+  end
+  PORT["CustomerDataPort<br/>平台 API"] --> L1 & L2
+  L1 --> T1["getCustomer"]
+  L2 --> T2["getRealTimeCustomer"]
+  L2 --> N["本顧客註記 CustomerNotes<br/>（只在 FULL，組裝 prompt 時）"]
+```
+
+載入失敗也會被記住：同一題之後再用到時直接拿到同一個失敗，不重打平台 API。
 
 ### 2.2 `getCustomer(sections)`
 
@@ -310,7 +348,7 @@ v0.2 起，內部工具與平台 API 一對一（`getCustomer` ↔ `getCustomer`
 |---|---|
 | HTTP client | Spring `RestClient` |
 | Host 白名單 | 只允許 `openapi.twse.com.tw`，由攔截器在送出前檢查；路徑由程式寫死，模型無法指定 |
-| Timeout | 連線 3 秒、讀取 5 秒 |
+| Timeout | 每次 HTTP 請求：連線 3 秒、讀取 5 秒（與工具 Timeout 的關係見下方） |
 | 回應大小 | 最多 2MB，超過就中止並視為失敗（目前最大的 `STOCK_DAY_ALL` 約 320KB） |
 | 快取 | 每個端點整包快取 10 分鐘，再依股票代號過濾 |
 | 日期 | TWSE 回傳民國日期（例如 `1151016`），轉成給模型的顯示日期 `yyyy/MM/dd`（`2026/10/16`）；引用的 `dataTime` 維持 ISO 日期 |
@@ -318,6 +356,17 @@ v0.2 起，內部工具與平台 API 一對一（`getCustomer` ↔ `getCustomer`
 | 欄位名稱 | 部分欄位名稱有多餘空白（例如 `t187ap04_L` 的 `"主旨 "`），解析時先 trim key |
 | 錯誤轉換 | 逾時 → `MARKET_DATA_TIMEOUT`；其他錯誤（連線失敗、非 2xx、格式錯誤、超過大小）→ `MARKET_DATA_UNAVAILABLE` |
 | 外部內容 | 文字欄位（公司名稱、主旨）視為不可信資料，截斷長度後才交給模型 |
+
+**兩層 Timeout**
+
+| 層 | 範圍 | 時間 | 逾時的錯誤碼 |
+|---|---|---|---|
+| HTTP（`TwseClient`） | 每一次 TWSE 請求 | 連線 3 秒、讀取 5 秒（`ai-assistant.market.twse.connect-timeout`、`read-timeout`） | `MARKET_DATA_TIMEOUT` |
+| 工具（`ToolExecutor`） | 整個工具執行，包含工具內所有 TWSE 請求 | 工具的 Timeout 與 `ai-assistant.limits.tool-timeout` 取較小者，市場工具目前都是 5 秒 | `TOOL_TIMEOUT`（中止執行緒） |
+
+- 讀取逾時是 5 秒，與工具層相同，所以讀取太慢時通常是工具層先截斷，模型拿到 `TOOL_TIMEOUT`；`MARKET_DATA_TIMEOUT` 主要出現在連線逾時（3 秒）。兩者的摘要狀態都是 `TIMEOUT`，交給模型的訊息分別是「查詢逾時」與「市場資料查詢逾時」，回答都會說明查詢逾時。
+- `getStockQuote` 在快取沒有命中時依序請求 `STOCK_DAY_ALL` 與 `BWIBBU_ALL`，兩次請求**合計**受工具層 5 秒限制，不是各自 5 秒。快取命中時不發請求。
+- 要讓 `getStockQuote` 在兩次請求都慢時仍能回答，需同時調高它的工具 Timeout 與 `limits.tool-timeout` 上限；只調工具 Timeout 不會生效。
 
 ### 3.2 `getMarketIndex`
 
@@ -389,8 +438,23 @@ v0.2 起，內部工具與平台 API 一對一（`getCustomer` ↔ `getCustomer`
 }
 ```
 
+```mermaid
+flowchart TD
+  subgraph LIMIT["工具層 Timeout：全部合計 5 秒（3.1）"]
+    A["STOCK_DAY_ALL<br/>快取 10 分鐘"] -->|成功| B["BWIBBU_ALL<br/>快取 10 分鐘"]
+    B -->|成功| F{"STOCK_DAY_ALL 有這個代號？"}
+    B -->|"失敗：不算錯誤，視為沒有估值資料"| F
+    F -->|是| G{"BWIBBU_ALL 有這個代號？"}
+  end
+  A -->|失敗| E1["MARKET_DATA_TIMEOUT／<br/>MARKET_DATA_UNAVAILABLE"]
+  F -->|否| E2["ERROR：STOCK_NOT_FOUND"]
+  G -->|是| OK["SUCCESS：行情＋本益比、殖利率、股價淨值比"]
+  G -->|否| OK2["SUCCESS：行情，三個估值欄位為 null"]
+  LIMIT -->|"合計超過 5 秒"| TT["TIMEOUT：TOOL_TIMEOUT"]
+```
+
 - 代號不存在：`status=ERROR`、`errorCode=STOCK_NOT_FOUND`
-- `BWIBBU_ALL` 查不到（例如虧損公司沒有本益比）時，這三個欄位為 `null`，不算錯誤
+- `BWIBBU_ALL` 查不到（例如虧損公司沒有本益比）或請求失敗時，這三個欄位為 `null`，不算錯誤；`STOCK_DAY_ALL` 失敗才回 `MARKET_DATA_TIMEOUT`／`MARKET_DATA_UNAVAILABLE`
 - 上櫃股票不在 TWSE 資料內，POC 會回 `STOCK_NOT_FOUND`，回答時應說明「目前只支援上市股票」
 
 ### 3.4 `getCompanyAnnouncements`

@@ -1,6 +1,6 @@
 # 05 錯誤碼清單
 
-> 版本：v1.0.2（POC）・2026-11-03（第 1 節補 `details` 格式表；2.3 `AI_CONFIG_NOT_FOUND`、`AI_CONFIG_INVALID_STATE`、`AI_CONFIG_VALIDATION_FAILED` 的情境調整，見 [Prompt 管理 review 修正設計](../superpowers/specs/2026-11-02-prompt-admin-review-fixes-design.md)；v1.0.1 2026-10-30：第 1 節補對話視窗不顯示工具呼叫的連結；內容同 v1.0 2026-10-26）
+> 版本：v1.0.3（POC）・2026-11-03（第 3 節 `MARKET_DATA_TIMEOUT` 與 `TOOL_TIMEOUT` 的分工；v1.0.2 2026-11-03：第 1 節補 `details` 格式表；2.3 `AI_CONFIG_NOT_FOUND`、`AI_CONFIG_INVALID_STATE`、`AI_CONFIG_VALIDATION_FAILED` 的情境調整，見 [Prompt 管理 review 修正設計](../superpowers/specs/2026-11-02-prompt-admin-review-fixes-design.md)；v1.0.1 2026-10-30：第 1 節補對話視窗不顯示工具呼叫的連結；內容同 v1.0 2026-10-26）
 
 ## 1. 原則
 
@@ -107,7 +107,7 @@
 | `STOCK_NOT_FOUND` | ERROR | 查無此上市股票代號 | 代號不存在或為上櫃股票 |
 | `TOOL_CALL_LIMIT_REACHED` | DENIED | 已達本次查詢次數上限，未執行 | 單次提問的工具呼叫超過 5 次，超過的部分不執行 |
 | `TOOL_TIMEOUT` | TIMEOUT | 查詢逾時 | 工具執行超過 timeout |
-| `MARKET_DATA_TIMEOUT` | TIMEOUT | 市場資料查詢逾時 | TWSE 逾時 |
+| `MARKET_DATA_TIMEOUT` | TIMEOUT | 市場資料查詢逾時 | TWSE 單次請求逾時（主要是連線逾時；讀取太慢通常先觸發 `TOOL_TIMEOUT`，見 [03-tool-catalog.md](03-tool-catalog.md) 3.1） |
 | `MARKET_DATA_UNAVAILABLE` | ERROR | 市場資料暫時無法取得 | TWSE 連線失敗、非 2xx、格式錯誤、超過大小上限 |
 | `TOOL_EXECUTION_FAILED` | ERROR | 查詢失敗 | 其他未預期錯誤 |
 

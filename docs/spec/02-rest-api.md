@@ -1,6 +1,37 @@
 # 02 REST API 規格
 
-> 版本：v1.3（POC）・2026-11-03（Prompt 管理 API review 修正：3 節權限前提與內容上限單位、3.1 `published` 補 `status` 與 `scheduledAt`、3.2 System Prompt key 規則、3.3／3.5 `basedOnVersion`、3.6／3.8 儲存與檢查名稱及修改說明、3.9 立即發布清空 `scheduledAt`、3.10 回 201，見 [Prompt 管理 review 修正設計](../superpowers/specs/2026-11-02-prompt-admin-review-fixes-design.md)；v1.2 2026-10-30 評測集 34 題、`toolCalls` 不顯示的理由；v1.1 2026-10-29 為個人 360 內容重寫：員工帳號與業務角色碼、`scope`、`{certNo}` 路徑、三支 mock 端點，見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
+> 版本：v1.5（POC）・2026-11-03（3 節補共通錯誤 400／401／403／500；3.3、3.5 補 404；3.5、3.6 補範例；3.6、3.7 補 400；v1.4 2026-11-03：文件開頭新增「API 一覽」表格，各端點章節加上固定錨點，可點擊跳轉；規格內容不變；v1.3 2026-11-03：Prompt 管理 API review 修正：3 節權限前提與內容上限單位、3.1 `published` 補 `status` 與 `scheduledAt`、3.2 System Prompt key 規則、3.3／3.5 `basedOnVersion`、3.6／3.8 儲存與檢查名稱及修改說明、3.9 立即發布清空 `scheduledAt`、3.10 回 201，見 [Prompt 管理 review 修正設計](../superpowers/specs/2026-11-02-prompt-admin-review-fixes-design.md)；v1.2 2026-10-30 評測集 34 題、`toolCalls` 不顯示的理由；v1.1 2026-10-29 為個人 360 內容重寫：員工帳號與業務角色碼、`scope`、`{certNo}` 路徑、三支 mock 端點，見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
+
+## API 一覽
+
+Path 省略 base path `/api/ai-assistant`，點 Path 可跳到該章節。編輯頁的每個按鈕呼叫哪支 API，見 [3.0](#api-ui-map)。
+
+| 章節 | Method | Path | 用途 | 權限 | 成功回應 |
+| ---- | ------ | ---- | ---- | ---- | -------- |
+| **對話** | | | | | |
+| 2.1 | `POST` | [`/customers/{certNo}/chat`](#api-chat) | 針對頁面上的顧客送出一個問題（同步，不串流） | `AI_ASSISTANT_USE`，且可存取該顧客 | 200 |
+| 2.2 | `GET` | [`/customers/{certNo}/suggestions`](#api-suggestions) | 取得快捷問題（各分類的範例問題） | 同 2.1 | 200 |
+| 2.3 | `PUT` | [`/chat/{requestId}/feedback`](#api-feedback) | 對回答按讚／倒讚或取消 | `AI_ASSISTANT_USE` | 204 |
+| **Prompt 管理：設定與版本** | | | | | |
+| 3.1 | `GET` | [`/admin/configs`](#api-configs-list) | 列出所有設定 | `AI_CONFIG_READ` | 200 |
+| 3.2 | `POST` | [`/admin/configs`](#api-configs-create) | 新增問題分類，建立 v1 草稿 | `AI_CONFIG_EDIT` | 201 |
+| 3.3 | `GET` | [`/admin/configs/{configKey}/versions`](#api-versions-list) | 版本歷程（不含內容） | `AI_CONFIG_READ` | 200 |
+| 3.4 | `GET` | [`/admin/configs/{configKey}/versions/{version}`](#api-version-get) | 單一版本的完整內容 | `AI_CONFIG_READ` | 200 |
+| 3.5 | `POST` | [`/admin/configs/{configKey}/draft`](#api-draft-create) | 以已發布版本為底建立草稿 | `AI_CONFIG_EDIT` | 201 |
+| 3.6 | `PUT` | [`/admin/configs/{configKey}/draft`](#api-draft-save) | 儲存編輯中版本、取消排程 | `AI_CONFIG_EDIT` | 200 |
+| 3.7 | `DELETE` | [`/admin/configs/{configKey}/draft?docVersion={n}`](#api-draft-discard) | 捨棄草稿（改為 `DISCARDED`，不刪除） | `AI_CONFIG_EDIT` | 204 |
+| 3.8 | `POST` | [`/admin/configs/{configKey}/draft/validate`](#api-draft-validate) | 只執行發布前驗證，不發布 | `AI_CONFIG_EDIT` | 200 |
+| 3.9 | `POST` | [`/admin/configs/{configKey}/publish`](#api-publish) | 立即發布或預約發布 | `AI_CONFIG_PUBLISH` | 200 |
+| 3.10 | `POST` | [`/admin/configs/{configKey}/versions/{version}/apply`](#api-version-apply) | 以歷史版本建立新草稿 | `AI_CONFIG_EDIT` | 201 |
+| 3.11 | `GET` | [`/admin/configs/{configKey}/feedback-stats`](#api-feedback-stats) | 各版本的使用者回饋統計 | `AI_CONFIG_READ` | 200 |
+| **Prompt 管理：評測** | | | | | |
+| 3.12 | `POST` | [`/admin/configs/{configKey}/evaluations`](#api-eval-start) | 開始評測（非同步） | `AI_CONFIG_EDIT` | 202 |
+| 3.13 | `GET` | [`/admin/configs/{configKey}/evaluations`](#api-eval-list) | 這個 key 最近 10 次評測摘要 | `AI_CONFIG_READ` | 200 |
+| 3.14 | `GET` | [`/admin/evaluations/current`](#api-eval-current) | 目前執行中的評測（任何 key） | `AI_CONFIG_READ` | 200／204 |
+| 3.15 | `GET` | [`/admin/evaluations/{runId}`](#api-eval-get) | 單次評測的進度與完整結果 | `AI_CONFIG_READ` | 200 |
+| 3.16 | `GET` | [`/admin/evaluation-cases`](#api-eval-cases) | 瀏覽評測資料集（唯讀） | `AI_CONFIG_READ` | 200 |
+
+平台替身 API（`/api/mock/…`，POC 專用，整合時刪除）共 8 支，見 [第 4 節](#api-mock)。
 
 ## 1. 共通規則
 
@@ -102,6 +133,8 @@
 ---
 
 ## 2. 對話 API
+
+<a id="api-chat"></a>
 
 ### 2.1 `POST /api/ai-assistant/customers/{certNo}/chat`
 
@@ -268,6 +301,8 @@
 
 > 工具失敗（例如 TWSE 逾時）**不會**回傳錯誤，而是 200，並在 `toolCalls[].status` 標示，由回答說明。
 
+<a id="api-suggestions"></a>
+
 ### 2.2 `GET /api/ai-assistant/customers/{certNo}/suggestions`
 
 取得對話視窗的快捷問題。內容來自所有已發布 System Instructions 中的「範例問題」；沒有範例問題的分類不會出現在回應中（但仍參與路由）。
@@ -300,6 +335,8 @@
 
 - 順序：快捷按鈕（chip）與管理頁設定選單一律依 `configKey` 排序（顧客概況不一定排第一），不依 seed manifest 順序。
 - 錯誤：同 2.1 的 400、401、403、404。
+
+<a id="api-feedback"></a>
 
 ### 2.3 `PUT /api/ai-assistant/chat/{requestId}/feedback`
 
@@ -339,6 +376,14 @@ Request：
     - 編輯類（3.2、3.5–3.8、3.10、3.12 開始評測）：`AI_CONFIG_EDIT`
     - 發布類（3.9）：`AI_CONFIG_PUBLISH`
     - 權限前提：後台管理人員與 IT 人員同時擁有 `AI_CONFIG_EDIT` 與 `AI_CONFIG_PUBLISH`（M26）。已排程版本以 `KEEP_STATUS` 儲存只需要編輯權限，但內容會在到期時上線；若日後把編輯與發布拆給不同的人，這個操作要改為需要發布權限。
+- **共通錯誤**：以下各節只列該端點特有的情境。所有端點另外都可能回：
+
+    | HTTP | code                 | 情境                                                                                                                                        |
+    | ---- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+    | 400  | `AI_INPUT_INVALID`   | 路徑的 `configKey` 不符格式、`version` 不是整數、必填的 query 參數缺少或型別錯誤、request body 不是合法 JSON，或欄位驗證失敗（`details` 帶出錯欄位） |
+    | 401  | `AI_UNAUTHENTICATED` | 未登入                                                                                                                                      |
+    | 403  | `AI_FORBIDDEN`       | 缺少上述權限碼                                                                                                                              |
+    | 500  | `AI_INTERNAL_ERROR`  | 未預期錯誤                                                                                                                                  |
 - **版本的辨識**：`version` 是內部流水號，只用於 API 路徑與唯一索引（需求 3-5），**畫面上不顯示**。畫面一律以時間辨識版本：已發布 / 已封存的版本顯示 `updatedAt`（即生效時間）與 `updatedBy`，草稿顯示「最後儲存」時間，已捨棄的版本顯示捨棄時間與捨棄者。
 - **設定類型**：
     - `SYSTEM_PROMPT`：只有一份 `system.main`，定義角色、安全規則、回答格式
@@ -348,6 +393,8 @@ Request：
     - API 與發布前驗證以 UTF-8 bytes 計算，這是實際生效的限制；Mongo validator 的 `maxLength` 以字元計算，上限同為 65,536 字元。
     - 任何字元編碼成 UTF-8 至少 1 byte，所以通過 API 的內容一定通過 Mongo；validator 只是防止繞過 API 的寫入，例如手動修改資料庫。
 - **狀態與操作**：每個 key 同時只有一份「編輯中版本」（`DRAFT` 或 `SCHEDULED`）。狀態轉換與 `updatedBy` 規則見 [04-mongodb-schema.md](04-mongodb-schema.md) 2.4。
+
+<a id="api-ui-map"></a>
 
 ### 3.0 編輯頁操作與 API 對照
 
@@ -393,6 +440,8 @@ Request：
 - **比較**：勾選任兩個版本（任何狀態皆可），按列表底部的「比較勾選的兩版」，以逐行差異顯示 `name` 與 `content` 的不同（新增、刪除標色）；成對的刪除／新增行另以行內標示標出實際改動的字。比較按鈕常駐顯示，未剛好勾選兩列時為停用外觀（`aria-disabled`，按下無作用），滑鼠移上或鍵盤聚焦時顯示提示「勾選任兩個版本後比較」。比較在前端進行：以 3.4 分別取得兩版內容後計算差異，不需要額外 API。
 - **點選版本列**：草稿或已排程列切到「內容」分頁；其他狀態在右側唯讀檢視其內容（`SafeMarkdown` 渲染），動作列（sticky）為「複製 Markdown」與「以此版本建立草稿」。
 - **以此版本建立草稿**：對任一已發布、已封存或已捨棄的版本按「以此版本建立草稿」，以它的 `name` 與 `content` 新增一份草稿（3.10），完成後切到「內容」分頁，之後照一般流程儲存、立即發布或預約發布。原本的草稿或排程會改為「已捨棄」，不會遺失；確認框只有標題與一句話說明。
+
+<a id="api-configs-list"></a>
 
 ### 3.1 `GET /api/ai-assistant/admin/configs`
 
@@ -445,6 +494,8 @@ Request：
 - `workingCopy` 是編輯中版本（`DRAFT` 或 `SCHEDULED`），沒有時為 `null`。
 - 設定選單上以標籤顯示「草稿」或「已排程 10/24 09:00」；`version` 只供後續 API 呼叫使用，不顯示。
 
+<a id="api-configs-create"></a>
+
 ### 3.2 `POST /api/ai-assistant/admin/configs`
 
 新增一個設定 key，並建立 v1 草稿。用於新增問題分類（System Instruction）。
@@ -464,6 +515,8 @@ Request：
 | `configType = SYSTEM_INSTRUCTION` 但 `configKey` 不是 `instruction.` 開頭 | 400 `AI_INPUT_INVALID`，`details: [{ "field": "configKey" }]`  |
 | `configKey` 已存在任何版本                                            | 409 `AI_CONFIG_INVALID_STATE`                                  |
 | 兩人同時建立同一個 key，後到者撞上唯一索引 `UK_ICRM_AI_CFG_1`         | 409 `AI_CONFIG_INVALID_STATE`                                  |
+
+<a id="api-versions-list"></a>
 
 ### 3.3 `GET /api/ai-assistant/admin/configs/{configKey}/versions`
 
@@ -506,6 +559,9 @@ Request：
 
 - 已封存版本的 `updatedAt` / `updatedBy` 是它當初生效的時間與操作者（封存時不改動，見 04 §2.4）。
 - `basedOnVersion` 不為 null 時，畫面顯示「以 {該版本的 updatedAt} 的版本為底」；找不到該版本時顯示「以先前的版本為底」。建立草稿（3.5）與套用（3.10）都會記錄 `basedOnVersion`；新增設定的 v1 草稿與初始資料為 null。
+- **404** `AI_CONFIG_NOT_FOUND`：`configKey` 不存在（沒有任何版本）
+
+<a id="api-version-get"></a>
 
 ### 3.4 `GET /api/ai-assistant/admin/configs/{configKey}/versions/{version}`
 
@@ -534,12 +590,40 @@ Request：
 - `exampleQuestions` 由後端從 `## 範例問題` 章節解析，唯讀；`SYSTEM_PROMPT` 為空陣列。
 - **404** `AI_CONFIG_NOT_FOUND`
 
+<a id="api-draft-create"></a>
+
 ### 3.5 `POST /api/ai-assistant/admin/configs/{configKey}/draft`
 
 以目前已發布版本為底，建立草稿（`version` = 最大版本號 + 1）。沒有已發布版本時，以最新版本為底。`basedOnVersion` 記錄複製來源的 `version`。
 
-- **201**：回傳草稿
+沒有 request body。
+
+Response 201（格式同 3.4）：以已發布的 v2 為底建立的草稿
+
+```json
+{
+    "configKey": "instruction.contact-prep",
+    "configType": "SYSTEM_INSTRUCTION",
+    "name": "聯繫準備",
+    "content": "## 適用問題\n……\n\n## 回答套版\n……\n\n## 範例問題\n- 整理近期互動，幫我準備下次聯繫重點\n\n## 注意事項\n……",
+    "exampleQuestions": ["整理近期互動，幫我準備下次聯繫重點"],
+    "status": "DRAFT",
+    "version": 3,
+    "basedOnVersion": 2,
+    "changeNote": null,
+    "createdBy": "EEE11111",
+    "createdAt": "2026-10-20T14:05:00+08:00",
+    "updatedBy": "EEE11111",
+    "updatedAt": "2026-10-20T14:05:00+08:00",
+    "scheduledAt": null,
+    "docVersion": 0
+}
+```
+
+- **404** `AI_CONFIG_NOT_FOUND`：`configKey` 不存在（沒有任何版本）
 - **409** `AI_CONFIG_INVALID_STATE`：已經有編輯中版本（`DRAFT` 或 `SCHEDULED`）
+
+<a id="api-draft-save"></a>
 
 ### 3.6 `PUT /api/ai-assistant/admin/configs/{configKey}/draft`
 
@@ -553,6 +637,16 @@ Request：
 | `saveMode`   | string | ✓    | `KEEP_STATUS`（儲存）或 `DRAFT`（取消排程，退回草稿） |
 | `docVersion` | number | ✓    | 讀取時拿到的 `docVersion`                             |
 
+```json
+{
+    "name": "聯繫準備",
+    "content": "## 適用問題\n……\n\n## 回答套版\n……\n\n## 範例問題\n- 整理近期互動，幫我準備下次聯繫重點\n- 聯繫這位顧客前，有哪些提醒要處理？\n\n## 注意事項\n……",
+    "changeNote": "新增一題範例問題",
+    "saveMode": "KEEP_STATUS",
+    "docVersion": 0
+}
+```
+
 | 目前狀態    | `saveMode`    | 結果                                                                             |
 | ----------- | ------------- | -------------------------------------------------------------------------------- |
 | `DRAFT`     | 任一          | 維持 `DRAFT`                                                                     |
@@ -560,19 +654,27 @@ Request：
 | `SCHEDULED` | `DRAFT`       | 改為 `DRAFT`，清空 `scheduledAt`（取消排程）                                     |
 
 - `updatedBy`、`updatedAt` 都更新為操作者與現在時間。排程中按「儲存」視為由此人重新確認排程，到期自動發布時記的是此人。
-- **200**：回傳更新後的版本（`docVersion` 會加 1）
+- **200**：回傳更新後的版本（格式同 3.4，`docVersion` 會加 1）
+- **400** `AI_INPUT_INVALID`：`name` 空白、超過 50 字或含控制字元，`content` 缺少或超過 65,536 bytes，`changeNote` 超過 200 字，`saveMode` 不是 `KEEP_STATUS`／`DRAFT`，或缺少 `docVersion`；`details` 帶出錯欄位，例如 `[{ "field": "content" }]`
 - **404** `AI_CONFIG_NOT_FOUND`：`configKey` 不存在
 - **409** `AI_CONFIG_CONFLICT`：`docVersion` 不一致，或這個 `configKey` 已沒有編輯中版本，代表已被他人修改（包括排程剛好到期、已被系統發布，或已被他人捨棄、發布）
 - **422** `AI_CONFIG_VALIDATION_FAILED`：任何狀態、任何 `saveMode` 下，`name` 或 `changeNote` 含禁止內容（`FORBIDDEN_CONTENT`），`details` 格式同 3.8 的 `errors`；或已排程版本的內容未通過驗證
+
+<a id="api-draft-discard"></a>
 
 ### 3.7 `DELETE /api/ai-assistant/admin/configs/{configKey}/draft?docVersion={n}`
 
 捨棄草稿：把 `DRAFT` 改為 `DISCARDED`，**不刪除**，內容保留在版本分頁中，之後仍可比較或以「以此版本建立草稿」找回。只能捨棄 `DRAFT`；已排程的版本需先「取消排程」。
 
-- **204**
+沒有 request body，`docVersion` 放在 query string，例如 `DELETE /api/ai-assistant/admin/configs/instruction.contact-prep/draft?docVersion=2`。
+
+- **204**，沒有 body。
+- **400** `AI_INPUT_INVALID`：缺少 `docVersion` 或不是整數
 - **404** `AI_CONFIG_NOT_FOUND`：`configKey` 不存在
 - **409** `AI_CONFIG_CONFLICT`：`docVersion` 不一致，或這個 `configKey` 已沒有編輯中版本（被排程器發布，或被他人捨棄、發布）
 - **409** `AI_CONFIG_INVALID_STATE`：目前是 `SCHEDULED`
+
+<a id="api-draft-validate"></a>
 
 ### 3.8 `POST /api/ai-assistant/admin/configs/{configKey}/draft/validate`
 
@@ -597,6 +699,8 @@ Request：
 
 - **404** `AI_CONFIG_NOT_FOUND`：`configKey` 不存在
 - **409** `AI_CONFIG_CONFLICT`：這個 `configKey` 已沒有編輯中版本（被排程器發布，或被他人捨棄、發布）
+
+<a id="api-publish"></a>
 
 ### 3.9 `POST /api/ai-assistant/admin/configs/{configKey}/publish`
 
@@ -626,6 +730,8 @@ Request：
 - **404** `AI_CONFIG_NOT_FOUND`：`configKey` 不存在
 - **409** `AI_CONFIG_CONFLICT`：`docVersion` 不一致，或這個 `configKey` 已沒有編輯中版本（被排程器發布，或被他人捨棄、發布）
 - **422** `AI_CONFIG_VALIDATION_FAILED`：`details` 格式同 3.8 的 `errors`
+
+<a id="api-version-apply"></a>
 
 ### 3.10 `POST /api/ai-assistant/admin/configs/{configKey}/versions/{version}/apply`
 
@@ -684,6 +790,8 @@ Request：
 - **409** `AI_CONFIG_CONFLICT`：`workingCopyDocVersion` 不一致（有人剛修改，或排程剛到期而已發布）
 - **409** `AI_CONFIG_INVALID_STATE`：來源版本是 `DRAFT` 或 `SCHEDULED`（只能套用已發布、已封存或已捨棄的版本）
 
+<a id="api-feedback-stats"></a>
+
 ### 3.11 `GET /api/ai-assistant/admin/configs/{configKey}/feedback-stats`
 
 各版本的使用者回饋統計，供版本歷程顯示。
@@ -702,6 +810,8 @@ Request：
 - **計入規則依設定類型**：`system.main`（`SYSTEM_PROMPT`）計入所有有回饋的回答；問題分類（`SYSTEM_INSTRUCTION`）只計入 `routeSource` 為 `ROUTER` 或 `CHIP` 的回答，`FALLBACK`（載入全部分類）與沒有 `routeSource` 的舊紀錄不計入。版本歷程的小字：問題分類為「回饋統計涵蓋 180 天內、且確定使用此分類的回答」，`system.main` 為「回饋統計涵蓋 180 天內的回答」。
 - **400** `AI_INPUT_INVALID`：`configKey` 格式錯誤
 - **404** `AI_CONFIG_NOT_FOUND`：`configKey` 不存在
+
+<a id="api-eval-start"></a>
 
 ### 3.12 `POST /api/ai-assistant/admin/configs/{configKey}/evaluations`
 
@@ -741,6 +851,8 @@ Response 202：
 
 - 快照在回應前建立：已發布設定直接讀 MongoDB（不經 60 秒快取）加上編輯中版本的內容；執行期間有人修改、發布或捨棄草稿都不影響這次評測。
 - 沒有被取消的 API；執行中的評測要等它結束，或超過 `run-timeout`（30 分鐘）。
+
+<a id="api-eval-list"></a>
 
 ### 3.13 `GET /api/ai-assistant/admin/configs/{configKey}/evaluations`
 
@@ -806,6 +918,8 @@ Response 202：
 - 比率（正確率等）不在回應中，前端由原始計數計算。
 - **400** `AI_INPUT_INVALID`：`configKey` 格式錯誤
 
+<a id="api-eval-current"></a>
+
 ### 3.14 `GET /api/ai-assistant/admin/evaluations/current`
 
 目前執行中的評測（任何 key）。
@@ -813,6 +927,8 @@ Response 202：
 - **權限**：`AI_CONFIG_READ`
 - **200**：`{ "runId": "…", "configKey": "instruction.contact-prep", "triggeredBy": "EEE22222", "startedAt": "2026-10-24T15:02:11+08:00", "totalCases": 34, "completedCases": 7 }`
 - **204**：沒有執行中的評測。呼叫時會先處理陳舊紀錄：`RUNNING` 且 `heartbeatAt` 超過 10 分鐘者標為 `FAILED`（`AI_EVAL_INTERRUPTED`）。
+
+<a id="api-eval-get"></a>
 
 ### 3.15 `GET /api/ai-assistant/admin/evaluations/{runId}`
 
@@ -897,6 +1013,8 @@ Response 200：3.13 的欄位，加上 `configKey` 與 `cases`：
 - 路由欄位：`expectCategory` 是題目的 `expect.category`（未設定為 `null`）；`routeOk` 為 `true`／`false`，題目沒有預期分類時為 `null`；`routeSource` 為 `ROUTER` 或 `FALLBACK`（評測沒有快捷按鈕；路由前就失敗時為 `null`）；`instructionKey` 是實際載入的分類，`none` 與 `FALLBACK` 為 `null`。`summary` 的 `routeOk` 是通過題數、`routeCases` 是有預期分類的題數（舊紀錄沒有這兩個欄位）。
 - 評審 system message 與路由 system message 只存在程式碼，任何 API 都不回傳。
 
+<a id="api-eval-cases"></a>
+
 ### 3.16 `GET /api/ai-assistant/admin/evaluation-cases`
 
 瀏覽評測資料集（唯讀）。
@@ -941,6 +1059,8 @@ Response 200：3.13 的欄位，加上 `configKey` 與 `cases`：
 - `expect.category` 是預期的問題分類（`configKey` 或 `none`），題目不檢查分類時為 `null`。
 
 ---
+
+<a id="api-mock"></a>
 
 ## 4. 平台替身 API（POC 專用，整合時刪除）
 
