@@ -125,7 +125,7 @@ function onCompare() {
       </li>
     </ol>
     <p v-if="showFeedbackNote" class="pm-versions__note">
-      {{ configType === 'SYSTEM_INSTRUCTION' ? '回饋統計涵蓋 180 天內、且確定使用此分類的回答' : '回饋統計涵蓋 180 天內的回答' }}
+      {{ configType === 'SYSTEM_INSTRUCTION' ? '回饋統計涵蓋 5 年內、且確定使用此分類的回答' : '回饋統計涵蓋 5 年內的回答' }}
     </p>
     <div class="pm-versions__foot">
       <label v-if="discardedCount" class="pm-versions__toggle">

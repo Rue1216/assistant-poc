@@ -4,12 +4,17 @@ import com.example.copilot.aiassistant.domain.exception.AssistantException;
 import com.example.copilot.aiassistant.domain.exception.ErrorCode;
 import com.example.copilot.aiassistant.domain.feedback.FeedbackRating;
 import com.example.copilot.aiassistant.domain.repository.AuditRepository;
+import com.example.copilot.aiassistant.application.support.RequestContext;
 import java.time.Clock;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /** Thumbs ratings stored on the audit document (spec 3.2). Statistics live in {@link FeedbackQueryService}. */
 @Service
 public class FeedbackService {
+
+    private static final Logger log = LoggerFactory.getLogger(FeedbackService.class);
 
     private final AuditRepository audits;
     private final Clock clock;
@@ -27,5 +32,7 @@ public class FeedbackService {
         if (!audits.setFeedback(requestId, userId, rating, clock.instant())) {
             throw new AssistantException(ErrorCode.AI_FEEDBACK_NOT_FOUND);
         }
+        log.info("feedback set requestId={} answerRequestId={} userId={} rating={}",
+                RequestContext.currentRequestId(), requestId, userId, rating == null ? "NONE" : rating);
     }
 }

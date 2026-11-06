@@ -1,6 +1,6 @@
 # 02 REST API 規格
 
-> 版本：v1.5（POC）・2026-11-03（3 節補共通錯誤 400／401／403／500；3.3、3.5 補 404；3.5、3.6 補範例；3.6、3.7 補 400；v1.4 2026-11-03：文件開頭新增「API 一覽」表格，各端點章節加上固定錨點，可點擊跳轉；規格內容不變；v1.3 2026-11-03：Prompt 管理 API review 修正：3 節權限前提與內容上限單位、3.1 `published` 補 `status` 與 `scheduledAt`、3.2 System Prompt key 規則、3.3／3.5 `basedOnVersion`、3.6／3.8 儲存與檢查名稱及修改說明、3.9 立即發布清空 `scheduledAt`、3.10 回 201，見 [Prompt 管理 review 修正設計](../superpowers/specs/2026-11-02-prompt-admin-review-fixes-design.md)；v1.2 2026-10-30 評測集 34 題、`toolCalls` 不顯示的理由；v1.1 2026-10-29 為個人 360 內容重寫：員工帳號與業務角色碼、`scope`、`{certNo}` 路徑、三支 mock 端點，見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
+> 版本：v1.6（POC）・2026-11-06（3.11 回饋統計的範圍隨稽核保存期限改為 5 年；v1.5 2026-11-03：3 節補共通錯誤 400／401／403／500；3.3、3.5 補 404；3.5、3.6 補範例；3.6、3.7 補 400；v1.4 2026-11-03：文件開頭新增「API 一覽」表格，各端點章節加上固定錨點，可點擊跳轉；規格內容不變；v1.3 2026-11-03：Prompt 管理 API review 修正：3 節權限前提與內容上限單位、3.1 `published` 補 `status` 與 `scheduledAt`、3.2 System Prompt key 規則、3.3／3.5 `basedOnVersion`、3.6／3.8 儲存與檢查名稱及修改說明、3.9 立即發布清空 `scheduledAt`、3.10 回 201，見 [Prompt 管理 review 修正設計](../superpowers/specs/2026-11-02-prompt-admin-review-fixes-design.md)；v1.2 2026-10-30 評測集 34 題、`toolCalls` 不顯示的理由；v1.1 2026-10-29 為個人 360 內容重寫：員工帳號與業務角色碼、`scope`、`{certNo}` 路徑、三支 mock 端點，見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
 
 ## API 一覽
 
@@ -808,8 +808,8 @@ Response 201（格式同 3.4）：以已發布的 v2 為底建立的草稿
 ```
 
 - 依 `version` 由新到舊排列；沒有回饋的版本不出現。`version` 只供前端對應到各版本列，畫面仍以時間辨識版本。
-- 聚合範圍是稽核紀錄中 `feedback` 有值、且 `promptVersions` 含該 `configKey` 的回答，所以只涵蓋稽核保存期限（180 天）內的回答，畫面以小字註明。
-- **計入規則依設定類型**：`system.main`（`SYSTEM_PROMPT`）計入所有有回饋的回答；問題分類（`SYSTEM_INSTRUCTION`）只計入 `routeSource` 為 `ROUTER` 或 `CHIP` 的回答，`FALLBACK`（載入全部分類）與沒有 `routeSource` 的舊紀錄不計入。版本歷程的小字：問題分類為「回饋統計涵蓋 180 天內、且確定使用此分類的回答」，`system.main` 為「回饋統計涵蓋 180 天內的回答」。
+- 聚合範圍是稽核紀錄中 `feedback` 有值、且 `promptVersions` 含該 `configKey` 的回答，所以只涵蓋稽核保存期限（5 年）內的回答，畫面以小字註明。
+- **計入規則依設定類型**：`system.main`（`SYSTEM_PROMPT`）計入所有有回饋的回答；問題分類（`SYSTEM_INSTRUCTION`）只計入 `routeSource` 為 `ROUTER` 或 `CHIP` 的回答，`FALLBACK`（載入全部分類）與沒有 `routeSource` 的舊紀錄不計入。版本歷程的小字：問題分類為「回饋統計涵蓋 5 年內、且確定使用此分類的回答」，`system.main` 為「回饋統計涵蓋 5 年內的回答」。
 - **400** `AI_INPUT_INVALID`：`configKey` 格式錯誤
 - **404** `AI_CONFIG_NOT_FOUND`：`configKey` 不存在
 

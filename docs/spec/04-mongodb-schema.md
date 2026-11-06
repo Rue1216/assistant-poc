@@ -1,13 +1,13 @@
 # 04 MongoDB Schema
 
-> 版本：v1.3（POC）・2026-11-03（Prompt 管理 review 修正：2.1 `basedOnVersion`、`scheduledAt`、`content` 單位；2.3 validator 加入類型與 key 一致性規則；2.4 建立草稿記錄來源、立即發布清空預約時間、排程到期先驗證；2.5 名稱與修改說明每次儲存都檢查；2.7 多機首次啟動的限制，見 [Prompt 管理 review 修正設計](../superpowers/specs/2026-11-02-prompt-admin-review-fixes-design.md)；v1.2 2026-10-30：2.5 顧客編號禁止規則改為 `certNo` 格式、補未納入的越權指令樣式；v1.1 2026-10-29 為 audit 移除顧客編號欄位與索引 `IX_ICRM_AI_AUDIT_3`；seed 改為 7 個問題分類；範例帳號改為員工帳號；見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md)）
+> 版本：v1.4（POC）・2026-11-06（稽核紀錄保存期限改為 5 年，對齊平台稽核日誌，待法遵確認；TTL index 改名為 `IX_ICRM_AI_AUDIT_TTL`、`IX_ICRM_AI_EVAL_TTL`；v1.3 2026-11-03：Prompt 管理 review 修正：2.1 `basedOnVersion`、`scheduledAt`、`content` 單位；2.3 validator 加入類型與 key 一致性規則；2.4 建立草稿記錄來源、立即發布清空預約時間、排程到期先驗證；2.5 名稱與修改說明每次儲存都檢查；2.7 多機首次啟動的限制，見 [Prompt 管理 review 修正設計](../superpowers/specs/2026-11-02-prompt-admin-review-fixes-design.md)；v1.2 2026-10-30：2.5 顧客編號禁止規則改為 `certNo` 格式、補未納入的越權指令樣式；v1.1 2026-10-29 為 audit 移除顧客編號欄位與索引 `IX_ICRM_AI_AUDIT_3`；seed 改為 7 個問題分類；範例帳號改為員工帳號；見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md)）
 
 ## 1. Collection 總覽
 
 | Collection | 用途 | 資料量預估 | Sharding |
 |---|---|---|---|
 | `COLL_ICRM_AI_ASSISTANT_CONFIG` | System Prompt 與 System Instructions 的所有版本 | 數十到數百筆 | 不需要 |
-| `COLL_ICRM_AI_ASSISTANT_AUDIT` | 稽核紀錄（提問、回答、工具呼叫） | 每次提問 1 筆，保留 180 天 | POC 不 shard；全行開放後很可能需要（見第 5 節，待確認） |
+| `COLL_ICRM_AI_ASSISTANT_AUDIT` | 稽核紀錄（提問、回答、工具呼叫） | 每次提問 1 筆，保留 5 年（1,825 天） | POC 不 shard；全行開放後很可能需要（見第 5 節，待確認） |
 | `COLL_ICRM_AI_ASSISTANT_EVAL_RUN` | Prompt 評測紀錄（每次評測 1 筆，題目結果嵌入） | 每次評測 1 筆（約數百 KB），保留 180 天 | 不需要（見第 5.4 節） |
 
 > collection 前綴採 SP 計畫指定的 `COLL_ICRM_`；index 名稱比照使用 `UK_ICRM_`、`IX_ICRM_`。
@@ -364,7 +364,7 @@ stateDiagram-v2
 
 | 名稱 | 欄位 | 選項 | 用途 |
 |---|---|---|---|
-| `IX_ICRM_AI_AUDIT_1` | `{ createdAt: 1 }` | TTL：`expireAfterSeconds: 15552000`（180 天） | 自動刪除過期紀錄 |
+| `IX_ICRM_AI_AUDIT_TTL` | `{ createdAt: 1 }` | TTL：`expireAfterSeconds: 157680000`（1,825 天，對齊平台 `COLL_COMMON_AUDIT_LOG` 的 5 年） | 自動刪除過期紀錄。既有資料庫的舊 index `IX_ICRM_AI_AUDIT_1` 由啟動初始化刪除後重建；期限由 `createdAt` 計算，既有紀錄也適用新期限 |
 | `IX_ICRM_AI_AUDIT_2` | `{ userId: 1, createdAt: -1 }` | | 依使用者查詢 |
 | `IX_ICRM_AI_AUDIT_4` | `{ requestId: 1 }` | | 回饋更新（以 `requestId` 找紀錄） |
 | `IX_ICRM_AI_AUDIT_5` | `{ "promptVersions.configKey": 1, "promptVersions.version": 1 }` | partial：`{ feedback: { $type: "string" } }` | 回饋統計；只收有回饋的紀錄，索引很小 |
@@ -464,9 +464,9 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_AUDIT", {
 
 | 保存期限 | 筆數 | 資料量（含 index 約） | 是否需要 shard |
 |---|---|---|---|
-| 180 天（目前 TTL） | 約 3,600 萬 | 約 80 GB | 不一定，單一 replica set 可處理 |
+| 180 天 | 約 3,600 萬 | 約 80 GB | 不一定，單一 replica set 可處理 |
 | 1 年 | 約 7,300 萬 | 約 160 GB | 不一定 |
-| 5～7 年（如法規要求） | 3.6～5 億 | 0.8～1 TB | 建議 shard |
+| 5～7 年（目前 TTL 為 5 年） | 3.6～5 億 | 0.8～1 TB | 建議 shard |
 
 - 寫入量平均每秒約 7 筆、尖峰數十筆，壓力在累積的資料量，不在寫入速度。
 - 引用相關欄位（`citationId`、`target`、`resultHash` 等）讓每筆約增加 0.3～0.5 KB，不影響上面的估算。
@@ -609,7 +609,7 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_AUDIT", {
 |---|---|---|---|
 | `UK_ICRM_AI_EVAL_1` | `{ status: 1 }` | unique，partial：`{ status: "RUNNING" }` | 同時只有一個執行中的評測（多個後端實例也成立）；插入時撞到唯一索引即回 `AI_EVAL_RUNNING` |
 | `IX_ICRM_AI_EVAL_1` | `{ configKey: 1, startedAt: -1 }` | | 各 key 最近的評測歷程 |
-| `IX_ICRM_AI_EVAL_2` | `{ startedAt: 1 }` | TTL：`expireAfterSeconds: 15552000`（180 天） | 自動刪除，與稽核一致 |
+| `IX_ICRM_AI_EVAL_TTL` | `{ startedAt: 1 }` | TTL：`expireAfterSeconds: 15552000`（180 天） | 自動刪除。既有資料庫的舊 index `IX_ICRM_AI_EVAL_2` 由啟動初始化刪除後重建 |
 
 ### 6.3 JSON Schema Validation
 

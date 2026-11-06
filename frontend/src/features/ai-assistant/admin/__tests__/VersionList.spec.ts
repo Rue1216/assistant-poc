@@ -204,7 +204,7 @@ describe('VersionList', () => {
       const labels = w.findAll('.pm-ver__feedback').map((f) => f.attributes('aria-label'))
       expect(labels).toEqual(['讚 12、倒讚 3（80%）', '讚 1、倒讚 1（50%）'])
       expect(w.findAll('.pm-ver__feedback svg')).toHaveLength(4)
-      expect(w.text()).toContain('回饋統計涵蓋 180 天內的回答')
+      expect(w.text()).toContain('回饋統計涵蓋 5 年內的回答')
     })
 
     it('shows nothing without statistics, footnote included', () => {
@@ -221,11 +221,11 @@ describe('VersionList', () => {
 
   it('words the footnote for instruction categories as confirmed-use answers only', () => {
     const w = mountList({ feedback: { 9136: { version: 9136, up: 3, down: 1 } }, configType: 'SYSTEM_INSTRUCTION' })
-    expect(w.find('.pm-versions__note').text()).toBe('回饋統計涵蓋 180 天內、且確定使用此分類的回答')
+    expect(w.find('.pm-versions__note').text()).toBe('回饋統計涵蓋 5 年內、且確定使用此分類的回答')
   })
 
   it('keeps the plain footnote for the system prompt', () => {
     const w = mountList({ feedback: { 9136: { version: 9136, up: 3, down: 1 } } })
-    expect(w.find('.pm-versions__note').text()).toBe('回饋統計涵蓋 180 天內的回答')
+    expect(w.find('.pm-versions__note').text()).toBe('回饋統計涵蓋 5 年內的回答')
   })
 })

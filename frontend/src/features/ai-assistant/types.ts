@@ -123,7 +123,7 @@ export interface ConfigSummary {
   workingCopy: ConfigVersionInfo | null
 }
 
-/** Answer feedback counts of one prompt version (180-day window). */
+/** Answer feedback counts of one prompt version (5-year window). */
 export interface VersionFeedback {
   version: number
   up: number

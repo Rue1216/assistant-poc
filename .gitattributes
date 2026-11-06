@@ -1,0 +1,2 @@
+# Seed prompts are runtime content: their bytes must not depend on the machine that checks them out or builds the jar.
+backend/src/main/resources/seed/* text eol=lf

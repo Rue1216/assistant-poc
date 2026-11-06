@@ -20,7 +20,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.index.Index;
 import org.springframework.data.mongodb.core.index.IndexInfo;
 
 class MongoSchemaTest extends IntegrationTestBase {
@@ -31,6 +33,7 @@ class MongoSchemaTest extends IntegrationTestBase {
     @Autowired MongoTemplate mongo;
     @Autowired AssistantConfigMongoRepository repository;
     @Autowired SeedLoader seedLoader;
+    @Autowired MongoSchemaInitializer initializer;
 
     @BeforeEach
     void clean() {
@@ -350,7 +353,7 @@ class MongoSchemaTest extends IntegrationTestBase {
                 .findFirst().orElseThrow();
         assertThat(history.getIndexFields().stream().map(f -> f.getKey()).toList())
                 .containsExactly("configKey", "startedAt");
-        IndexInfo ttl = indexes.stream().filter(i -> i.getName().equals("IX_ICRM_AI_EVAL_2"))
+        IndexInfo ttl = indexes.stream().filter(i -> i.getName().equals("IX_ICRM_AI_EVAL_TTL"))
                 .findFirst().orElseThrow();
         assertThat(ttl.getExpireAfter().orElseThrow().toSeconds()).isEqualTo(15_552_000L);
     }
@@ -362,9 +365,40 @@ class MongoSchemaTest extends IntegrationTestBase {
                 .map(IndexInfo::getName).collect(Collectors.toSet());
         assertThat(config).contains("UK_ICRM_AI_CFG_1", "UK_ICRM_AI_CFG_2", "UK_ICRM_AI_CFG_3",
                 "IX_ICRM_AI_CFG_4", "IX_ICRM_AI_CFG_5");
-        assertThat(audit).contains("IX_ICRM_AI_AUDIT_1", "IX_ICRM_AI_AUDIT_2");
+        assertThat(audit).contains("IX_ICRM_AI_AUDIT_TTL", "IX_ICRM_AI_AUDIT_2");
         IndexInfo ttl = mongo.indexOps(AUDIT).getIndexInfo().stream()
-                .filter(i -> i.getName().equals("IX_ICRM_AI_AUDIT_1")).findFirst().orElseThrow();
-        assertThat(ttl.getExpireAfter().orElseThrow().toSeconds()).isEqualTo(15_552_000L);
+                .filter(i -> i.getName().equals("IX_ICRM_AI_AUDIT_TTL")).findFirst().orElseThrow();
+        assertThat(ttl.getExpireAfter().orElseThrow().toSeconds()).isEqualTo(157_680_000L);
+    }
+
+    @Test
+    void startupReplacesLegacyTtlIndexes() {
+        replaceWithLegacy(AUDIT, "IX_ICRM_AI_AUDIT_TTL", "IX_ICRM_AI_AUDIT_1", "createdAt");
+        replaceWithLegacy(EVAL_RUN, "IX_ICRM_AI_EVAL_TTL", "IX_ICRM_AI_EVAL_2", "startedAt");
+
+        initializer.run(new DefaultApplicationArguments());
+        initializer.run(new DefaultApplicationArguments());
+
+        assertThat(ttlSeconds(AUDIT, "IX_ICRM_AI_AUDIT_TTL")).isEqualTo(157_680_000L);
+        assertThat(ttlSeconds(EVAL_RUN, "IX_ICRM_AI_EVAL_TTL")).isEqualTo(15_552_000L);
+        assertThat(indexNames(AUDIT)).doesNotContain("IX_ICRM_AI_AUDIT_1");
+        assertThat(indexNames(EVAL_RUN)).doesNotContain("IX_ICRM_AI_EVAL_2");
+    }
+
+    /** Puts a collection in the state a database created before the rename is in: old name, 180-day TTL. */
+    private void replaceWithLegacy(String collection, String current, String legacy, String field) {
+        mongo.indexOps(collection).dropIndex(current);
+        mongo.indexOps(collection).createIndex(new Index().named(legacy).on(field, Sort.Direction.ASC)
+                .expire(15_552_000L));
+    }
+
+    private Set<String> indexNames(String collection) {
+        return mongo.indexOps(collection).getIndexInfo().stream().map(IndexInfo::getName)
+                .collect(Collectors.toSet());
+    }
+
+    private long ttlSeconds(String collection, String name) {
+        return mongo.indexOps(collection).getIndexInfo().stream().filter(i -> i.getName().equals(name))
+                .findFirst().orElseThrow().getExpireAfter().orElseThrow().toSeconds();
     }
 }

@@ -77,7 +77,7 @@ class AdminConfigControllerTest extends IntegrationTestBase {
     }
 
     private static String quote(String s) {
-        return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\"";
+        return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\r", "\\r").replace("\n", "\\n") + "\"";
     }
 
     private String save(String draftJson, String newContent, String saveMode) throws Exception {

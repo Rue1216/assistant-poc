@@ -77,9 +77,9 @@ LangChain4j 和它帶進來的間接依賴，放在 POC 的 `backend/lib-repo/`�
 | 項目 | 說明 |
 |---|---|
 | 建立 collection | `COLL_ICRM_AI_ASSISTANT_CONFIG`、`COLL_ICRM_AI_ASSISTANT_AUDIT`、`COLL_ICRM_AI_ASSISTANT_EVAL_RUN`，含 JSON Schema Validation 與 13 個 index（CONFIG 5 個、AUDIT 5 個、EVAL_RUN 3 個，見 [04-mongodb-schema.md](spec/04-mongodb-schema.md)）。validator 檔在 `backend/src/main/resources/mongo/`。POC 由啟動程式建立，平台要改用 migration 或由 DBA 建立 |
-| 新增的 index | 稽核 collection 新增 `IX_ICRM_AI_AUDIT_4`（`requestId`，回饋更新）與 `IX_ICRM_AI_AUDIT_5`（`promptVersions.configKey`、`promptVersions.version`，partial：`feedback` 為字串，回饋統計）。評測紀錄 collection 有 `UK_ICRM_AI_EVAL_1`（`status`，unique，partial：`status = "RUNNING"`，保證同時只有一個評測）、`IX_ICRM_AI_EVAL_1`（`configKey`、`startedAt` 遞減）、`IX_ICRM_AI_EVAL_2`（`startedAt`，TTL 180 天） |
+| 新增的 index | 稽核 collection 新增 `IX_ICRM_AI_AUDIT_4`（`requestId`，回饋更新）與 `IX_ICRM_AI_AUDIT_5`（`promptVersions.configKey`、`promptVersions.version`，partial：`feedback` 為字串，回饋統計）。評測紀錄 collection 有 `UK_ICRM_AI_EVAL_1`（`status`，unique，partial：`status = "RUNNING"`，保證同時只有一個評測）、`IX_ICRM_AI_EVAL_1`（`configKey`、`startedAt` 遞減）、`IX_ICRM_AI_EVAL_TTL`（`startedAt`，TTL 180 天） |
 | 初始資料 | System Prompt 與問題分類的初始版本（見 04-mongodb-schema.md 2.7、07-prompt-examples.md） |
-| TTL | 稽核紀錄與評測紀錄 180 天自動刪除，保存期限待法遵確認（M4） |
+| TTL | 稽核紀錄 5 年（1,825 天，`IX_ICRM_AI_AUDIT_TTL`，對齊平台 `COLL_COMMON_AUDIT_LOG`）、評測紀錄 180 天（`IX_ICRM_AI_EVAL_TTL`）自動刪除；稽核保存期限待法遵確認（M4）。已有舊 index `IX_ICRM_AI_AUDIT_1`、`IX_ICRM_AI_EVAL_2` 的環境，應於維護時段先刪除舊 index，再建立新名稱（db-instructions §11）；同 key 的新名稱不能和舊 index 並存 |
 | Transaction | 設定 collection 的存檔與發布使用 transaction，需透過 replica set 或 mongos 連線 |
 | Sharding | 設定 collection 不 shard；稽核紀錄全行開放後很可能需要 shard，待確認（S18、M36，見 04-mongodb-schema.md 第 5 節） |
 | 帳號權限 | 如果 collection 與 index 改由 migration 建立，應用程式帳號只需要這三個 collection 的 readWrite |

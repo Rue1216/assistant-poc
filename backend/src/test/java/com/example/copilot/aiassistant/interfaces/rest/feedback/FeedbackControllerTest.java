@@ -9,10 +9,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.example.copilot.IntegrationTestBase;
 import com.example.copilot.TestUsers;
+import com.example.copilot.aiassistant.application.feedback.FeedbackService;
 import com.example.copilot.aiassistant.domain.audit.AuditRecord;
+import com.example.copilot.aiassistant.interfaces.rest.RequestIdFilter;
+import com.example.copilot.testsupport.LogCapture;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import org.apache.logging.log4j.Level;
 import org.bson.Document;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -83,6 +87,30 @@ class FeedbackControllerTest extends IntegrationTestBase {
         assertThat(find("a1b2c3d5").get(0).getString("feedback")).isEqualTo("DOWN");
         rate("a1b2c3d5", TestUsers.as("ICRM00028"), "{\"rating\":null}").andExpect(status().isNoContent());
         assertThat(find("a1b2c3d5").get(0).getString("feedback")).isNull();
+    }
+
+    @Test
+    void eachChangeIsLoggedWithTheAnsweredRequestId() throws Exception {
+        insert(audit("a1b2c3e1", "ICRM00028", "ANSWERED", new Date()));
+        try (LogCapture capture = LogCapture.of(FeedbackService.class, Level.INFO)) {
+            String httpRequestId = rate("a1b2c3e1", TestUsers.as("ICRM00028"), "{\"rating\":\"UP\"}")
+                    .andReturn().getResponse().getHeader(RequestIdFilter.HEADER);
+            rate("a1b2c3e1", TestUsers.as("ICRM00028"), "{\"rating\":null}");
+
+            assertThat(capture.events()).hasSize(2).allMatch(e -> e.getLevel() == Level.INFO);
+            assertThat(LogCapture.render(capture.events().get(0))).isEqualTo("feedback set requestId=" + httpRequestId
+                    + " answerRequestId=a1b2c3e1 userId=ICRM00028 rating=UP");
+            assertThat(LogCapture.render(capture.events().get(1)))
+                    .endsWith(" answerRequestId=a1b2c3e1 userId=ICRM00028 rating=NONE");
+        }
+    }
+
+    @Test
+    void rejectedRatingIsNotLoggedAsAChange() throws Exception {
+        try (LogCapture capture = LogCapture.of(FeedbackService.class, Level.INFO)) {
+            rate("a1b2c3e2", TestUsers.as("ICRM00028"), "{\"rating\":\"UP\"}").andExpect(status().isNotFound());
+            assertThat(capture.events()).isEmpty();
+        }
     }
 
     @Test

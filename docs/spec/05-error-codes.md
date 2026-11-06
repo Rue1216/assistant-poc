@@ -1,6 +1,6 @@
 # 05 錯誤碼清單
 
-> 版本：v1.0.3（POC）・2026-11-03（第 3 節 `MARKET_DATA_TIMEOUT` 與 `TOOL_TIMEOUT` 的分工；v1.0.2 2026-11-03：第 1 節補 `details` 格式表；2.3 `AI_CONFIG_NOT_FOUND`、`AI_CONFIG_INVALID_STATE`、`AI_CONFIG_VALIDATION_FAILED` 的情境調整，見 [Prompt 管理 review 修正設計](../superpowers/specs/2026-11-02-prompt-admin-review-fixes-design.md)；v1.0.1 2026-10-30：第 1 節補對話視窗不顯示工具呼叫的連結；內容同 v1.0 2026-10-26）
+> 版本：v1.0.4（POC）・2026-11-06（第 5 節新增回饋變更的 log；v1.0.3 2026-11-03：第 3 節 `MARKET_DATA_TIMEOUT` 與 `TOOL_TIMEOUT` 的分工；v1.0.2 2026-11-03：第 1 節補 `details` 格式表；2.3 `AI_CONFIG_NOT_FOUND`、`AI_CONFIG_INVALID_STATE`、`AI_CONFIG_VALIDATION_FAILED` 的情境調整，見 [Prompt 管理 review 修正設計](../superpowers/specs/2026-11-02-prompt-admin-review-fixes-design.md)；v1.0.1 2026-10-30：第 1 節補對話視窗不顯示工具呼叫的連結；內容同 v1.0 2026-10-26）
 
 ## 1. 原則
 
@@ -157,7 +157,9 @@
 | WARN | 工具失敗、限流、驗證失敗（只記錯誤碼） |
 | ERROR | GPT 或 TWSE 錯誤類型、未預期例外（stack trace 只在後端 log，敏感字串遮罩） |
 
-**評測與回饋的 log** 同樣只有計數與代碼（INFO 的 `eval run started／finished`、`eval case done`；WARN／ERROR 的 `eval run stopped／rejected／failed`、`eval judge failed`、`eval turn failed`，格式見 [prompt-evaluation-design](../superpowers/specs/2026-10-24-prompt-evaluation-design.md) 4.2）。評測作答時 MDC 的 `requestId` 為 `e` + runId 後 7 碼。評測不寫「chat answered／failed」兩行。稽核寫入的 `promptVersions` 超過 100 筆時截斷並記 WARN（只含 requestId 與筆數）。
+**回饋的 log**：每次變更成功記一行 INFO：`feedback set requestId={這次 HTTP 請求} answerRequestId={被評分的回答} userId={使用者} rating={UP|DOWN|NONE}`（`NONE` 為取消），不含提問與回答。`answerRequestId` 可對回該回答的 `chat answered` 那行。回饋失敗只有 WARN 的錯誤碼，不算變更。
+
+**評測的 log** 同樣只有計數與代碼（INFO 的 `eval run started／finished`、`eval case done`；WARN／ERROR 的 `eval run stopped／rejected／failed`、`eval judge failed`、`eval turn failed`，格式見 [prompt-evaluation-design](../superpowers/specs/2026-10-24-prompt-evaluation-design.md) 4.2）。評測作答時 MDC 的 `requestId` 為 `e` + runId 後 7 碼。評測不寫「chat answered／failed」兩行。稽核寫入的 `promptVersions` 超過 100 筆時截斷並記 WARN（只含 requestId 與筆數）。
 
 **任何等級都不記錄**：使用者提問全文、模型回答全文、模型回傳的原始 JSON、工具參數、工具結果、評測題目與評審評語、API key。
 

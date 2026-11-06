@@ -39,6 +39,13 @@ class SeedLoaderTest extends IntegrationTestBase {
         seedLoader.run(new DefaultApplicationArguments());
     }
 
+    /** The prompt sent to the model must not depend on the line endings of the machine that built the jar. */
+    @Test
+    void seededContentHasNoCarriageReturns() {
+        assertThat(repository.findPublished()).isNotEmpty()
+                .allSatisfy(c -> assertThat(c.content()).as(c.configKey()).doesNotContain("\r"));
+    }
+
     @Test
     void seedsEightPublishedConfigs() {
         List<AssistantConfig> published = repository.findPublished();

@@ -22,7 +22,10 @@ public class MongoSchemaInitializer implements ApplicationRunner {
     static final String CONFIG = "COLL_ICRM_AI_ASSISTANT_CONFIG";
     static final String AUDIT = "COLL_ICRM_AI_ASSISTANT_AUDIT";
     static final String EVAL_RUN = "COLL_ICRM_AI_ASSISTANT_EVAL_RUN";
-    private static final long AUDIT_TTL_SECONDS = 15_552_000L;
+    /** 1,825 days, aligned with the platform audit log. */
+    private static final long AUDIT_TTL_SECONDS = 157_680_000L;
+    /** 180 days. */
+    private static final long EVAL_RUN_TTL_SECONDS = 15_552_000L;
 
     private final MongoTemplate mongo;
 
@@ -71,13 +74,15 @@ public class MongoSchemaInitializer implements ApplicationRunner {
                 .partial(PartialIndexFilter.of(Criteria.where("status").is("RUNNING"))));
         ops.createIndex(new Index().named("IX_ICRM_AI_EVAL_1").on("configKey", Sort.Direction.ASC)
                 .on("startedAt", Sort.Direction.DESC));
-        ops.createIndex(new Index().named("IX_ICRM_AI_EVAL_2").on("startedAt", Sort.Direction.ASC)
-                .expire(AUDIT_TTL_SECONDS));
+        dropLegacyIndex(ops, "IX_ICRM_AI_EVAL_2");
+        ops.createIndex(new Index().named("IX_ICRM_AI_EVAL_TTL").on("startedAt", Sort.Direction.ASC)
+                .expire(EVAL_RUN_TTL_SECONDS));
     }
 
     private void createAuditIndexes() {
         IndexOperations ops = mongo.indexOps(AUDIT);
-        ops.createIndex(new Index().named("IX_ICRM_AI_AUDIT_1").on("createdAt", Sort.Direction.ASC)
+        dropLegacyIndex(ops, "IX_ICRM_AI_AUDIT_1");
+        ops.createIndex(new Index().named("IX_ICRM_AI_AUDIT_TTL").on("createdAt", Sort.Direction.ASC)
                 .expire(AUDIT_TTL_SECONDS));
         ops.createIndex(new Index().named("IX_ICRM_AI_AUDIT_2").on("userId", Sort.Direction.ASC)
                 .on("createdAt", Sort.Direction.DESC));
@@ -85,5 +90,12 @@ public class MongoSchemaInitializer implements ApplicationRunner {
         ops.createIndex(new Index().named("IX_ICRM_AI_AUDIT_5").on("promptVersions.configKey", Sort.Direction.ASC)
                 .on("promptVersions.version", Sort.Direction.ASC)
                 .partial(PartialIndexFilter.of(Criteria.where("feedback").type(JsonSchemaObject.Type.STRING))));
+    }
+
+    /** A renamed index must go first: the same key under a new name is rejected while the old one exists. */
+    private void dropLegacyIndex(IndexOperations ops, String name) {
+        if (ops.getIndexInfo().stream().anyMatch(index -> index.getName().equals(name))) {
+            ops.dropIndex(name);
+        }
     }
 }
