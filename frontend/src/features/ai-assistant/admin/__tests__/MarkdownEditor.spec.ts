@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import SafeMarkdown from '../../markdown/SafeMarkdown'
 import MarkdownEditor from '../MarkdownEditor.vue'
+import ToolPicker from '../ToolPicker.vue'
 import type { ConfigType } from '../../types'
 
 function mountEditor(modelValue: string, configType: ConfigType = 'SYSTEM_INSTRUCTION') {
@@ -109,6 +111,64 @@ describe('MarkdownEditor', () => {
     await tab(never as never, '預覽').trigger('click')
     expect(never.find('mark').exists()).toBe(false)
     expect(never.find('.pm-preview-foot').exists()).toBe(false)
+  })
+
+  describe('tool insertion', () => {
+    const toolButton = (w: ReturnType<typeof mount>) => w.findComponent(ToolPicker)
+
+    it('inserts the marker at the cursor and moves the cursor after it', async () => {
+      const wrapper = mount(MarkdownEditor, {
+        props: {
+          modelValue: 'abcd',
+          configType: 'SYSTEM_INSTRUCTION' as const,
+          'onUpdate:modelValue': (v: string) => wrapper.setProps({ modelValue: v }),
+        },
+        attachTo: document.body,
+      })
+      const ta = wrapper.find('textarea').element as HTMLTextAreaElement
+      ta.setSelectionRange(2, 2)
+      toolButton(wrapper).vm.$emit('insert', '{{x}}')
+      await nextTick()
+      await nextTick()
+      expect(ta.value).toBe('ab{{x}}cd')
+      expect(wrapper.emitted('update:modelValue')!.at(-1)).toEqual(['ab{{x}}cd'])
+      expect(ta.selectionStart).toBe(7)
+      expect(ta.selectionEnd).toBe(7)
+      expect(document.activeElement).toBe(ta)
+      wrapper.unmount()
+    })
+
+    it('replaces the selected text', async () => {
+      const wrapper = mount(MarkdownEditor, {
+        props: {
+          modelValue: 'abcd',
+          configType: 'SYSTEM_INSTRUCTION' as const,
+          'onUpdate:modelValue': (v: string) => wrapper.setProps({ modelValue: v }),
+        },
+        attachTo: document.body,
+      })
+      const ta = wrapper.find('textarea').element as HTMLTextAreaElement
+      ta.setSelectionRange(1, 3)
+      toolButton(wrapper).vm.$emit('insert', '{{x}}')
+      await nextTick()
+      await nextTick()
+      expect(wrapper.emitted('update:modelValue')!.at(-1)).toEqual(['a{{x}}d'])
+      expect(ta.selectionStart).toBe(6)
+      wrapper.unmount()
+    })
+
+    it('shows the button only for an editable instruction on the edit tab', async () => {
+      const ok = mount(MarkdownEditor, { props: { modelValue: 'x', configType: 'SYSTEM_INSTRUCTION' } })
+      expect(ok.findComponent(ToolPicker).exists()).toBe(true)
+      await tab(ok as never, '預覽').trigger('click')
+      expect(ok.findComponent(ToolPicker).exists()).toBe(false)
+
+      const prompt = mount(MarkdownEditor, { props: { modelValue: 'x', configType: 'SYSTEM_PROMPT' } })
+      expect(prompt.findComponent(ToolPicker).exists()).toBe(false)
+
+      const ro = mount(MarkdownEditor, { props: { modelValue: 'x', configType: 'SYSTEM_INSTRUCTION', readonly: true } })
+      expect(ro.findComponent(ToolPicker).exists()).toBe(false)
+    })
   })
 
   it('makes the textarea read-only when editing is not allowed', () => {

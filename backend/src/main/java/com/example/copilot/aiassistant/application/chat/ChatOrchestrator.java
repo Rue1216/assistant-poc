@@ -496,8 +496,15 @@ public class ChatOrchestrator {
             messages.addAll(results);
         }
 
-        /** Model-written name and arguments are echoed back to the model, so they are redacted like any text. */
+        /**
+         * Model-written name and arguments are echoed back to the model, so they are redacted like any text. A
+         * registered name is a code constant with no customer data, and redacting it could corrupt it when a name
+         * form sits inside it (e.g. "om" in getCustomer), so only unknown names are redacted.
+         */
         private ToolExecutionRequest redactCall(ToolExecutionRequest request) {
+            if (registry.find(request.name()).isPresent()) {
+                return redactArguments(request);
+            }
             return ToolExecutionRequest.builder().id(request.id()).name(redact(request.name()))
                     .arguments(redact(request.arguments())).build();
         }

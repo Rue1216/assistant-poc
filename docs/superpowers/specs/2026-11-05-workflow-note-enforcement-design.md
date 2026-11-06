@@ -1,8 +1,9 @@
 # 工作流與註記強制設計
 
 - 日期：2026-11-05
-- 版本：v0.5
-- 狀態：待審閱
+- 版本：v0.6
+- 狀態：已實作
+- v0.6（2026-11-05）：對齊實作：程式提示不經 PiiRedactor；未註冊的工具標記不執行並標示未能完成；工作流步驟只對參數去識別化；`opportunity` 不宜行銷句改為純文字；記錄 2026-11-05 實測結果。
 - v0.5（2026-11-05）：選擇器改為可搜尋的單選下拉選單，選了就插入，不顯示提示。
 - v0.4（2026-11-05）：重複的工具標記由程式合併，只調用一次；拿掉「本分類必查」清單。
 - v0.3（2026-11-05）：選擇器插入的一律是必查標記，拿掉「程式必查」勾選。
@@ -96,12 +97,13 @@
 - 「調用過顧客 tool」指本題 `executed` 裡有實作 marker 介面 `CustomerDataTool` 的 tool（包含工作流步驟，失敗也算）。寫法比照現有的 `MarketTool`，`AbstractCustomerTool` 實作它。
 - 順序固定：不宜行銷、其他註記、讀不到註記、步驟失敗。
 - 這些 block 在 `limit` 之後加入，不會被截斷；不跑數字檢查（到期日不在 tool 資料裡）；沒有引用。
+- 程式提示不經 `PiiRedactor`：寬度折疊會把全形括號（）變成半形。提示只含固定文字、已驗證格式的日期與程式碼內定義的 tool `purpose`，不含使用者輸入或顧客資料。
 - 它們是回答的一部分，所以 `answer`、`annotatedAnswer`（稽核）、評測都看得到，前端不用改。
 - 已知限制：GPT 沒查 tool 就回答顧客問題時不會顯示。由評測補上檢查（第 4 節）。
 
 ### 2.4 Prompt 調整
 
-- `CustomerNotes` 的程式固定段落多一句：「程式會在回答最前面列出以上註記，回答中不要重複。」放在程式固定段落，才能對已發布的 `system.main` 立即生效。
+- `CustomerNotes` 的程式固定段落多一句：「本題查詢顧客資料時，程式會在回答最前面列出以上註記，回答中不要重複；未查詢顧客資料時，簡短說明註記類別。」同一句也加在查不到註記（fail-closed）的提示後，避免 GPT 重述程式已顯示的警示。放在程式固定段落，才能對已發布的 `system.main` 立即生效。
 - 種子 `system.main.md`「顧客註記」章節與各 instruction 的註記規則改寫：刪除「回答開頭說明」「在結論前先列注意事項」等由程式接手的要求，保留「改從關懷與服務的方向回答」這類只有 GPT 能做的要求。
 
 ## 3. 工作流引擎
@@ -133,7 +135,7 @@
 
 ### 3.2 發布前檢查
 
-`ConfigValidator` 新增規則，對照 `ToolRegistry`。它既用於發布，也用於草稿驗證、排程到期重驗與評測前驗證，所以都會擋下。
+規則放在 `domain/config/WorkflowValidator`，由 `ConfigValidator` 呼叫，對照 `ToolRegistry`。它既用於發布，也用於草稿驗證、排程到期重驗與評測前驗證，所以都會擋下。
 
 | 情況 | 訊息 |
 | --- | --- |
@@ -188,7 +190,8 @@ default String inputRequest() { return null; }
 | 失敗定義 | `ToolStatus` 不是 `SUCCESS` |
 | 不觸發的情況 | 路由回 `none`、路由失敗而載入全部分類（`InstructionSelection` 不是 `ONLY`） |
 | 快捷問題 | 視同路由選中，會執行 |
-| 已發布內容不合規則 | 正常情況不會發生（3.2 會擋），但 tool 可能在發布後被移除。不合規的標記走 `ToolGuard` 被拒絕，算該步驟失敗；超過 3 個時只執行前 3 個並記不含內容的 warn log，都不讓整題失敗 |
+| 已發布內容不合規則 | 正常情況不會發生（3.2 會擋），但 tool 可能在發布後被移除。tool 不在 `ToolRegistry` 的步驟（格式錯誤如 `{{查詢}}`，或發布後被移除）不執行，也不送給模型：`WorkflowRunner.prepare` 丟棄它，只記原因代碼的 warn log（不含標記內容），回答標示「未能完成「未知工具」，以下回答可能不完整。」。超過 3 個步驟時只執行前 3 個並記不含內容的 warn log。對沒有選項的 tool 寫了選項，執行時忽略選項。以上都不讓整題失敗 |
+| 去識別化 | 工作流步驟只對參數去識別化；tool 名稱是已註冊的常數，保持原樣（模型自行調用的 `runTools` 仍會處理名稱）。已知限制：參數以一整段 JSON 文字處理，短拉丁字母的顧客姓名（例如姓名形式 `an` 出現在 `management` 裡）可能破壞固定選項或 `sections` 這個 key，該步驟會失敗並標示未完成，本題繼續 |
 | 稽核 | 不新增欄位。`toolCalls` 依執行順序記錄，`promptVersions` 可對到當時的流程內容 |
 
 `PromptAssembler` 組 prompt 時把標記換成文字，讓 GPT 讀得懂、也知道資料是否已備妥：
@@ -227,10 +230,13 @@ default String inputRequest() { return null; }
 
 程式執行的步驟順序不會錯，所以這個檢查主要驗證**流程有沒有真的觸發**。路由選錯分類時，步驟不會執行，檢查就會失敗。
 
-資料集調整（`eval-cases.yml`，目前 34 題，上限 40）：
+資料集調整（`eval-cases.yml`，目前 35 題，上限 40）：
+
+- 新增 F5-notes-only（只問註記，不期望任何 tool）：`mustContain: [不宜行銷]`，檢查 GPT 沒查 tool 時仍會說明註記。
 
 - F1 補 `tools: [getCustomer]`；F2 補 `tools: [getRealTimeCustomer, getCustomer]`、`toolOrder: [getRealTimeCustomer, getCustomer]`。逐一確認其他註記題都有預期 tool，補上 2.3 的已知限制。
-- 種子只替 `instruction.contact-prep` 加流程，在 `## 注意事項` 寫入 `{{getRealTimeCustomer}}` 與 `{{getCustomer: management, behavior}}`，其他分類不動。
+- 種子只替 `instruction.contact-prep` 加流程，在 `## 注意事項` 寫入 `- 回答依據 {{getRealTimeCustomer}} 的提醒，與 {{getCustomer: management, behavior}} 的活動與通路資料。`，其他分類不動。
+- `instruction.opportunity` 的不宜行銷句改為純文字（不是標記）：「本顧客有不宜行銷註記時，不套用此套版：先查 getRealTimeCustomer 的關鍵提醒，再依提醒提供關懷與服務方向，不要只回答資料未提供。」實測發現扣住資料後，GPT 有時直接略過 `getRealTimeCustomer`，加這句後改善（結果見 [demo-checklist](../../demo-checklist.md) 2026-11-05）。
 - 參數步驟目前沒有種子分類使用，由自動化測試涵蓋。
 
 ## 5. 工具選擇器
@@ -280,6 +286,7 @@ default String inputRequest() { return null; }
 - 選單不顯示提示，也不檢查游標位置或步驟數量。標記放錯章節或超過上限，由發布前檢查擋下並說明（3.2）。
 - `SYSTEM_PROMPT`、唯讀使用者與預覽分頁都沒有此按鈕。
 - 清單載入失敗時，選單內顯示錯誤與重試，不影響手打。
+- 介面文字：按鈕「插入工具 ▾」、搜尋框提示「搜尋工具名稱或說明」、載入中顯示「載入中…」、無結果顯示「沒有符合的工具」、載入失敗顯示「無法載入工具清單」與「重試」按鈕。
 - 插入後走現有 `update:modelValue`，所以未儲存標記與驗證都照舊。
 - 想讓 GPT 自行判斷時，直接在文字裡手打 tool 名稱，不加大括號。
 - 標記的條件句限制、參數步驟只適合範圍窄的分類等注意事項，寫在 [07-prompt-examples.md](../../spec/07-prompt-examples.md) 的撰寫建議，介面上不提示。
@@ -288,7 +295,7 @@ default String inputRequest() { return null; }
 
 | 層級 | 內容 |
 | --- | --- |
-| 單元測試 | `WorkflowParser`（含重複標記合併、選項聯集、位置以第一次為準）；`ConfigValidator` 第 3.2 節每條規則；`CustomerRestrictions`；`GetCustomerTool` 扣住資料（部分、全部、讀不到註記）；`AnswerAssembler` 前綴（順序、不截斷、不跑數字檢查）；`StepArgumentExtractor`（通過、缺參數、格式不符、呼叫失敗）；`CaseChecker` 與 `EvalDatasetLoader` 的 `toolOrder`；`PromptAssembler` 依情況替換標記 |
+| 單元測試 | `WorkflowParser`（含重複標記合併、選項聯集、位置以第一次為準）；`WorkflowValidator` 第 3.2 節每條規則；`CustomerRestrictions`；`GetCustomerTool` 扣住資料（部分、全部、讀不到註記）；`AnswerAssembler` 前綴（順序、不截斷、不跑數字檢查）；`StepArgumentExtractor`（通過、缺參數、格式不符、呼叫失敗）；`CaseChecker` 與 `EvalDatasetLoader` 的 `toolOrder`；`PromptAssembler` 依情況替換標記 |
 | 流程測試 | `ChatOrchestratorTest` 以 `ScriptedChatModel` 測：步驟依序執行並進入訊息、引用編號連續、步驟失敗後繼續並標示、權限不足、缺參數時不執行任何步驟、`none` 與 fallback 不觸發、調用上限與輪數計算、顯示條件（純市場問題不顯示註記） |
 | API 測試 | `GET /admin/tools` 的權限與內容 |
 | 前端測試 | `ToolPicker` 的項目展開、搜尋、鍵盤操作、載入失敗；`MarkdownEditor` 在游標位置插入標記與游標位置；`SYSTEM_PROMPT` 與唯讀時沒有按鈕 |
@@ -298,7 +305,7 @@ default String inputRequest() { return null; }
 
 | 風險 | 影響 | 處理 |
 | --- | --- | --- |
-| Token：步驟結果每次呼叫都重送 | 目前平均每題約 6,000，上限 16,000，3 步流程可能接近上限，超過時整題失敗 | 實測後再決定是否調整步驟上限或預算；目前只有一個種子流程使用 |
+| Token：步驟結果每次呼叫都重送 | 目前平均每題約 6,000，上限 16,000，3 步流程可能接近上限，超過時整題失敗 | 實測後再決定是否調整步驟上限或預算；目前只有一個種子流程使用。2026-11-05 實測平均約 6,050、最大 9,037，未接近上限 |
 | 路由選錯分類 | 流程不會執行，分類相關的保證失效；註記規則不受影響 | 評測的分類正確率與 `toolOrder` 持續檢查 |
 | 同一題問多檔股票 | 參數步驟只查一檔，另一檔由 GPT 自行調用 | 已知限制 |
 | 公司名稱轉代號 | 靠 GPT 的知識，可能對應錯；回傳資料帶公司名稱，看得出來但程式不會擋 | 現有風險，這次不處理 |
@@ -324,7 +331,7 @@ default String inputRequest() { return null; }
 | 階段 | 內容 | 主要落點 |
 | --- | --- | --- |
 | 1. 註記強制 | 第 2 節 | `domain/customer/CustomerRestrictions`、`domain/tool/customer/*`、`domain/prompt/CustomerNotes`、`domain/answer/AnswerAssembler`、`application/chat/ChatOrchestrator`、種子 |
-| 2. 工作流引擎 | 第 3 節 | `domain/prompt/WorkflowParser`、`WorkflowStep`、`StepArgumentPrompt`、`PromptAssembler`、`domain/config/ConfigValidator`、`domain/tool/AssistantTool`、`application/chat/WorkflowRunner`、`StepArgumentExtractor`、`ChatOrchestrator`、`infrastructure/config/DomainBeanConfiguration` |
+| 2. 工作流引擎 | 第 3 節 | `domain/prompt/WorkflowParser`、`WorkflowStep`、`StepArgumentPrompt`、`PromptAssembler`、`domain/config/WorkflowValidator`（由 `ConfigValidator` 呼叫）、`domain/tool/AssistantTool`、`application/chat/WorkflowRunner`、`StepArgumentExtractor`、`ChatOrchestrator`、`infrastructure/config/DomainBeanConfiguration` |
 | 3. 評測 | 第 4 節 | `domain/eval/EvalCase`、`EvalDatasetLoader`、`CaseChecker`、`eval-cases.yml`、前端評測元件、種子「聯繫準備」 |
 | 4. 選擇器與文件 | 第 5、8 節 | `interfaces/rest/config/*`、`admin/ToolPicker.vue`、`admin/MarkdownEditor.vue`、`api/aiAssistantApi.ts`、`types.ts`、`docs/` |
 

@@ -15,6 +15,7 @@ import type {
   PublishBody,
   SaveDraftBody,
   SuggestionCategory,
+  ToolCatalogItem,
   ValidationReport,
   VersionFeedback,
   VersionHistoryItem,
@@ -186,5 +187,11 @@ export const aiAssistantApi = {
   async evaluationCases(): Promise<EvalCases> {
     const res = await apiClient.get<EvalCases>('/ai-assistant/admin/evaluation-cases')
     return res.data
+  },
+
+  /** Tools an instruction may reference; the picker shows its own error, so no toast. */
+  async tools(): Promise<ToolCatalogItem[]> {
+    const res = await apiClient.get<{ tools: ToolCatalogItem[] }>('/ai-assistant/admin/tools', { meta: STATS_SILENT })
+    return res.data.tools
   },
 }

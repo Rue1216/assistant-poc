@@ -211,6 +211,10 @@ sequenceDiagram
   O->>G: ⓪ 路由：去識別化的提問、目前摘要（最多 1,000 字）、最近 4 則歷史、各分類的「適用問題」（快捷按鈕帶 categoryKey 時略過）
   G-->>O: 分類的 configKey 或 none（失敗則載入全部分類）
   O->>O: 建立本題的 TurnCustomerData；組裝 prompt（只載入選出的分類；FULL 時注入「本顧客註記」）、依存取等級篩選工具
+  opt 路由選中單一分類且內容有工具標記（3.2）
+    O->>G: ⓪ 抽取參數（只有步驟需要使用者提供參數時）；缺參數 → 直接回請求文字，本題結束
+    O->>T: 依序執行每個步驟（經 ToolExecutor，權限、逾時、去識別化、大小限制與引用編號同模型自行調用），結果以 tool 紀錄加入 messages
+  end
   O->>G: ① 去識別化的 messages + 可用工具 schema + 回答 JSON Schema（strict）
   G-->>O: ② tool call（名稱、參數、id）
   O->>TG: ③ 驗證名稱、參數格式與欄位
@@ -220,7 +224,7 @@ sequenceDiagram
   O->>O: PiiRedactor 處理文字欄位、截斷、配發引用編號 S1、S2…、記錄摘要
   O->>G: ④ role=tool（含 citationId）+ tool call id
   G-->>O: ⑤ 最終答案（JSON：blocks，每個區塊帶 sources）
-  O->>O: AnswerAssembler 驗證、逐區塊去識別化、重新編號、核對數字；附加 citations、查詢時間、警語；寫入稽核
+  O->>O: AnswerAssembler 驗證、逐區塊去識別化、重新編號、核對數字；回答最前面加上程式提示（註記、未完成的步驟，3.2）；附加 citations、查詢時間、警語；寫入稽核
   O-->>C: ChatResponse
   C-->>U: blocks、answer、citations、disclaimer、toolCalls
   Note over U: ⑥ 區塊顯示引用上標，可展開引用清單（toolCalls 不顯示，見 9.2）
@@ -240,7 +244,10 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-  S(["prompt 與可用工具就緒"]) --> C{"工具輪數未達 3<br/>且已執行的 tool call 未達 5？"}
+  S(["prompt 與可用工具就緒"]) --> W{"路由選中單一分類<br/>且有工具標記？"}
+  W -->|是| WR["工作流步驟（3.2）：缺參數 → 回請求文字並結束<br/>否則依序執行，結果加入 messages"]
+  W -->|否| C
+  WR --> C{"工具輪數未達 3<br/>且已執行的 tool call 未達 5？"}
   C -->|是| M1["呼叫模型<br/>附工具 schema + 回答 JSON Schema"]
   C -->|否| M2["呼叫模型<br/>不附工具，要求用現有結果作答"]
   M1 --> R{"回應有 tool call？"}
@@ -251,6 +258,20 @@ flowchart TD
   A -->|通過| OK([ChatResponse])
   A -->|格式不符或沒有文字| E[AI_ANSWER_FORMAT_INVALID]
 ```
+
+### 3.2 工作流步驟與程式提示
+
+設計見 [工作流與註記強制設計](../superpowers/specs/2026-11-05-workflow-note-enforcement-design.md)。程式在進入 3.1 的迴圈**之前**做這些事：
+
+1. **工作流步驟**（`WorkflowRunner`，由 `ChatOrchestrator.Turn` 呼叫，`chat` 與 `evaluate` 共用）：路由選中單一分類（`InstructionSelection` 為 `ONLY`，快捷問題也算），且該分類內容有工具標記 `{{tool}}` 或 `{{tool: 選項, 選項}}` 時，`WorkflowParser` 依出現順序解析成步驟；同一個 tool 合併成一步（位置以第一次為準、選項取聯集），最多 3 步。路由回 `none` 或失敗而載入全部分類時不執行。
+2. **參數抽取**（`StepArgumentExtractor`）：步驟的 tool 有必填參數（`requiredInputs()`，例如 `stockCode`）時，用一次不帶工具的 strict JSON 模型呼叫從去識別化的問題與最近 4 則歷史抽取（`router-reasoning-effort`、不拋例外）。參數交給 `ToolGuard.check`；任一步驟缺參數或格式不符時，**不執行任何步驟**，本題直接回覆去重後的 `inputRequest()`，不呼叫回答模型。
+3. **依序執行**：每步組成 id 為 `workflow-{n}` 的 tool 請求，經 `ToolExecutor` 執行（權限、逾時、去識別化、大小限制與引用編號和模型自行調用相同），結果以 `AiMessage`（tool request）加 `ToolExecutionResultMessage` 放進 messages。步驟失敗（`ToolStatus` 不是 `SUCCESS`）不中斷，下一步照跑。步驟計入整題 5 次調用，不計入 3 輪 `toolRounds`。tool 不在 `ToolRegistry` 的步驟（標記格式錯誤或發布後工具被移除）不執行也不送進訊息，只記原因代碼的 warn log。
+4. **去識別化**：步驟只對**參數**去識別化，tool 名稱是已註冊的常數，保持原樣。
+5. **Prompt 內的標記**：`PromptAssembler` 把 `{{…}}` 換成文字：路由選中單一分類時為「`getCustomer（系統已查詢）`」，載入全部分類時只剩 tool 名稱，GPT 仍可自行調用。
+6. **程式提示**：`AnswerAssembler.assemble` 的 `programNotices` 在 GPT 內容之前各放一個 `PARAGRAPH` block，順序為：註記提示（不宜行銷、客訴與應注意名單、特殊客群、讀不到註記；本題調用過顧客工具才顯示，來自 `CustomerRestrictions.notices()`）、步驟未完成（「未能完成「{用途}」，以下回答可能不完整。」）。提示不被 `limit` 截斷、不跑數字檢查、沒有引用，也**不經 `PiiRedactor`**（寬度折疊會把全形括號改成半形；內容只有固定文字、已驗證格式的日期與程式碼定義的 tool 用途）。
+7. **註記限制**：`CustomerRestrictions` 由 `TurnCustomerData.realTime()` 算出，`CustomerNotes`、`getCustomer`（有不宜行銷註記或讀不到註記時不回傳 `management`、`productIntent`，見 [03-tool-catalog.md](03-tool-catalog.md) 2.2）與程式提示共用，同一題只讀一次平台資料。
+
+標記只在內容發布前檢查：`WORKFLOW_INVALID`（見 [05-error-codes.md](05-error-codes.md) 2.3）。
 
 ## 4. Prompt 組裝
 
@@ -301,8 +322,10 @@ flowchart TD
   ① system.main 的已發布內容（System Prompt）
   ② # 問題分類
      路由選出的那一份 System Instruction（不依存取等級篩選）；路由為 none 時是固定文字「（本題沒有適用的問題分類）」；路由失敗（FALLBACK）時載入每一份已發布的 System Instruction
+     內容裡的工具標記 {{tool}} 由 PromptAssembler 換成文字：路由選中單一分類（步驟已由程式執行）時為「tool 名稱（系統已查詢）」，其他情況只剩 tool 名稱（見 3.2）
   ③ # 本顧客註記（寫死在 Java，由 CustomerNotes 依即時資料產生；只在存取等級 FULL；不存於設定、不經 API 輸出，也不寫入稽核的 prompt 版本）
      - 列入：不宜行銷、客訴（附到期日）、特殊客群、應注意名單；沒有任何註記時寫「- 無」
+     - 有註記時，清單後固定多一句「本題查詢顧客資料時，程式會在回答最前面列出以上註記，回答中不要重複；未查詢顧客資料時，簡短說明註記類別。」（註記提示改由程式加在回答前，見 3.2；放在這段程式固定文字，已發布的 system.main 也立即生效）
      - 取得失敗時寫「- 無法取得註記，涉及商品或行銷的回答請先參考平台畫面上的註記」，並照常回答（記 warn log，不含顧客資料）
      - 高資產、專區、專投不影響回答規則，不列入，只由 getRealTimeCustomer 回傳
   ④ # 不可覆寫的安全規則（寫死在 Java，管理頁無法修改）
@@ -418,7 +441,8 @@ backend/
    │  │  ├─ exception/   AssistantException、ErrorCode（HTTP 狀態為 int）、ErrorDetail（錯誤細節介面）、
    │  │  │               FieldDetail、WorkingCopyDetail、RunningEvalDetail（三種細節 record）
    │  │  ├─ config/      AssistantConfig（record）、ConfigStatus、ConfigType、ValidationError、PromptVersion、
-   │  │  │               PublishedConfigs、ConfigValidator
+   │  │  │               PublishedConfigs、ConfigValidator、
+   │  │  │               WorkflowValidator（工具標記規則，由 ConfigValidator 呼叫）
    │  │  ├─ customer/    AccessLevel、CustomerRecord、c360/（Customer360Record、RealTimeStatusRecord 等 record）
    │  │  ├─ user/        UserContext
    │  │  ├─ chat/        ChatResult、EvaluationReport

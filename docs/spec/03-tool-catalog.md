@@ -33,7 +33,15 @@ public interface AssistantTool {
   AccessLevel requiredAccessLevel();    // LIMITED 或 FULL；市場工具為 LIMITED（任何可存取者皆可用）
   Duration timeout();
   ToolResult execute(JsonNode args, ToolContext context);
+
+  // 以下三個為工作流與選擇器用的中繼資料，都有預設值，既有工具只改需要的
+  default List<ToolOption> options() { return List.of(); }  // 管理者可在工具標記中固定的值；沒有時為空
+  default String optionsArgument() { return null; }         // 選項填入的參數，例如 "sections"；沒有選項時為 null
+  default String inputRequest() { return null; }            // 必填參數缺少時，請使用者提供的文字
+  default List<String> requiredInputs() { ... }             // 必填參數扣掉 optionsArgument()，需要從問題取得的部分
 }
+
+public record ToolOption(String key, String name, String description) {}
 
 // data 是這個問題專用的 TurnCustomerData（見 2.1）；市場工具與測試可用兩個參數的建構式（data 為 null）
 public record ToolContext(UserContext user, CustomerContext customer, TurnCustomerData data) {}
@@ -66,6 +74,7 @@ public record CitationDetail(
 
 - 參數以 Java record 加 Bean Validation 定義；`ToolSpecification` 和驗證規則都從同一個 record 產生。
 - **所有工具都是唯讀的**：沒有任何工具能新增或修改資料。
+- **工具的中繼資料**：`options()`、`optionsArgument()`、`inputRequest()` 供工作流程（工具標記 `{{tool: 選項}}`）與 `GET /admin/tools`（見 [02-rest-api.md](02-rest-api.md) 3.17）使用，不影響模型看到的 `specification()`。`getCustomer` 的 `options()` 來自 6 個 `CustomerSection`（`optionsArgument()` 為 `sections`）；`getStockQuote`、`getCompanyAnnouncements` 的 `inputRequest()` 為「請提供要查詢的股票代號（例如 2330）。」；其餘工具沒有選項，也沒有需要從問題取得的必填參數。工作流的執行與抽取參數見 [01-architecture.md](01-architecture.md) 3.2。
 
 ### 1.4 執行流程
 
@@ -280,6 +289,16 @@ flowchart LR
 - 百分點差的正負號依四捨五入後的值決定：`0.001` 與 `-0.001` 都顯示 `0.00 個百分點`，不帶正負號。
 - `management` 的 `insight`、活動 `summary` 是系統或人工產生的文字，經 `PiiRedactor` 處理後截到 200 code point，視為資料（不可信）。
 - 引用（`CitationDetail`）：標題為「個人360・」加實際回傳分組的顯示名稱，依上表順序以「、」連接；說明欄為「資料日期 yyyy/MM/dd」。
+- **扣住行銷資料（只在 `FULL`）**：`CustomerRestrictions.withholdMarketingData` 為真（即時註記有不宜行銷，或註記讀不到、拋出例外而 fail closed）時，`management` 與 `productIntent` 兩個分組不回傳，其他分組照常。`data` 多兩個固定 key：`withheldSections`（被扣的分組 key）與 `restrictionNote`（固定文字「依本顧客註記，這些區塊不提供」）。扣住不算失敗，`status` 仍為 `SUCCESS`；請求的分組全部被扣時也回 `SUCCESS`（不走 `CUSTOMER_DATA_UNAVAILABLE`），引用標題為「個人360・資料受註記限制」，`resultCount` 為 0。這層只保證模型拿不到系統推薦的品項與活動；服務類提醒來自 `getRealTimeCustomer` 的 `keyAlerts`，不會被扣。設計見 [工作流與註記強制設計](../superpowers/specs/2026-11-05-workflow-note-enforcement-design.md) 2.2。
+
+```json
+{
+  "dataDate": "2026/10/27",
+  "behavior": { "…": "…" },
+  "withheldSections": ["management"],
+  "restrictionNote": "依本顧客註記，這些區塊不提供"
+}
+```
 
 回傳 `data`（`LIMITED`）：不論指定哪些分組，只回傳去識別化名片與資料日期（有的話）；其餘指定的分組列入 `unavailableSections`，引用標題只含「顧客名片」。
 
@@ -334,6 +353,7 @@ flowchart LR
 - `title`、`detail` 是系統或人工產生的文字，經 `PiiRedactor` 處理後截到 200 code point，視為資料（不可信）。
 - `RealTimeStatusRecord` 不存在時回 `CUSTOMER_DATA_UNAVAILABLE`。
 - 引用：標題「個人360・即時註記與提醒」，說明欄「註記、畫像標籤、關鍵提醒」。
+- 註記判斷共用 `CustomerRestrictions`（由 `TurnCustomerData.realTime()` 算出本題限制）：`getCustomer` 的扣住、回答最前面的程式提示（見 [01-architecture.md](01-architecture.md) 3.2）與下一行的註記注入都用同一份，同一題只讀一次平台資料。
 - 「本顧客註記」注入（`CustomerNotes`，只在 `FULL`；`RealTimeStatusRecord` 不存在或讀取失敗時 fail closed，寫「- 無法取得註記，涉及商品或行銷的回答請先參考平台畫面上的註記」並記不含顧客資料的 warn log；到期日只接受 `yyyy/MM/dd`，其他內容不顯示日期）與此工具共用同一個 `TurnCustomerData`，同一題只讀一次平台資料；注入只列不宜行銷、客訴、特殊客群、應注意名單，高資產、專區、專投只由此工具回傳。
 
 ---

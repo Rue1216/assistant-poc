@@ -22,7 +22,14 @@ public class CustomerNotes {
     private static final Logger log = LoggerFactory.getLogger(CustomerNotes.class);
 
     private static final String HEADING = "# 本顧客註記\n";
-    private static final String UNAVAILABLE = HEADING + "- 無法取得註記，涉及商品或行銷的回答請先參考平台畫面上的註記";
+    /**
+     * The program only adds its notices when the turn called a customer tool, so the model is told to keep the
+     * notes out of such answers and to describe the note categories briefly otherwise.
+     */
+    private static final String PROGRAM_LISTS_NOTES =
+            "本題查詢顧客資料時，程式會在回答最前面列出以上註記，回答中不要重複；未查詢顧客資料時，簡短說明註記類別。";
+    private static final String UNAVAILABLE =
+            HEADING + "- 無法取得註記，涉及商品或行銷的回答請先參考平台畫面上的註記\n" + PROGRAM_LISTS_NOTES;
 
     /** Flagging types that are listed, in this order (high asset, zone and professional-investor flags are not). */
     private static final List<FlagType> LISTED_FLAGS = List.of(FlagType.NO_MARKETING, FlagType.COMPLAINT);
@@ -66,8 +73,7 @@ public class CustomerNotes {
         if (lines.isEmpty()) {
             return HEADING + "- 無";
         }
-        // The code lists the notes at the top of the answer itself, so the model must not repeat them.
-        return HEADING + String.join("\n", lines) + "\n程式會在回答最前面列出以上註記，回答中不要重複。";
+        return HEADING + String.join("\n", lines) + "\n" + PROGRAM_LISTS_NOTES;
     }
 
     private static String line(String name, String expiryDate) {

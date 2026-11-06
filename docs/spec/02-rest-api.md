@@ -30,6 +30,8 @@ Path 省略 base path `/api/ai-assistant`，點 Path 可跳到該章節。編輯
 | 3.14 | `GET` | [`/admin/evaluations/current`](#api-eval-current) | 目前執行中的評測（任何 key） | `AI_CONFIG_READ` | 200／204 |
 | 3.15 | `GET` | [`/admin/evaluations/{runId}`](#api-eval-get) | 單次評測的進度與完整結果 | `AI_CONFIG_READ` | 200 |
 | 3.16 | `GET` | [`/admin/evaluation-cases`](#api-eval-cases) | 瀏覽評測資料集（唯讀） | `AI_CONFIG_READ` | 200 |
+| **Prompt 管理：工具選擇器** | | | | | |
+| 3.17 | `GET` | [`/admin/tools`](#api-tools) | 列出可插入工具標記的工具與選項 | `AI_CONFIG_READ` | 200 |
 
 平台替身 API（`/api/mock/…`，POC 專用，整合時刪除）共 8 支，見 [第 4 節](#api-mock)。
 
@@ -372,7 +374,7 @@ Request：
 ## 3. Prompt 管理 API
 
 - **權限**：
-    - 查詢類（3.1、3.3、3.4、3.11、3.13–3.16）：`AI_CONFIG_READ`
+    - 查詢類（3.1、3.3、3.4、3.11、3.13–3.17）：`AI_CONFIG_READ`
     - 編輯類（3.2、3.5–3.8、3.10、3.12 開始評測）：`AI_CONFIG_EDIT`
     - 發布類（3.9）：`AI_CONFIG_PUBLISH`
     - 權限前提：後台管理人員與 IT 人員同時擁有 `AI_CONFIG_EDIT` 與 `AI_CONFIG_PUBLISH`（M26）。已排程版本以 `KEEP_STATUS` 儲存只需要編輯權限，但內容會在到期時上線；若日後把編輯與發布拆給不同的人，這個操作要改為需要發布權限。
@@ -834,7 +836,7 @@ Request：
 Response 202：
 
 ```json
-{ "runId": "6719f0c2a4b5e6f7a8b9c0d1", "status": "RUNNING", "totalCases": 34 }
+{ "runId": "6719f0c2a4b5e6f7a8b9c0d1", "status": "RUNNING", "totalCases": 35 }
 ```
 
 同步檢查依序為：
@@ -873,13 +875,13 @@ Response 202：
         "candidateUpdatedAt": "2026-10-24T14:58:03+08:00",
         "candidateDocVersion": 5,
         "datasetChanged": false,
-        "totalCases": 34,
-        "completedCases": 34,
+        "totalCases": 35,
+        "completedCases": 35,
         "summary": {
             "baseline": {
                 "correct": 18,
-                "total": 34,
-                "toolsOk": 34,
+                "total": 35,
+                "toolsOk": 35,
                 "routeOk": 26,
                 "routeCases": 26,
                 "refusedExpected": 8,
@@ -893,8 +895,8 @@ Response 202：
             },
             "candidate": {
                 "correct": 20,
-                "total": 34,
-                "toolsOk": 34,
+                "total": 35,
+                "toolsOk": 35,
                 "routeOk": 25,
                 "routeCases": 26,
                 "refusedExpected": 8,
@@ -925,7 +927,7 @@ Response 202：
 目前執行中的評測（任何 key）。
 
 - **權限**：`AI_CONFIG_READ`
-- **200**：`{ "runId": "…", "configKey": "instruction.contact-prep", "triggeredBy": "EEE22222", "startedAt": "2026-10-24T15:02:11+08:00", "totalCases": 34, "completedCases": 7 }`
+- **200**：`{ "runId": "…", "configKey": "instruction.contact-prep", "triggeredBy": "EEE22222", "startedAt": "2026-10-24T15:02:11+08:00", "totalCases": 35, "completedCases": 7 }`
 - **204**：沒有執行中的評測。呼叫時會先處理陳舊紀錄：`RUNNING` 且 `heartbeatAt` 超過 10 分鐘者標為 `FAILED`（`AI_EVAL_INTERRUPTED`）。
 
 <a id="api-eval-get"></a>
@@ -1042,7 +1044,8 @@ Response 200：3.13 的欄位，加上 `configKey` 與 `cases`：
                     "0912-000-111",
                     "58 歲"
                 ],
-                "category": "instruction.contact-prep"
+                "category": "instruction.contact-prep",
+                "toolOrder": ["getRealTimeCustomer", "getCustomer"]
             },
             "rubric": [
                 "列出定存 2026/11/15 到期、10 月下旬面談尚未排定、KYC 到期",
@@ -1057,6 +1060,38 @@ Response 200：3.13 的欄位，加上 `configKey` 與 `cases`：
 - 資料集來自 `classpath:eval/eval-cases.yml`，隨 git 版控，管理頁不提供編輯；題目清單與題數見 [06-conversation-scenarios.md](06-conversation-scenarios.md) 1.3，題數上限見 [04-mongodb-schema.md](04-mongodb-schema.md) 的評測紀錄。評測集不得使用蔡宗翰。
 - `certNo` 是資料集指定的假測試顧客編號，不是真實顧客；正式環境只能使用測試顧客的 `certNo`（資料集在版控中）。
 - `expect.category` 是預期的問題分類（`configKey` 或 `none`），題目不檢查分類時為 `null`。
+- `expect.toolOrder` 是預期的調用順序，必須是實際調用清單的子序列（中間夾其他調用也算通過）；沒有順序要求時為空陣列。結果併入 `toolsOk`，不得包含 `forbiddenTools` 的項目。範例內容僅示意格式，實際題目以資料集為準。
+
+<a id="api-tools"></a>
+
+### 3.17 `GET /api/ai-assistant/admin/tools`
+
+列出已註冊的工具，供編輯頁的「插入工具」選擇器使用（設計見 [工作流與註記強制設計](../superpowers/specs/2026-11-05-workflow-note-enforcement-design.md) 5）。
+
+- **權限**：`AI_CONFIG_READ`
+- 資料由 `ToolRegistry` 產生，順序和 registry 相同。只回傳 `name`、`purpose` 與 `options`；安全規則與 tool 的完整 schema 不回傳。
+- `options` 是管理者可在工具標記中固定的值（目前只有 `getCustomer` 有，來自顧客 360 的區塊）；沒有選項的 tool 為空陣列。
+
+```json
+{
+    "tools": [
+        {
+            "name": "getCustomer",
+            "purpose": "查詢顧客 360 資料",
+            "options": [
+                { "key": "management", "name": "顧客經營", "description": "專屬活動、建議商品、經營洞察" }
+            ]
+        },
+        {
+            "name": "getStockQuote",
+            "purpose": "查詢上市個股行情",
+            "options": []
+        }
+    ]
+}
+```
+
+- 除共通錯誤外沒有其他錯誤情境。
 
 ---
 

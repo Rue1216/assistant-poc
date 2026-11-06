@@ -759,6 +759,40 @@ class ChatOrchestratorTest {
     }
 
     @Test
+    void registeredToolNameIsEchoedUnchangedWhenItContainsANameForm() {
+        // "Tom" gives the name form "om", which sits inside the real tool name "getCustomer".
+        CustomerContext tom = new CustomerContext(TestCustomers.RETIREE, AccessLevel.FULL,
+                Set.of(TestCustomers.RETIREE, "Tom", "om"), Set.of());
+        model.reply(toolCalls(100, call("c1", "getCustomer", "{\"sections\":[\"profile\"]}")))
+                .reply(answer(100, "本顧客為穩健型。"));
+
+        ChatResult result = orchestrator.chat(new ChatCommand("這位顧客的風險屬性？", List.of(), null), USER, tom);
+
+        assertThat(result.toolCalls()).singleElement().satisfies(c -> {
+            assertThat(c.name()).isEqualTo("getCustomer");
+            assertThat(c.status()).isEqualTo("SUCCESS");
+        });
+        AiMessage echoed = (AiMessage) model.requests().get(1).messages().get(2);
+        assertThat(echoed.toolExecutionRequests()).singleElement()
+                .satisfies(r -> assertThat(r.name()).isEqualTo("getCustomer"));
+        assertThat(result.answer()).isEqualTo("本顧客為穩健型。");
+    }
+
+    @Test
+    void unregisteredToolNameIsStillRedactedWhenEchoed() {
+        CustomerContext tom = new CustomerContext(TestCustomers.RETIREE, AccessLevel.FULL,
+                Set.of(TestCustomers.RETIREE, "Tom"), Set.of());
+        model.reply(toolCalls(100, call("c1", "lookupTomRecords", "{}")))
+                .reply(answer(100, "無法查詢。"));
+
+        orchestrator.chat(new ChatCommand("查一下這位顧客", List.of(), null), USER, tom);
+
+        AiMessage echoed = (AiMessage) model.requests().get(1).messages().get(2);
+        assertThat(echoed.toolExecutionRequests()).singleElement()
+                .satisfies(r -> assertThat(r.name()).doesNotContain("Tom"));
+    }
+
+    @Test
     void limitedUserIsNotOfferedFullTools() {
         model.reply(answer(100, "依您的權限僅能查看基本輪廓。"));
 

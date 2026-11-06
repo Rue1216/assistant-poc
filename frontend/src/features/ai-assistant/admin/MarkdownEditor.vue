@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, useId } from 'vue'
+import { computed, nextTick, ref, useId } from 'vue'
 import SafeMarkdown from '../markdown/SafeMarkdown'
 import { extractExampleQuestions } from '../markdown/exampleQuestions'
 import { addedLineIndices } from '../markdown/lineDiff'
 import type { ConfigType } from '../types'
 import { byteLength, formatKb, MAX_CONTENT_BYTES, missingSections } from './promptLabels'
+import ToolPicker from './ToolPicker.vue'
 import './prompt-admin.css'
 
 const props = withDefaults(
@@ -21,6 +22,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 
 const id = useId()
 const tab = ref<'edit' | 'preview'>('edit')
+const textarea = ref<HTMLTextAreaElement | null>(null)
 
 const bytes = computed(() => byteLength(props.modelValue))
 const missing = computed(() =>
@@ -47,6 +49,24 @@ const changedLines = computed<ReadonlySet<number> | null>(() => {
 
 function onInput(e: Event) {
   emit('update:modelValue', (e.target as HTMLTextAreaElement).value)
+}
+
+const canInsertTool = computed(
+  () => tab.value === 'edit' && !props.readonly && props.configType === 'SYSTEM_INSTRUCTION',
+)
+
+/** Replaces the selection with the marker, then puts the cursor right after it. */
+function insertAtCursor(marker: string) {
+  const el = textarea.value
+  if (!el) return
+  const start = el.selectionStart
+  const end = el.selectionEnd
+  const caret = start + marker.length
+  emit('update:modelValue', props.modelValue.slice(0, start) + marker + props.modelValue.slice(end))
+  void nextTick(() => {
+    el.focus()
+    el.setSelectionRange(caret, caret)
+  })
 }
 </script>
 
@@ -82,6 +102,7 @@ function onInput(e: Event) {
         {{ formatKb(bytes) }} / 64 KB
       </span>
       <span v-else class="pm-pane__count">以目前內容渲染，含未儲存的修改</span>
+      <ToolPicker v-if="canInsertTool" @insert="insertAtCursor" />
     </div>
 
     <div
@@ -94,6 +115,7 @@ function onInput(e: Event) {
       <label class="sr-only" :for="`${id}-content`">內容</label>
       <textarea
         :id="`${id}-content`"
+        ref="textarea"
         class="pm-code"
         spellcheck="false"
         :value="modelValue"

@@ -28,9 +28,12 @@ import org.mockito.Mockito;
 
 class CustomerNotesTest {
 
-    private static final String UNAVAILABLE = "# 本顧客註記\n- 無法取得註記，涉及商品或行銷的回答請先參考平台畫面上的註記";
+    private static final String SENTENCE =
+            "本題查詢顧客資料時，程式會在回答最前面列出以上註記，回答中不要重複；未查詢顧客資料時，簡短說明註記類別。";
+    private static final String UNAVAILABLE =
+            "# 本顧客註記\n- 無法取得註記，涉及商品或行銷的回答請先參考平台畫面上的註記\n" + SENTENCE;
 
-    private static final String SUFFIX = "\n程式會在回答最前面列出以上註記，回答中不要重複。";
+    private static final String SUFFIX = "\n" + SENTENCE;
 
     private final CustomerNotes notes = new CustomerNotes();
 
@@ -138,7 +141,7 @@ class CustomerNotesTest {
             String section = new CustomerNotes().section(full(TestCustomers.NO_MARKETING),
                     turnData(failing, TestCustomers.NO_MARKETING));
 
-            assertThat(section).isEqualTo("# 本顧客註記\n- 無法取得註記，涉及商品或行銷的回答請先參考平台畫面上的註記");
+            assertThat(section).isEqualTo(UNAVAILABLE);
             assertThat(capture.events()).singleElement().satisfies(event -> {
                 assertThat(event.getLevel()).isEqualTo(Level.WARN);
                 String rendered = LogCapture.render(event);

@@ -328,3 +328,16 @@ export interface EvalCases {
   datasetHash: string
   cases: EvalCase[]
 }
+
+export interface ToolOption {
+  key: string
+  name: string
+  description: string
+}
+
+/** One tool the admin may reference as a {{tool}} marker in an instruction. */
+export interface ToolCatalogItem {
+  name: string
+  purpose: string
+  options: ToolOption[]
+}

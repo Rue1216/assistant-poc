@@ -72,7 +72,21 @@
 ]
 ```
 
-`rule` 的值：`NOT_EMPTY`、`MAX_SIZE`、`REQUIRED_SECTION`、`EXAMPLE_QUESTIONS`、`FORBIDDEN_CONTENT`
+`rule` 的值：`NOT_EMPTY`、`MAX_SIZE`、`REQUIRED_SECTION`、`EXAMPLE_QUESTIONS`、`FORBIDDEN_CONTENT`、`WORKFLOW_INVALID`
+
+`WORKFLOW_INVALID`：內容裡的工具標記 `{{tool}}` 或 `{{tool: 選項}}` 不合規則（設計見 [工作流與註記強制設計](../superpowers/specs/2026-11-05-workflow-note-enforcement-design.md) 3.2）。發布、草稿驗證、排程到期重驗與評測前驗證都會檢查。訊息裡的工具名稱與選項來自使用者輸入，最多顯示 32 字元：
+
+| 情況 | message |
+|---|---|
+| `system.main` 有標記 | System Prompt 不可放工具標記，流程要設定在問題分類 |
+| 標記在 `## 適用問題` 或 `## 範例問題` | 「{章節}」不可放工具標記（這段會交給路由或顯示成快捷按鈕） |
+| 有 `{{` 沒有對應的 `}}`（同一行內） | 第 {n} 行的工具標記沒有結尾 |
+| 標記內容格式不符 | 第 {n} 個工具標記格式不正確 |
+| 超過 3 個不同的工具（重複的工具合併後計算） | 工具標記最多 3 個不同的工具，目前有 {n} 個 |
+| 工具不存在 | 第 {n} 個工具標記：找不到工具 {name} |
+| 有選項的工具沒選選項 | 第 {n} 個工具標記：{name} 至少要選一個選項 |
+| 選項不存在 | 第 {n} 個工具標記：{name} 沒有選項 {option} |
+| 沒有選項的工具寫了選項 | 第 {n} 個工具標記：{name} 不接受選項 |
 
 ### 2.4 回饋與評測
 
@@ -110,6 +124,8 @@
 | `MARKET_DATA_TIMEOUT` | TIMEOUT | 市場資料查詢逾時 | TWSE 單次請求逾時（主要是連線逾時；讀取太慢通常先觸發 `TOOL_TIMEOUT`，見 [03-tool-catalog.md](03-tool-catalog.md) 3.1） |
 | `MARKET_DATA_UNAVAILABLE` | ERROR | 市場資料暫時無法取得 | TWSE 連線失敗、非 2xx、格式錯誤、超過大小上限 |
 | `TOOL_EXECUTION_FAILED` | ERROR | 查詢失敗 | 其他未預期錯誤 |
+
+> 工作流步驟（問題分類裡的工具標記）由程式依序執行，走同一套工具檢查，錯誤碼相同。步驟的結果不是 `SUCCESS` 時不新增錯誤碼，回答最前面改由程式加上「未能完成「{工具用途}」，以下回答可能不完整。」；`getCustomer` 因註記扣住資料仍回 `SUCCESS`，不算失敗（見 [03-tool-catalog.md](03-tool-catalog.md) 2.2）。
 
 > 顧客存取權限在進入對話 API 時就已判斷（無權限回 404 `AI_CUSTOMER_NOT_FOUND`），顧客工具也沒有顧客參數，所以工具層不會出現「顧客越權」錯誤。
 
