@@ -243,9 +243,11 @@ function onInputKeydown(event: KeyboardEvent) {
   top: 100%;
   right: 0;
   z-index: 30;
+  /* The editor pane clips its overflow and is 420px at its smallest, so the panel must fit inside it. */
+  display: flex;
+  flex-direction: column;
   min-width: 320px;
-  max-height: 60vh;
-  overflow-y: auto;
+  max-height: 360px;
   margin-top: 4px;
   padding: var(--space-2);
   border: 1px solid var(--color-border);
@@ -260,6 +262,9 @@ function onInputKeydown(event: KeyboardEvent) {
 }
 
 .pm-tools__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   list-style: none;
   margin: 0;
   padding: 0;
