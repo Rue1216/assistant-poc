@@ -29,8 +29,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.stereotype.Component;
 
@@ -40,9 +39,9 @@ import org.springframework.stereotype.Component;
  * {@code docVersion}; a refused write means the run was marked interrupted and the runner stops. Never throws.
  */
 @Component
+@Slf4j
 public class EvalRunner {
 
-    private static final Logger log = LoggerFactory.getLogger(EvalRunner.class);
     private static final String INTERNAL_ERROR = "AI_INTERNAL_ERROR";
     private static final String CUSTOMER_NOT_FOUND = "AI_CUSTOMER_NOT_FOUND";
     private static final Set<String> LLM_DOWN = Set.of(ErrorCode.AI_LLM_UNAVAILABLE.name(),

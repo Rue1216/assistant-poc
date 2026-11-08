@@ -10,16 +10,14 @@ import com.example.copilot.aiassistant.domain.tool.TurnCustomerData;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * The code-only "本顧客註記" section of the system prompt: the notes that restrict what may be said about products
  * or marketing. Like the safety rules it is never stored in config and never exposed by any API.
  */
+@Slf4j
 public class CustomerNotes {
-
-    private static final Logger log = LoggerFactory.getLogger(CustomerNotes.class);
 
     private static final String HEADING = "# 本顧客註記\n";
     /**

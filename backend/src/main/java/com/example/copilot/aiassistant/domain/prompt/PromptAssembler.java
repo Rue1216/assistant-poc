@@ -11,16 +11,14 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Builds the system message: system.main, then instructions, the code-only customer notes, then the code-only safety rules (01 section 4) and
  * answer format rules (answer-citations spec 5), and finally today's date in Taipei time.
  */
+@Slf4j
 public class PromptAssembler {
-
-    private static final Logger log = LoggerFactory.getLogger(PromptAssembler.class);
 
     private static final ZoneId TAIPEI = ZoneId.of("Asia/Taipei");
 

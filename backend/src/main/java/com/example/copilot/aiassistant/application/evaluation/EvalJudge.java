@@ -27,8 +27,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -40,9 +39,9 @@ import tools.jackson.databind.node.ObjectNode;
  * parsing failure becomes {@link JudgeVerdict#failed(int)}.
  */
 @Component
+@Slf4j
 public class EvalJudge {
 
-    private static final Logger log = LoggerFactory.getLogger(EvalJudge.class);
     private static final String SCHEMA_NAME = "judge";
     private static final int MAX_COMMENT_CODE_POINTS = 100;
 

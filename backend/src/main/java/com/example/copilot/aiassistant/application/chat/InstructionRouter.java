@@ -25,8 +25,7 @@ import dev.langchain4j.model.output.TokenUsage;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -38,9 +37,9 @@ import tools.jackson.databind.node.ObjectNode;
  * throws: any model or parsing failure becomes {@link RouteSource#FALLBACK}.
  */
 @Component
+@Slf4j
 public class InstructionRouter {
 
-    private static final Logger log = LoggerFactory.getLogger(InstructionRouter.class);
     private static final String SCHEMA_NAME = "route";
     private static final String NONE = "none";
     private static final String SCOPE_HEADING = "## 適用問題";

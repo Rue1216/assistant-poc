@@ -32,19 +32,17 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * {@code getCustomer(sections)}: the customer-360 platform API, narrowed to the sections the question needs. Section
  * order in the output and in the citation title is the {@link CustomerSection} order, never the caller's.
  */
+@Slf4j
 public class GetCustomerTool extends AbstractCustomerTool<GetCustomerTool.CustomerArgs> {
 
     public record CustomerArgs(@NotEmpty @Size(max = 6) List<String> sections) {
     }
-
-    private static final Logger log = LoggerFactory.getLogger(GetCustomerTool.class);
 
     /** Sections carrying product opportunities or sales talk, withheld when the notes forbid marketing. */
     private static final Set<CustomerSection> MARKETING_SECTIONS =

@@ -8,13 +8,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 /** Turns a radar view (labels plus customer and segment indices) into facts the model can quote. */
+@Slf4j
 public final class RadarFacts {
-
-    private static final Logger log = LoggerFactory.getLogger(RadarFacts.class);
 
     private RadarFacts() {}
 

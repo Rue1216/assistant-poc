@@ -13,8 +13,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -34,9 +33,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  * there is at most one PUBLISHED and one working copy per key. No operation deletes a document.
  */
 @Repository
+@Slf4j
 public class AssistantConfigRepositoryImpl implements AssistantConfigRepository {
-
-    private static final Logger log = LoggerFactory.getLogger(AssistantConfigRepositoryImpl.class);
 
     private static final List<ConfigStatus> WORKING_COPY = List.of(ConfigStatus.DRAFT, ConfigStatus.SCHEDULED);
     private static final int WRITE_CONFLICT = 112;

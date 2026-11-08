@@ -6,8 +6,7 @@ import com.example.copilot.aiassistant.domain.exception.ErrorDetail;
 import com.example.copilot.aiassistant.domain.exception.FieldDetail;
 import java.util.List;
 import java.util.stream.Stream;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
@@ -20,9 +19,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice(basePackages = "com.example.copilot.aiassistant")
+@Slf4j
 public class AssistantExceptionHandler {
-
-    private static final Logger log = LoggerFactory.getLogger(AssistantExceptionHandler.class);
 
     @ExceptionHandler(AssistantException.class)
     ResponseEntity<ApiError> handleAssistant(AssistantException e) {

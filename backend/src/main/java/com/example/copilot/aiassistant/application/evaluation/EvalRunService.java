@@ -26,8 +26,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
@@ -36,9 +35,9 @@ import org.springframework.stereotype.Service;
  * here; the cases are executed by {@link EvalRunner} on the single-thread evaluation executor.
  */
 @Service
+@Slf4j
 public class EvalRunService {
 
-    private static final Logger log = LoggerFactory.getLogger(EvalRunService.class);
     private static final int RECENT_LIMIT = 10;
     private static final String INTERNAL_ERROR = "AI_INTERNAL_ERROR";
 

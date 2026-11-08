@@ -9,16 +9,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * What the customer's notes forbid or require, decided in code. Notes are always treated as in force: the expiry
  * date is shown but never compared with today. When the notes cannot be read it fails closed.
  */
+@Slf4j
 public record CustomerRestrictions(boolean notesUnavailable, boolean withholdMarketingData, List<String> notices) {
-
-    private static final Logger log = LoggerFactory.getLogger(CustomerRestrictions.class);
 
     private static final Pattern EXPIRY_DATE = Pattern.compile("^\\d{4}/\\d{2}/\\d{2}$");
 

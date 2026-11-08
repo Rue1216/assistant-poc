@@ -17,8 +17,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -30,9 +29,9 @@ import tools.jackson.databind.node.ObjectNode;
  * does not stop the others; only a required input that cannot be found stops the whole workflow before anything runs.
  */
 @Component
+@Slf4j
 public class WorkflowRunner {
 
-    private static final Logger log = LoggerFactory.getLogger(WorkflowRunner.class);
     private static final String GENERIC_INPUT_REQUEST = "請提供查詢所需的資料。";
     private static final String UNKNOWN_PURPOSE = "未知工具";
 

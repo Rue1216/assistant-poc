@@ -1,8 +1,7 @@
 package com.example.copilot.aiassistant.infrastructure.scheduler;
 
 import com.example.copilot.aiassistant.application.config.ConfigCommandService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -10,9 +9,8 @@ import org.springframework.stereotype.Component;
 /** Publishes scheduled prompt versions once they are due (04 section 2.4). Safe to run on several instances. */
 @Component
 @ConditionalOnProperty(name = "ai-assistant.config.scheduler-enabled", havingValue = "true", matchIfMissing = true)
+@Slf4j
 public class ScheduledPublishJob {
-
-    private static final Logger log = LoggerFactory.getLogger(ScheduledPublishJob.class);
 
     private final ConfigCommandService configService;
 

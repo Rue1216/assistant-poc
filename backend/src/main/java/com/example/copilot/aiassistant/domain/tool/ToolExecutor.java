@@ -11,8 +11,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -24,9 +23,9 @@ import tools.jackson.databind.node.StringNode;
  * Runs one accepted tool call on a virtual thread and builds the 03 section 1.5 payload for the model.
  * Redaction covers string values only; map keys are not redacted, so tools must use fixed keys.
  */
+@Slf4j
 public class ToolExecutor {
 
-    private static final Logger log = LoggerFactory.getLogger(ToolExecutor.class);
     private static final String REQUEST_ID_KEY = "requestId";
     private static final int MAX_NAME_LENGTH = 64;
     private static final String UNKNOWN_PURPOSE = "未知工具";

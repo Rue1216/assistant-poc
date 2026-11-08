@@ -22,8 +22,7 @@ import java.util.Collections;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
@@ -31,6 +30,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /** Writes the audit document for one question. Failures never reach the caller (spec 04 section 3.4). */
 @Component
+@Slf4j
 public class AuditLogger {
 
     static final int MAX_QUESTION = 1000;
@@ -44,8 +44,6 @@ public class AuditLogger {
     static final int MAX_UNVERIFIED = 20;
     private static final int MAX_UNVERIFIED_LENGTH = 32;
     private static final JsonMapper JSON = JsonMapper.builder().build();
-
-    private static final Logger log = LoggerFactory.getLogger(AuditLogger.class);
 
     private final AuditRepository repository;
     private final Clock clock;

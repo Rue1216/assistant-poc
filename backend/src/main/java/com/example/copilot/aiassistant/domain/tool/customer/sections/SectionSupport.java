@@ -3,13 +3,11 @@ package com.example.copilot.aiassistant.domain.tool.customer.sections;
 import com.example.copilot.aiassistant.domain.privacy.CustomerContext;
 import com.example.copilot.aiassistant.domain.privacy.PiiRedactor;
 import java.math.BigDecimal;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 /** Helpers shared by the section formatters. Logs carry block and field names only, never values. */
+@Slf4j
 public final class SectionSupport {
-
-    private static final Logger log = LoggerFactory.getLogger(SectionSupport.class);
 
     private static final int MAX_TEXT_CODE_POINTS = 200;
 

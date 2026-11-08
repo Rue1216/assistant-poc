@@ -8,8 +8,7 @@ import com.example.copilot.aiassistant.domain.repository.AssistantConfigReposito
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.annotation.Order;
@@ -20,9 +19,8 @@ import tools.jackson.databind.ObjectMapper;
 /** Imports the initial prompt configs as published v1 when the collection is empty (04 section 2.7). */
 @Component
 @Order(2)
+@Slf4j
 public class SeedLoader implements ApplicationRunner {
-
-    private static final Logger log = LoggerFactory.getLogger(SeedLoader.class);
 
     private final AssistantConfigRepository repository;
     private final Clock clock;

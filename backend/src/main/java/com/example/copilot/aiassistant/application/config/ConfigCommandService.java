@@ -19,8 +19,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /**
@@ -28,9 +27,8 @@ import org.springframework.stereotype.Service;
  * {@code docVersion}; publishing and applying are atomic in the repository. No operation deletes a document.
  */
 @Service
+@Slf4j
 public class ConfigCommandService {
-
-    private static final Logger log = LoggerFactory.getLogger(ConfigCommandService.class);
 
     private static final Set<ConfigStatus> APPLICABLE =
             EnumSet.of(ConfigStatus.PUBLISHED, ConfigStatus.ARCHIVED, ConfigStatus.DISCARDED);

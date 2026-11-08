@@ -22,8 +22,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -35,9 +34,9 @@ import tools.jackson.databind.node.ObjectNode;
  * call. Never throws: any model or parsing failure is reported through {@link Result#failed()}.
  */
 @Component
+@Slf4j
 public class StepArgumentExtractor {
 
-    private static final Logger log = LoggerFactory.getLogger(StepArgumentExtractor.class);
     private static final String SCHEMA_NAME = "step_arguments";
 
     /**

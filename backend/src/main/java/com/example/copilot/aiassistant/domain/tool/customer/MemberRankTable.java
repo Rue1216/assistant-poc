@@ -3,16 +3,14 @@ package com.example.copilot.aiassistant.domain.tool.customer;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Wealth-member rank codes mapped to tiers, thresholds (in yuan) and benefits.
  * 示意，待對照平台權益文案 (benefit texts are illustrative until checked against the platform wording).
  */
+@Slf4j
 public final class MemberRankTable {
-
-    private static final Logger log = LoggerFactory.getLogger(MemberRankTable.class);
 
     public enum Tier {
         NONE("非理財會員", null, null, List.of()),

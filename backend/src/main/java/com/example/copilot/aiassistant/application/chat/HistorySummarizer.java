@@ -26,8 +26,7 @@ import dev.langchain4j.model.output.TokenUsage;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -39,9 +38,9 @@ import tools.jackson.databind.node.ObjectNode;
  * throws: any model or parsing failure becomes {@link SummaryStatus#FAILED}.
  */
 @Component
+@Slf4j
 public class HistorySummarizer {
 
-    private static final Logger log = LoggerFactory.getLogger(HistorySummarizer.class);
     private static final String SCHEMA_NAME = "summary";
     private static final int MAX_MESSAGE_CODE_POINTS = 1000;
     private static final int MAX_INPUT_CODE_POINTS = 6000;
