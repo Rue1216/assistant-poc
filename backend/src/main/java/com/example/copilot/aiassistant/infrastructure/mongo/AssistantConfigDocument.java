@@ -8,10 +8,15 @@ import org.springframework.data.annotation.TypeAlias;
 import org.springframework.data.annotation.Version;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import lombok.Getter;
+import lombok.Setter;
+
 /**
  * Stored form of {@code AssistantConfig}. The type alias pins the {@code _class} value to the pre-refactor class name
  * (the class used to live in the config package), so documents look the same whichever version wrote them.
  */
+@Getter
+@Setter
 @Document("COLL_ICRM_AI_ASSISTANT_CONFIG")
 @TypeAlias("com.example.copilot.aiassistant.config.AssistantConfig")
 public class AssistantConfigDocument {
@@ -33,35 +38,4 @@ public class AssistantConfigDocument {
     private Instant scheduledAt;
     @Version
     private Long docVersion;
-
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
-    public String getConfigKey() { return configKey; }
-    public void setConfigKey(String configKey) { this.configKey = configKey; }
-    public ConfigType getConfigType() { return configType; }
-    public void setConfigType(ConfigType configType) { this.configType = configType; }
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-    public String getContent() { return content; }
-    public void setContent(String content) { this.content = content; }
-    public ConfigStatus getStatus() { return status; }
-    public void setStatus(ConfigStatus status) { this.status = status; }
-    public int getVersion() { return version; }
-    public void setVersion(int version) { this.version = version; }
-    public Integer getBasedOnVersion() { return basedOnVersion; }
-    public void setBasedOnVersion(Integer basedOnVersion) { this.basedOnVersion = basedOnVersion; }
-    public String getChangeNote() { return changeNote; }
-    public void setChangeNote(String changeNote) { this.changeNote = changeNote; }
-    public String getCreatedBy() { return createdBy; }
-    public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
-    public Instant getCreatedAt() { return createdAt; }
-    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
-    public String getUpdatedBy() { return updatedBy; }
-    public void setUpdatedBy(String updatedBy) { this.updatedBy = updatedBy; }
-    public Instant getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
-    public Instant getScheduledAt() { return scheduledAt; }
-    public void setScheduledAt(Instant scheduledAt) { this.scheduledAt = scheduledAt; }
-    public Long getDocVersion() { return docVersion; }
-    public void setDocVersion(Long docVersion) { this.docVersion = docVersion; }
 }
