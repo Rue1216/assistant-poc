@@ -3,6 +3,7 @@ package com.example.copilot.aiassistant.infrastructure.llm;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.copilot.aiassistant.AiAssistantProperties;
+import com.example.copilot.aiassistant.application.llm.LlmErrorMapper;
 import com.example.copilot.aiassistant.domain.answer.AnswerSchema;
 import com.example.copilot.aiassistant.domain.tool.market.GetStockQuoteTool;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -56,7 +57,8 @@ class OpenAiResponseFormatLiveTest {
         String modelName = yaml.getObject().getProperty("ai-assistant.llm.model-name");
         AiAssistantProperties.Llm llm = new AiAssistantProperties.Llm("openai", env.getProperty("OPENAI_API_KEY"),
                 null, modelName, null, "none", null, null, Duration.ofSeconds(30), 1500);
-        model = new LlmConfiguration().chatModel(new AiAssistantProperties(llm, null, null, null, null, null));
+        model = new LlmConfiguration().chatModel(new AiAssistantProperties(llm, null, null, null, null, null),
+                new OutboundLlmLogListener(new LlmErrorMapper(), MAPPER));
     }
 
     @Test

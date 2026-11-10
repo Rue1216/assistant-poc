@@ -3,6 +3,7 @@ package com.example.copilot.aiassistant.infrastructure.llm;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.copilot.aiassistant.AiAssistantProperties;
+import com.example.copilot.aiassistant.application.llm.LlmErrorMapper;
 import com.example.copilot.aiassistant.application.llm.LlmRequestParameters;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.request.ChatRequestParameters;
@@ -10,6 +11,7 @@ import dev.langchain4j.model.chat.request.ResponseFormat;
 import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.json.JsonMapper;
 
 class LlmConfigurationTest {
 
@@ -68,6 +70,13 @@ class LlmConfigurationTest {
         assertThat(merged.responseFormat()).isEqualTo(ResponseFormat.JSON);
     }
 
+    @Test
+    void registersTheOutboundLogListener() {
+        OutboundLlmLogListener listener = listener();
+        ChatModel model = new LlmConfiguration().chatModel(props(null, null, null), listener);
+        assertThat(model.listeners()).containsExactly(listener);
+    }
+
     private static OpenAiChatRequestParameters parameters(ChatModel model) {
         return (OpenAiChatRequestParameters) model.defaultRequestParameters();
     }
@@ -77,8 +86,16 @@ class LlmConfigurationTest {
     }
 
     private static ChatModel model(Double temperature, String reasoningEffort, String baseUrl) {
+        return new LlmConfiguration().chatModel(props(temperature, reasoningEffort, baseUrl), listener());
+    }
+
+    private static AiAssistantProperties props(Double temperature, String reasoningEffort, String baseUrl) {
         AiAssistantProperties.Llm llm = new AiAssistantProperties.Llm("openai", "test-key", baseUrl, "test-model",
                 temperature, reasoningEffort, null, null, Duration.ofSeconds(30), 1500);
-        return new LlmConfiguration().chatModel(new AiAssistantProperties(llm, null, null, null, null, null));
+        return new AiAssistantProperties(llm, null, null, null, null, null);
+    }
+
+    private static OutboundLlmLogListener listener() {
+        return new OutboundLlmLogListener(new LlmErrorMapper(), JsonMapper.builder().build());
     }
 }

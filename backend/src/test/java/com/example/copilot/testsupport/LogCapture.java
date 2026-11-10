@@ -19,8 +19,8 @@ public final class LogCapture implements AutoCloseable {
     private final Level oldLevel;
     private final ListAppender appender = new ListAppender();
 
-    private LogCapture(Class<?> type, Level level) {
-        logger = (Logger) LogManager.getLogger(type);
+    private LogCapture(String loggerName, Level level) {
+        logger = (Logger) LogManager.getLogger(loggerName);
         oldLevel = logger.getLevel();
         appender.start();
         logger.addAppender(appender);
@@ -31,11 +31,19 @@ public final class LogCapture implements AutoCloseable {
     }
 
     public static LogCapture of(Class<?> type) {
-        return new LogCapture(type, null);
+        return new LogCapture(type.getName(), null);
     }
 
     public static LogCapture of(Class<?> type, Level level) {
-        return new LogCapture(type, level);
+        return new LogCapture(type.getName(), level);
+    }
+
+    public static LogCapture of(String loggerName) {
+        return new LogCapture(loggerName, null);
+    }
+
+    public static LogCapture of(String loggerName, Level level) {
+        return new LogCapture(loggerName, level);
     }
 
     public List<LogEvent> events() {

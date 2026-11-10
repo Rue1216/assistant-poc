@@ -4,6 +4,7 @@ import com.example.copilot.aiassistant.AiAssistantProperties;
 import dev.langchain4j.model.chat.Capability;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
+import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -12,7 +13,7 @@ import org.springframework.context.annotation.Configuration;
 public class LlmConfiguration {
 
     @Bean
-    ChatModel chatModel(AiAssistantProperties props) {
+    ChatModel chatModel(AiAssistantProperties props, OutboundLlmLogListener listener) {
         AiAssistantProperties.Llm llm = props.llm();
         return OpenAiChatModel.builder()
                 .baseUrl(blankToNull(llm.baseUrl())) // null: the public OpenAI endpoint
@@ -27,6 +28,7 @@ public class LlmConfiguration {
                 .maxRetries(0) // timeouts and rate limits are reported to the user, not retried here
                 .logRequests(false) // request/response bodies hold prompts and tool results
                 .logResponses(false)
+                .listeners(List.of(listener)) // one Outbound log line per model call
                 .build();
     }
 
