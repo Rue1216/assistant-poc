@@ -169,7 +169,7 @@ public class EvalRunner {
         if (customer.isEmpty()) {
             report = EvaluationReport.failed(CUSTOMER_NOT_FOUND);
         } else {
-            // The turn and its judgement run under a request id derived from the run, so their log lines can be
+            // The turn and its judgement run under a trace id derived from the run, so their log lines can be
             // tied back to it.
             String previous = MDC.get(RequestContext.MDC_KEY);
             MDC.put(RequestContext.MDC_KEY, "e" + run.id().substring(run.id().length() - 7));

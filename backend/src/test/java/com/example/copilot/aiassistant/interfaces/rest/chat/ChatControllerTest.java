@@ -17,6 +17,7 @@ import com.example.copilot.IntegrationTestBase;
 import com.example.copilot.TestCustomers;
 import com.example.copilot.TestUsers;
 import com.example.copilot.aiassistant.application.chat.ScriptedChatModel;
+import com.jayway.jsonpath.JsonPath;
 import dev.langchain4j.exception.InternalServerException;
 import dev.langchain4j.model.chat.ChatRequestOptions;
 import dev.langchain4j.model.chat.request.ChatRequest;
@@ -24,6 +25,7 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
@@ -49,7 +51,7 @@ class ChatControllerTest extends IntegrationTestBase {
     void returnsAnswerForAccessibleCustomer() throws Exception {
         chat(TestCustomers.RETIREE, TestUsers.as("ICRM00028"), body("幫我整理這位顧客的概況"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.requestId").isNotEmpty())
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
                 .andExpect(jsonPath("$.answer").value("本顧客概況如下"))
                 .andExpect(jsonPath("$.queriedAt").value(endsWith("+08:00")))
                 .andExpect(jsonPath("$.blocks.length()").value(1))
@@ -58,9 +60,28 @@ class ChatControllerTest extends IntegrationTestBase {
                 .andExpect(jsonPath("$.citations.length()").value(0))
                 .andExpect(jsonPath("$.toolCalls.length()").value(0))
                 .andExpect(jsonPath("$.keys()").value(org.hamcrest.Matchers.containsInAnyOrder(
-                        "requestId", "blocks", "answer", "citations", "queriedAt", "disclaimer", "toolCalls",
+                        "traceId", "blocks", "answer", "citations", "queriedAt", "disclaimer", "toolCalls",
                         "historySummary")))
                 .andExpect(jsonPath("$.historySummary").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
+    void traceIdInBodyEqualsTheResponseHeader() throws Exception {
+        MvcResult r = chat(TestCustomers.RETIREE, TestUsers.as("ICRM00028"), body("幫我整理這位顧客的概況"))
+                .andExpect(status().isOk()).andReturn();
+        String header = r.getResponse().getHeader("X-Trace-Id");
+        assertThat(header).matches("[0-9a-f]{32}");
+        assertThat(JsonPath.<String>read(r.getResponse().getContentAsString(), "$.traceId")).isEqualTo(header);
+        assertThat(r.getResponse().getHeader("X-Request-Id")).isNull();
+    }
+
+    @Test
+    void malformedInboundTraceIdStillAnswersAndIsEchoed() throws Exception {
+        mockMvc.perform(post(URL, TestCustomers.RETIREE).with(TestUsers.as("ICRM00028")).with(csrf())
+                        .header("X-B3-TraceId", "ABC-not-hex")
+                        .contentType(MediaType.APPLICATION_JSON).content(body("幫我整理這位顧客的概況")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.traceId").value("ABC-not-hex"));
     }
 
     @Test
@@ -127,18 +148,18 @@ class ChatControllerTest extends IntegrationTestBase {
     }
 
     @Test
-    void unknownCustomerIs404WithSameBodyApartFromRequestId() throws Exception {
+    void unknownCustomerIs404WithSameBodyApartFromTraceId() throws Exception {
         String inaccessible = chat(TestCustomers.COMPLAINT, TestUsers.as("ICRM00040"), body("hi"))
                 .andExpect(status().isNotFound())
                 .andReturn().getResponse().getContentAsString();
         String unknown = chat(TestCustomers.UNKNOWN, TestUsers.as("ICRM00040"), body("hi"))
                 .andExpect(status().isNotFound())
                 .andReturn().getResponse().getContentAsString();
-        assertThat(withoutRequestId(unknown)).isEqualTo(withoutRequestId(inaccessible));
+        assertThat(withoutTraceId(unknown)).isEqualTo(withoutTraceId(inaccessible));
     }
 
-    private static String withoutRequestId(String json) {
-        return json.replaceAll("\"requestId\":\"[^\"]*\"", "\"requestId\":\"\"");
+    private static String withoutTraceId(String json) {
+        return json.replaceAll("\"traceId\":\"[^\"]*\"", "\"traceId\":\"\"");
     }
 
     @Test

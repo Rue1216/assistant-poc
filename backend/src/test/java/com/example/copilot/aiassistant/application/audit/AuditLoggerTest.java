@@ -42,7 +42,7 @@ import org.springframework.data.mongodb.core.query.Query;
 class AuditLoggerTest extends IntegrationTestBase {
 
     private static final String COLL = "COLL_ICRM_AI_ASSISTANT_AUDIT";
-    private static final Set<String> DOC_KEYS = Set.of("_id", "requestId", "userId", "roleKey",
+    private static final Set<String> DOC_KEYS = Set.of("_id", "traceId", "userId", "roleKey",
             "accessLevel", "question", "answer", "answerTruncated", "outcome", "errorCode", "toolCalls",
             "durationMs", "createdAt", "unverifiedNumbers", "modelCalls", "inputTokens", "outputTokens",
             "totalTokens", "promptVersions", "routeSource", "instructionKey", "summaryIn", "summaryStatus",
@@ -82,18 +82,32 @@ class AuditLoggerTest extends IntegrationTestBase {
         return new ToolOutcome("getStockQuote", "PURPOSE-TEXT", result, PAYLOAD, 7, "S1");
     }
 
-    private AuditEntry citedEntry(String requestId, boolean truncated, String answer, List<String> unverified) {
-        return new AuditEntry(requestId, USER, CUSTOMER, "q", answer, truncated, "ANSWERED", null,
+    private AuditEntry citedEntry(String traceId, boolean truncated, String answer, List<String> unverified) {
+        return new AuditEntry(traceId, USER, CUSTOMER, "q", answer, truncated, "ANSWERED", null,
                 List.of(citedTool()), java.util.Map.of("S1", 1), unverified, 10, 1, 0, 0, 0, List.of(), null, null, false, null, 0, 0, null);
     }
 
-    private AuditEntry entry(String requestId, String question, String answer, List<ToolOutcome> tools) {
-        return new AuditEntry(requestId, USER, CUSTOMER, question, answer, false, "ANSWERED", null, tools,
+    private AuditEntry entry(String traceId, String question, String answer, List<ToolOutcome> tools) {
+        return new AuditEntry(traceId, USER, CUSTOMER, question, answer, false, "ANSWERED", null, tools,
                 java.util.Map.of(), List.of(), 2840, 1, 0, 0, 0, List.of(), null, null, false, null, 0, 0, null);
     }
 
-    private Document find(String requestId) {
-        return mongo.getCollection(COLL).find(new Document("requestId", requestId)).first();
+    private Document find(String traceId) {
+        return mongo.getCollection(COLL).find(new Document("traceId", traceId)).first();
+    }
+
+    @Test
+    void documentHasTraceIdAndNoRequestId() {
+        auditLogger.record(entry("0af7651916cd43dd8448eb211c80319c", "q", "a", List.of()));
+        Document doc = find("0af7651916cd43dd8448eb211c80319c");
+        assertThat(doc.getString("traceId")).isEqualTo("0af7651916cd43dd8448eb211c80319c");
+        assertThat(doc.containsKey("requestId")).isFalse();
+    }
+
+    @Test
+    void overlongTraceIdIsClippedTo64AndStillWritten() {
+        auditLogger.record(entry("t".repeat(200), "q", "a", List.of()));
+        assertThat(find("t".repeat(64))).isNotNull();
     }
 
     @Test
@@ -102,7 +116,7 @@ class AuditLoggerTest extends IntegrationTestBase {
                 List.of(tool("getCustomerNotes", ToolStatus.SUCCESS, null, 12),
                         tool("getCustomerCampaigns", ToolStatus.ERROR, "AI_TOOL_ERROR", 9))));
 
-        assertThat(mongo.count(new Query(Criteria.where("requestId").is("req-write-1")), COLL)).isEqualTo(1);
+        assertThat(mongo.count(new Query(Criteria.where("traceId").is("req-write-1")), COLL)).isEqualTo(1);
         Document doc = find("req-write-1");
         assertThat(doc.getString("userId")).isEqualTo("ICRM00028");
         assertThat(doc.getString("roleKey")).isEqualTo("RM");
@@ -293,7 +307,7 @@ class AuditLoggerTest extends IntegrationTestBase {
         ToolOutcome t = tool("n".repeat(100), ToolStatus.ERROR, "E".repeat(100), 1);
         auditLogger.record(new AuditEntry("r".repeat(100), USER, CUSTOMER, null, "a", false, "FAILED",
                 "X".repeat(100), List.of(t), java.util.Map.of(), List.of(), 5, 1, 0, 0, 0, List.of(), null, null, false, null, 0, 0, null));
-        Document doc = mongo.getCollection(COLL).find(new Document("requestId", "r".repeat(64))).first();
+        Document doc = mongo.getCollection(COLL).find(new Document("traceId", "r".repeat(64))).first();
         assertThat(doc).isNotNull();
         assertThat(doc.getString("question")).isEmpty();
         Document call = doc.getList("toolCalls", Document.class).get(0);
@@ -378,13 +392,13 @@ class AuditLoggerTest extends IntegrationTestBase {
         assertThat(unknown.get("modelName")).isNull();
     }
 
-    private AuditEntry modelEntry(String requestId, String modelName) {
-        return new AuditEntry(requestId, USER, CUSTOMER, "q", "a", false, "ANSWERED", null, List.of(),
+    private AuditEntry modelEntry(String traceId, String modelName) {
+        return new AuditEntry(traceId, USER, CUSTOMER, "q", "a", false, "ANSWERED", null, List.of(),
                 java.util.Map.of(), List.of(), 10, 1, 0, 0, 0, List.of(), null, null, false, null, 0, 0, modelName);
     }
 
-    private AuditEntry versionedEntry(String requestId, List<PromptVersion> versions) {
-        return new AuditEntry(requestId, USER, CUSTOMER, "q", "a", false, "ANSWERED", null, List.of(),
+    private AuditEntry versionedEntry(String traceId, List<PromptVersion> versions) {
+        return new AuditEntry(traceId, USER, CUSTOMER, "q", "a", false, "ANSWERED", null, List.of(),
                 java.util.Map.of(), List.of(), 10, 2, 6500, 350, 6850, versions, null, null, false, null, 0, 0, null);
     }
 

@@ -33,12 +33,12 @@ public class FeedbackController {
         this.currentUser = currentUser;
     }
 
-    @PutMapping("/api/ai-assistant/chat/{requestId}/feedback")
+    @PutMapping("/api/ai-assistant/chat/{traceId}/feedback")
     @PreAuthorize("hasAuthority('AI_ASSISTANT_USE')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void rate(@PathVariable @Pattern(regexp = "^[0-9a-f]{8}$") String requestId,
+    public void rate(@PathVariable @Pattern(regexp = "^[0-9a-f]{16,32}$") String traceId,
             @Valid @RequestBody FeedbackRequest body) {
-        service.rate(requestId, currentUser.currentUser().userId(), body.rating());
+        service.rate(traceId, currentUser.currentUser().userId(), body.rating());
     }
 
     @GetMapping("/api/ai-assistant/admin/configs/{configKey}/feedback-stats")

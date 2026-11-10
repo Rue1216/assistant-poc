@@ -8,7 +8,7 @@ import java.util.List;
  * The answer and its metadata (02 section 2.1 response, answer-citations spec 3.1). Holds no tool arguments or
  * results; citation texts are already redacted.
  */
-public record ChatResult(String requestId, List<AnswerBlock> blocks, String answer, List<CitationView> citations,
+public record ChatResult(String traceId, List<AnswerBlock> blocks, String answer, List<CitationView> citations,
                          Instant queriedAt, String disclaimer, List<ToolCallSummary> toolCalls,
                          HistorySummary historySummary) {
 

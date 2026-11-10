@@ -27,8 +27,8 @@ class FeedbackStatsQueryRepositoryImplTest extends IntegrationTestBase {
         mongo.remove(new Query(Criteria.where("question").is(MARKER)), AuditRecord.COLLECTION);
     }
 
-    private void insert(String requestId, String routeSource, String feedback) {
-        Document d = new Document("requestId", requestId).append("userId", "u").append("roleKey", "r")
+    private void insert(String traceId, String routeSource, String feedback) {
+        Document d = new Document("traceId", traceId).append("userId", "u").append("roleKey", "r")
                 .append("accessLevel", "FULL").append("question", MARKER).append("outcome", "ANSWERED")
                 .append("toolCalls", List.of()).append("durationMs", 5).append("createdAt", new Date())
                 .append("promptVersions", List.of(new Document("configKey", KEY).append("version", 7)))

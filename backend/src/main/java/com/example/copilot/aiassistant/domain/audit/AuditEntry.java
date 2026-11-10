@@ -17,7 +17,7 @@ import java.util.Map;
  * {@code modelName} is the model the provider reported for the last answer round, or the configured model name
  * when no answer round reported one.
  */
-public record AuditEntry(String requestId, UserContext user, CustomerContext customer, String redactedQuestion,
+public record AuditEntry(String traceId, UserContext user, CustomerContext customer, String redactedQuestion,
                          String answer, boolean answerTruncated, String outcome, String errorCode,
                          List<ToolOutcome> toolCalls, Map<String, Integer> citationNumbers,
                          List<String> unverifiedNumbers, long durationMs, int modelCalls,

@@ -48,7 +48,7 @@ class ChatCitationFlowTest extends IntegrationTestBase {
         String body = mockMvc.perform(post(URL, TestCustomers.RETIREE).with(TestUsers.as("ICRM00028")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"message\":\"顧客概況？\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.keys()").value(containsInAnyOrder("requestId", "blocks", "answer",
+                .andExpect(jsonPath("$.keys()").value(containsInAnyOrder("traceId", "blocks", "answer",
                         "citations", "queriedAt", "disclaimer", "toolCalls", "historySummary")))
                 .andExpect(jsonPath("$.blocks[0].type").value("paragraph"))
                 .andExpect(jsonPath("$.blocks[0].text").value("本顧客屬退休客群"))
@@ -64,8 +64,8 @@ class ChatCitationFlowTest extends IntegrationTestBase {
                 .andExpect(jsonPath("$.citations[0].cited").value(true))
                 .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
 
-        String requestId = JsonPath.read(body, "$.requestId");
-        Document audit = mongo.getCollection(AUDIT).find(new Document("requestId", requestId)).first();
+        String traceId = JsonPath.read(body, "$.traceId");
+        Document audit = mongo.getCollection(AUDIT).find(new Document("traceId", traceId)).first();
         assertThat(audit).isNotNull();
         assertThat(audit.getString("answer")).contains(" [1]");
         Document call = audit.getList("toolCalls", Document.class).get(0);

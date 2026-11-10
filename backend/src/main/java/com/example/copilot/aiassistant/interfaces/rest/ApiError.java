@@ -5,7 +5,7 @@ import com.example.copilot.aiassistant.domain.exception.ErrorCode;
 import com.example.copilot.aiassistant.domain.exception.ErrorDetail;
 import java.util.List;
 
-public record ApiError(String code, String message, String requestId, List<Object> details) {
+public record ApiError(String code, String message, String traceId, List<Object> details) {
 
     public static ApiError of(ErrorCode code, List<? extends ErrorDetail> details) {
         List<Object> wire = details.stream().map(ErrorDetailJson::of).toList();

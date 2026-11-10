@@ -19,6 +19,8 @@ import org.apache.logging.log4j.Level;
 import org.bson.Document;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -43,8 +45,13 @@ class FeedbackControllerTest extends IntegrationTestBase {
         mongo.remove(new Query(Criteria.where("question").is(MARKER)), AuditRecord.COLLECTION);
     }
 
-    private Document audit(String requestId, String userId, String outcome, Date createdAt) {
-        return new Document("requestId", requestId).append("userId", userId).append("roleKey", "r")
+    /** A 32-character answer trace id built from a short readable prefix. */
+    private static String id(String s) {
+        return s + "0".repeat(24);
+    }
+
+    private Document audit(String traceId, String userId, String outcome, Date createdAt) {
+        return new Document("traceId", traceId).append("userId", userId).append("roleKey", "r")
                 .append("accessLevel", "FULL").append("question", MARKER)
                 .append("outcome", outcome).append("toolCalls", List.of()).append("durationMs", 5)
                 .append("createdAt", createdAt);
@@ -59,8 +66,8 @@ class FeedbackControllerTest extends IntegrationTestBase {
         mongo.getCollection(AuditRecord.COLLECTION).insertOne(d);
     }
 
-    private List<Document> find(String requestId) {
-        return mongo.getCollection(AuditRecord.COLLECTION).find(new Document("requestId", requestId))
+    private List<Document> find(String traceId) {
+        return mongo.getCollection(AuditRecord.COLLECTION).find(new Document("traceId", traceId))
                 .sort(new Document("createdAt", 1)).into(new ArrayList<>());
     }
 
@@ -71,94 +78,110 @@ class FeedbackControllerTest extends IntegrationTestBase {
 
     @Test
     void ratesOwnAnswer() throws Exception {
-        insert(audit("a1b2c3d4", "ICRM00028", "ANSWERED", new Date()));
-        rate("a1b2c3d4", TestUsers.as("ICRM00028"), "{\"rating\":\"UP\"}").andExpect(status().isNoContent());
-        Document d = find("a1b2c3d4").get(0);
+        insert(audit(id("a1b2c3d4"), "ICRM00028", "ANSWERED", new Date()));
+        rate(id("a1b2c3d4"), TestUsers.as("ICRM00028"), "{\"rating\":\"UP\"}").andExpect(status().isNoContent());
+        Document d = find(id("a1b2c3d4")).get(0);
         assertThat(d.getString("feedback")).isEqualTo("UP");
         assertThat(d.get("feedbackAt")).isNotNull();
     }
 
     @Test
     void switchAndCancel() throws Exception {
-        insert(audit("a1b2c3d5", "ICRM00028", "ANSWERED", new Date()));
-        rate("a1b2c3d5", TestUsers.as("ICRM00028"), "{\"rating\":\"UP\"}").andExpect(status().isNoContent());
-        rate("a1b2c3d5", TestUsers.as("ICRM00028"), "{\"rating\":\"DOWN\"}").andExpect(status().isNoContent());
-        assertThat(find("a1b2c3d5").get(0).getString("feedback")).isEqualTo("DOWN");
-        rate("a1b2c3d5", TestUsers.as("ICRM00028"), "{\"rating\":null}").andExpect(status().isNoContent());
-        assertThat(find("a1b2c3d5").get(0).getString("feedback")).isNull();
+        insert(audit(id("a1b2c3d5"), "ICRM00028", "ANSWERED", new Date()));
+        rate(id("a1b2c3d5"), TestUsers.as("ICRM00028"), "{\"rating\":\"UP\"}").andExpect(status().isNoContent());
+        rate(id("a1b2c3d5"), TestUsers.as("ICRM00028"), "{\"rating\":\"DOWN\"}").andExpect(status().isNoContent());
+        assertThat(find(id("a1b2c3d5")).get(0).getString("feedback")).isEqualTo("DOWN");
+        rate(id("a1b2c3d5"), TestUsers.as("ICRM00028"), "{\"rating\":null}").andExpect(status().isNoContent());
+        assertThat(find(id("a1b2c3d5")).get(0).getString("feedback")).isNull();
     }
 
     @Test
     void eachChangeIsLoggedWithTheAnsweredTraceId() throws Exception {
-        insert(audit("a1b2c3e1", "ICRM00028", "ANSWERED", new Date()));
+        insert(audit(id("a1b2c3e1"), "ICRM00028", "ANSWERED", new Date()));
         try (LogCapture capture = LogCapture.of(FeedbackService.class, Level.INFO)) {
-            String httpTraceId = rate("a1b2c3e1", TestUsers.as("ICRM00028"), "{\"rating\":\"UP\"}")
+            String httpTraceId = rate(id("a1b2c3e1"), TestUsers.as("ICRM00028"), "{\"rating\":\"UP\"}")
                     .andReturn().getResponse().getHeader("X-Trace-Id");
-            rate("a1b2c3e1", TestUsers.as("ICRM00028"), "{\"rating\":null}");
+            rate(id("a1b2c3e1"), TestUsers.as("ICRM00028"), "{\"rating\":null}");
 
             assertThat(capture.events()).hasSize(2).allMatch(e -> e.getLevel() == Level.INFO);
             assertThat(LogCapture.render(capture.events().get(0))).isEqualTo("feedback set traceId=" + httpTraceId
-                    + " answerTraceId=a1b2c3e1 userId=ICRM00028 rating=UP");
+                    + " answerTraceId=" + id("a1b2c3e1") + " userId=ICRM00028 rating=UP");
             assertThat(LogCapture.render(capture.events().get(1)))
-                    .endsWith(" answerTraceId=a1b2c3e1 userId=ICRM00028 rating=NONE");
+                    .endsWith(" answerTraceId=" + id("a1b2c3e1") + " userId=ICRM00028 rating=NONE");
         }
     }
 
     @Test
     void rejectedRatingIsNotLoggedAsAChange() throws Exception {
         try (LogCapture capture = LogCapture.of(FeedbackService.class, Level.INFO)) {
-            rate("a1b2c3e2", TestUsers.as("ICRM00028"), "{\"rating\":\"UP\"}").andExpect(status().isNotFound());
+            rate(id("a1b2c3e2"), TestUsers.as("ICRM00028"), "{\"rating\":\"UP\"}").andExpect(status().isNotFound());
             assertThat(capture.events()).isEmpty();
         }
     }
 
     @Test
     void othersAnswerFailedAndUnknownAreSame404() throws Exception {
-        insert(audit("a1b2c3d6", "ICRM00040", "ANSWERED", new Date()));
-        insert(audit("a1b2c3d7", "ICRM00028", "FAILED", new Date()));
-        for (String id : List.of("a1b2c3d6", "a1b2c3d7", "a1b2c3d8")) {
+        insert(audit(id("a1b2c3d6"), "ICRM00040", "ANSWERED", new Date()));
+        insert(audit(id("a1b2c3d7"), "ICRM00028", "FAILED", new Date()));
+        for (String id : List.of(id("a1b2c3d6"), id("a1b2c3d7"), id("a1b2c3d8"))) {
             rate(id, TestUsers.as("ICRM00028"), "{\"rating\":\"UP\"}")
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.code").value("AI_FEEDBACK_NOT_FOUND"))
                     .andExpect(jsonPath("$.message").value("這則回答已無法評分"));
         }
-        assertThat(find("a1b2c3d6").get(0).get("feedback")).isNull();
+        assertThat(find(id("a1b2c3d6")).get(0).get("feedback")).isNull();
     }
 
     @Test
     void newestOfDuplicatesIsUpdated() throws Exception {
-        insert(audit("a1b2c3d9", "ICRM00028", "ANSWERED", new Date(1_000_000L)));
-        insert(audit("a1b2c3d9", "ICRM00028", "ANSWERED", new Date(2_000_000L)));
-        rate("a1b2c3d9", TestUsers.as("ICRM00028"), "{\"rating\":\"DOWN\"}").andExpect(status().isNoContent());
-        List<Document> docs = find("a1b2c3d9");
+        insert(audit(id("a1b2c3d9"), "ICRM00028", "ANSWERED", new Date(1_000_000L)));
+        insert(audit(id("a1b2c3d9"), "ICRM00028", "ANSWERED", new Date(2_000_000L)));
+        rate(id("a1b2c3d9"), TestUsers.as("ICRM00028"), "{\"rating\":\"DOWN\"}").andExpect(status().isNoContent());
+        List<Document> docs = find(id("a1b2c3d9"));
         assertThat(docs.get(0).get("feedback")).isNull();
         assertThat(docs.get(1).getString("feedback")).isEqualTo("DOWN");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"463ac35c9f6413ad", "463ac35c9f6413ad48485a3953bb6124"})
+    void acceptsSixteenAndThirtyTwoHex(String traceId) throws Exception {
+        insert(audit(traceId, "ICRM00028", "ANSWERED", new Date()));
+        rate(traceId, TestUsers.as("ICRM00028"), "{\"rating\":\"UP\"}").andExpect(status().isNoContent());
+        assertThat(find(traceId).get(0).getString("feedback")).isEqualTo("UP");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"a1b2c3d4", "463ac35c9f6413ad48485a3953bb61240", "463AC35C9F6413AD",
+            "463ac35c9f6413ag", "ABC-not-hex"})
+    void rejectsAnyOtherFormat(String traceId) throws Exception {
+        rate(traceId, TestUsers.as("ICRM00028"), "{\"rating\":\"UP\"}")
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("AI_INPUT_INVALID"));
     }
 
     @Test
     void invalidInputIs400() throws Exception {
         rate("XYZ", TestUsers.as("ICRM00028"), "{\"rating\":\"UP\"}")
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("AI_INPUT_INVALID"));
-        rate("a1b2c3da", TestUsers.as("ICRM00028"), "{\"rating\":\"MAYBE\"}")
+        rate(id("a1b2c3da"), TestUsers.as("ICRM00028"), "{\"rating\":\"MAYBE\"}")
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("AI_INPUT_INVALID"));
     }
 
     @Test
     void legacyAuditWithoutNewFieldsCanBeRated() throws Exception {
-        insert(audit("a1b2c3db", "ICRM00028", "ANSWERED", new Date()));
-        assertThat(find("a1b2c3db").get(0).containsKey("feedback")).isFalse();
-        rate("a1b2c3db", TestUsers.as("ICRM00028"), "{\"rating\":\"UP\"}").andExpect(status().isNoContent());
-        assertThat(find("a1b2c3db").get(0).getString("feedback")).isEqualTo("UP");
+        insert(audit(id("a1b2c3db"), "ICRM00028", "ANSWERED", new Date()));
+        assertThat(find(id("a1b2c3db")).get(0).containsKey("feedback")).isFalse();
+        rate(id("a1b2c3db"), TestUsers.as("ICRM00028"), "{\"rating\":\"UP\"}").andExpect(status().isNoContent());
+        assertThat(find(id("a1b2c3db")).get(0).getString("feedback")).isEqualTo("UP");
     }
 
     @Test
     void statsPerVersion() throws Exception {
-        insert(withVersion(audit("b0000001", "fb-user", "ANSWERED", new Date()), KEY, 2, "UP"));
-        insert(withVersion(audit("b0000002", "fb-user", "ANSWERED", new Date()), KEY, 2, "UP"));
-        insert(withVersion(audit("b0000003", "fb-user", "ANSWERED", new Date()), KEY, 2, "DOWN"));
-        insert(withVersion(audit("b0000004", "fb-user", "ANSWERED", new Date()), KEY, 3, "UP"));
-        insert(withVersion(audit("b0000005", "fb-user", "ANSWERED", new Date()), KEY, 3, null));
-        insert(withVersion(audit("b0000006", "fb-user", "ANSWERED", new Date()), OTHER_KEY, 2, "UP"));
+        insert(withVersion(audit(id("b0000001"), "fb-user", "ANSWERED", new Date()), KEY, 2, "UP"));
+        insert(withVersion(audit(id("b0000002"), "fb-user", "ANSWERED", new Date()), KEY, 2, "UP"));
+        insert(withVersion(audit(id("b0000003"), "fb-user", "ANSWERED", new Date()), KEY, 2, "DOWN"));
+        insert(withVersion(audit(id("b0000004"), "fb-user", "ANSWERED", new Date()), KEY, 3, "UP"));
+        insert(withVersion(audit(id("b0000005"), "fb-user", "ANSWERED", new Date()), KEY, 3, null));
+        insert(withVersion(audit(id("b0000006"), "fb-user", "ANSWERED", new Date()), OTHER_KEY, 2, "UP"));
         mockMvc.perform(get(STATS_URL, KEY).with(TestUsers.as("EEE22222")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))

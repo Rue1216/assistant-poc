@@ -1,9 +1,9 @@
 {
   "$jsonSchema": {
     "bsonType": "object",
-    "required": ["requestId", "userId", "roleKey", "accessLevel", "question", "outcome", "toolCalls", "durationMs", "createdAt"],
+    "required": ["traceId", "userId", "roleKey", "accessLevel", "question", "outcome", "toolCalls", "durationMs", "createdAt"],
     "properties": {
-      "requestId":       { "bsonType": "string", "maxLength": 64 },
+      "traceId":       { "bsonType": "string", "maxLength": 64 },
       "userId":          { "bsonType": "string", "maxLength": 64 },
       "roleKey":         { "bsonType": "string", "maxLength": 32 },
       "accessLevel":     { "enum": ["FULL", "LIMITED"] },

@@ -9,7 +9,7 @@ import java.util.Map;
  * One audit document per question (spec 04 section 3.1). Tool arguments are never stored; a tool result only
  * when {@code ai-assistant.audit.store-tool-results} is on.
  */
-public record AuditRecord(String id, String requestId, String userId, String roleKey,
+public record AuditRecord(String id, String traceId, String userId, String roleKey,
                           String accessLevel, String question, String answer, boolean answerTruncated,
                           String outcome, String errorCode, List<ToolCall> toolCalls, int durationMs,
                           Instant createdAt, List<String> unverifiedNumbers, int modelCalls,

@@ -51,7 +51,7 @@ public class SecurityConfig {
         return http.build();
     }
 
-    /** 401 JSON body is an ApiError(AI_UNAUTHENTICATED), carrying the request id. */
+    /** 401 JSON body is an ApiError(AI_UNAUTHENTICATED), carrying the trace id. */
     @Bean
     AuthenticationEntryPoint apiAuthenticationEntryPoint(JsonMapper mapper) {
         return (request, response, e) -> {

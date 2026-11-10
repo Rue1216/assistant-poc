@@ -381,7 +381,7 @@ class EvalRunnerTest extends EvalRunnerTestBase {
     }
 
     @Test
-    void logsCountersOnlyAndSetsRequestId() {
+    void logsCountersOnlyAndSetsTraceId() {
         AtomicReference<String> during = new AtomicReference<>();
         AtomicReference<String> duringJudge = new AtomicReference<>();
         scripted.reply(request -> {
@@ -410,7 +410,7 @@ class EvalRunnerTest extends EvalRunnerTestBase {
         }
 
         assertThat(during.get()).isEqualTo("e" + run.id().substring(run.id().length() - 7));
-        // The judge call runs under the same request id, so its failure lines can be tied to the run.
+        // The judge call runs under the same trace id, so its failure lines can be tied to the run.
         assertThat(duringJudge.get()).isEqualTo(during.get());
         List<String> lines = events.stream().map(LogCapture::render).toList();
         assertThat(lines.stream().filter(l -> l.startsWith("eval case done"))).hasSize(6);

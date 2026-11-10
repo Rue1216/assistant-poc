@@ -14,6 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.example.copilot.IntegrationTestBase;
+import com.jayway.jsonpath.JsonPath;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -39,7 +40,7 @@ class AssistantExceptionHandlerTest extends IntegrationTestBase {
         assertThat(headerId).matches("[0-9a-f]{32}");
         assertThat(result.getResponse().getHeader("X-Request-Id")).isNull();
         assertThat(result.getResponse().getContentAsString(StandardCharsets.UTF_8))
-                .contains("\"requestId\":\"" + headerId + "\"");
+                .contains("\"traceId\":\"" + headerId + "\"");
     }
 
     @Test
@@ -129,5 +130,16 @@ class AssistantExceptionHandlerTest extends IntegrationTestBase {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AI_UNAUTHENTICATED"))
                 .andExpect(header().exists("X-Trace-Id"));
+    }
+
+    @Test
+    void unauthenticatedBodyCarriesTheHeaderTraceId() throws Exception {
+        MvcResult r = mockMvc.perform(post("/test-support/conflict").with(csrf()))
+                .andExpect(status().isUnauthorized())
+                .andReturn();
+        String headerId = r.getResponse().getHeader("X-Trace-Id");
+        assertThat(headerId).matches("[0-9a-f]{32}");
+        assertThat(JsonPath.<String>read(r.getResponse().getContentAsString(StandardCharsets.UTF_8), "$.traceId"))
+                .isEqualTo(headerId);
     }
 }

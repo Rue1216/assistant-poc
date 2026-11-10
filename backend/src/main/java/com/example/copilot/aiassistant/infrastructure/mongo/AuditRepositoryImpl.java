@@ -29,8 +29,8 @@ public class AuditRepositoryImpl implements AuditRepository {
     }
 
     @Override
-    public boolean setFeedback(String requestId, String userId, FeedbackRating rating, Instant at) {
-        Query query = new Query(Criteria.where("requestId").is(requestId).and("userId").is(userId)
+    public boolean setFeedback(String traceId, String userId, FeedbackRating rating, Instant at) {
+        Query query = new Query(Criteria.where("traceId").is(traceId).and("userId").is(userId)
                 .and("outcome").is("ANSWERED")).with(Sort.by(Sort.Direction.DESC, "createdAt"));
         Update update = new Update().set("feedback", rating == null ? null : rating.name())
                 .set("feedbackAt", Date.from(at));

@@ -83,7 +83,7 @@ public class AuditLogger {
             repository.insert(toRecord(entry));
         } catch (Exception e) {
             // Class name only: messages and the entry may contain question/answer text.
-            log.error("Audit write failed traceId={} error={}", entry == null ? null : entry.requestId(),
+            log.error("Audit write failed traceId={} error={}", entry == null ? null : entry.traceId(),
                     e.getClass().getName());
         }
     }
@@ -96,7 +96,7 @@ public class AuditLogger {
         Map<String, Integer> numbers = e.citationNumbers() == null ? Map.of() : e.citationNumbers();
         List<ToolOutcome> tools = e.toolCalls() == null ? List.of() : e.toolCalls();
         List<AuditRecord.ToolCall> calls = tools.stream().limit(MAX_TOOL_CALLS).map(o -> toCall(o, numbers, e.customer())).toList();
-        return new AuditRecord(null, clip(e.requestId(), MAX_ID), clip(e.user().userId(), MAX_ID),
+        return new AuditRecord(null, clip(e.traceId(), MAX_ID), clip(e.user().userId(), MAX_ID),
                 clip(e.user().roleKey(), MAX_ROLE),
                 e.customer().accessLevel().name(), question, truncated ? clip(answer, MAX_ANSWER) : answer,
                 truncated, e.outcome(), clip(e.errorCode(), MAX_ID), calls, clamp(e.durationMs()), clock.instant(),
@@ -135,7 +135,7 @@ public class AuditLogger {
     private static List<PromptVersion> versions(AuditEntry e) {
         List<PromptVersion> all = e.promptVersions() == null ? List.of() : e.promptVersions();
         if (all.size() > MAX_PROMPT_VERSIONS) {
-            log.warn("Audit promptVersions truncated traceId={} count={}", e.requestId(), all.size());
+            log.warn("Audit promptVersions truncated traceId={} count={}", e.traceId(), all.size());
             return all.subList(0, MAX_PROMPT_VERSIONS);
         }
         return all;

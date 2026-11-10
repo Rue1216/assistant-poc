@@ -6,7 +6,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 
 /** 02 section 2.1 response with answer-citations spec 3.1; timestamps are ISO 8601 with a +08:00 offset. */
-public record ChatResponseBody(String requestId, List<BlockBody> blocks, String answer, List<CitationBody> citations,
+public record ChatResponseBody(String traceId, List<BlockBody> blocks, String answer, List<CitationBody> citations,
                                OffsetDateTime queriedAt, String disclaimer, List<ToolCallBody> toolCalls,
                                HistorySummaryBody historySummary) {
 
@@ -26,7 +26,7 @@ public record ChatResponseBody(String requestId, List<BlockBody> blocks, String 
     }
 
     public static ChatResponseBody from(ChatResult r) {
-        return new ChatResponseBody(r.requestId(),
+        return new ChatResponseBody(r.traceId(),
                 r.blocks().stream().map(b -> new BlockBody(b.type().json(), b.text(), b.citations())).toList(),
                 r.answer(),
                 r.citations().stream()

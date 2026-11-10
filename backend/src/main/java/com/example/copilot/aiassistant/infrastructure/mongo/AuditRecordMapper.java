@@ -16,7 +16,7 @@ final class AuditRecordMapper {
 
     static Document toDocument(AuditRecord r) {
         return new Document()
-                .append("requestId", r.requestId())
+                .append("traceId", r.traceId())
                 .append("userId", r.userId())
                 .append("roleKey", r.roleKey())
                 .append("accessLevel", r.accessLevel())

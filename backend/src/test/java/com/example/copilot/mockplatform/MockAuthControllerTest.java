@@ -86,7 +86,7 @@ class MockAuthControllerTest extends IntegrationTestBase {
         mockMvc.perform(get("/api/ai-assistant/customers/" + TestCustomers.RETIREE + "/suggestions"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AI_UNAUTHENTICATED"))
-                .andExpect(jsonPath("$.requestId").isNotEmpty());
+                .andExpect(jsonPath("$.traceId").isNotEmpty());
     }
 
     @Test

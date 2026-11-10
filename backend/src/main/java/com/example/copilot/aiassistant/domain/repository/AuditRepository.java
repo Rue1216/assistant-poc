@@ -10,8 +10,8 @@ public interface AuditRepository {
     void insert(AuditRecord record);
 
     /**
-     * Sets, or clears when {@code rating} is null, the rating of the user's ANSWERED record with this request id
+     * Sets, or clears when {@code rating} is null, the rating of the user's ANSWERED record with this trace id
      * (the newest one when the id repeats), stamping {@code at}. Returns false when no record matched.
      */
-    boolean setFeedback(String requestId, String userId, FeedbackRating rating, Instant at);
+    boolean setFeedback(String traceId, String userId, FeedbackRating rating, Instant at);
 }

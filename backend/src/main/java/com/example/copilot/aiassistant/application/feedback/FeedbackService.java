@@ -24,13 +24,13 @@ public class FeedbackService {
 
     /**
      * Sets or (null rating) clears the user's rating. Another user's answer, a failed answer and an unknown
-     * request id are indistinguishable. When a request id repeats, the newest document is updated.
+     * trace id are indistinguishable. When a trace id repeats, the newest document is updated.
      */
-    public void rate(String requestId, String userId, FeedbackRating rating) {
-        if (!audits.setFeedback(requestId, userId, rating, clock.instant())) {
+    public void rate(String traceId, String userId, FeedbackRating rating) {
+        if (!audits.setFeedback(traceId, userId, rating, clock.instant())) {
             throw new AssistantException(ErrorCode.AI_FEEDBACK_NOT_FOUND);
         }
         log.info("feedback set traceId={} answerTraceId={} userId={} rating={}",
-                RequestContext.currentTraceId(), requestId, userId, rating == null ? "NONE" : rating);
+                RequestContext.currentTraceId(), traceId, userId, rating == null ? "NONE" : rating);
     }
 }

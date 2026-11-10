@@ -292,7 +292,7 @@ class ChatOrchestratorTest {
 
         ChatResult result = ask("幫我整理這位顧客的概況");
 
-        assertThat(result.requestId()).isEqualTo(TRACE_ID);
+        assertThat(result.traceId()).isEqualTo(TRACE_ID);
         assertThat(result.answer()).isEqualTo("本顧客為 VIP 客群。");
         assertThat(result.blocks()).containsExactly(new AnswerBlock(BlockType.PARAGRAPH, "本顧客為 VIP 客群。", List.of()));
         assertThat(result.toolCalls()).isEmpty();
@@ -307,7 +307,7 @@ class ChatOrchestratorTest {
         AuditEntry audit = singleAudit();
         assertThat(audit.outcome()).isEqualTo("ANSWERED");
         assertThat(audit.errorCode()).isNull();
-        assertThat(audit.requestId()).isEqualTo(TRACE_ID);
+        assertThat(audit.traceId()).isEqualTo(TRACE_ID);
         assertThat(audit.redactedQuestion()).isEqualTo("幫我整理這位顧客的概況");
         assertThat(audit.answer()).isEqualTo("本顧客為 VIP 客群。");
         assertThat(audit.answerTruncated()).isFalse();

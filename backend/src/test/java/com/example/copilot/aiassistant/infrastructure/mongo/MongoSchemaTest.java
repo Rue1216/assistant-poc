@@ -127,12 +127,12 @@ class MongoSchemaTest extends IntegrationTestBase {
                 .isInstanceOf(DuplicateKeyException.class);
     }
 
-    private Document auditDoc(String requestId, String resultHash) {
+    private Document auditDoc(String traceId, String resultHash) {
         Document call = new Document("toolName", "getStockQuote").append("status", "SUCCESS")
                 .append("errorCode", null).append("durationMs", 5).append("citationId", 1)
                 .append("target", "台積電 2330").append("dataTime", "2026-10-16").append("resultCount", 1)
                 .append("resultHash", resultHash).append("result", new Document("close", 2420));
-        return new Document("requestId", requestId).append("userId", "u").append("roleKey", "r")
+        return new Document("traceId", traceId).append("userId", "u").append("roleKey", "r")
                 .append("accessLevel", "FULL").append("question", "q")
                 .append("answer", "a [1]").append("answerTruncated", false).append("outcome", "ANSWERED")
                 .append("errorCode", null).append("toolCalls", java.util.List.of(call))
@@ -143,8 +143,16 @@ class MongoSchemaTest extends IntegrationTestBase {
     @Test
     void auditValidatorAcceptsCitationFields() {
         mongo.getCollection(AUDIT).insertOne(auditDoc("schema-ok-1", "a".repeat(64)));
-        assertThat(mongo.getCollection(AUDIT).countDocuments(new Document("requestId", "schema-ok-1")))
+        assertThat(mongo.getCollection(AUDIT).countDocuments(new Document("traceId", "schema-ok-1")))
                 .isEqualTo(1);
+    }
+
+    @Test
+    void auditWithoutTraceIdIsNotAccepted() {
+        Document doc = auditDoc("schema-no-trace", "a".repeat(64));
+        doc.remove("traceId");
+        doc.append("requestId", "schema-no-trace");
+        assertThatThrownBy(() -> mongo.getCollection(AUDIT).insertOne(doc)).isInstanceOf(MongoWriteException.class);
     }
 
     @Test
@@ -154,8 +162,8 @@ class MongoSchemaTest extends IntegrationTestBase {
     }
 
 
-    private Document auditDocWithFeedback(String requestId, String feedback) {
-        return auditDoc(requestId, "a".repeat(64)).append("modelCalls", 2).append("inputTokens", 6500)
+    private Document auditDocWithFeedback(String traceId, String feedback) {
+        return auditDoc(traceId, "a".repeat(64)).append("modelCalls", 2).append("inputTokens", 6500)
                 .append("outputTokens", 350).append("totalTokens", 6850)
                 .append("promptVersions", java.util.List.of(
                         new Document("configKey", "system.main").append("version", 1)))
@@ -166,7 +174,7 @@ class MongoSchemaTest extends IntegrationTestBase {
     void auditValidatorAcceptsNewFields() {
         mongo.getCollection(AUDIT).insertOne(auditDocWithFeedback("schema-ok-2", null));
         mongo.getCollection(AUDIT).insertOne(auditDocWithFeedback("schema-ok-3", "UP"));
-        assertThat(mongo.getCollection(AUDIT).countDocuments(new Document("requestId",
+        assertThat(mongo.getCollection(AUDIT).countDocuments(new Document("traceId",
                 new Document("$in", java.util.List.of("schema-ok-2", "schema-ok-3"))))).isEqualTo(2);
     }
 
@@ -223,9 +231,9 @@ class MongoSchemaTest extends IntegrationTestBase {
     void auditIndexes() {
         java.util.List<IndexInfo> audit = mongo.indexOps(AUDIT).getIndexInfo();
         assertThat(audit).extracting(IndexInfo::getName).doesNotContain("IX_ICRM_AI_AUDIT_3");
-        IndexInfo byRequest = audit.stream().filter(i -> i.getName().equals("IX_ICRM_AI_AUDIT_4"))
+        IndexInfo byTrace = audit.stream().filter(i -> i.getName().equals("IX_ICRM_AI_AUDIT_4"))
                 .findFirst().orElseThrow();
-        assertThat(byRequest.getIndexFields().stream().map(f -> f.getKey()).toList()).containsExactly("requestId");
+        assertThat(byTrace.getIndexFields().stream().map(f -> f.getKey()).toList()).containsExactly("traceId");
         IndexInfo byVersion = audit.stream().filter(i -> i.getName().equals("IX_ICRM_AI_AUDIT_5"))
                 .findFirst().orElseThrow();
         assertThat(byVersion.getIndexFields().stream().map(f -> f.getKey()).toList())
