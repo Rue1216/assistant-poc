@@ -1,8 +1,9 @@
 # LLM 可觀測性設計
 
 - 日期：2026-11-10
-- 版本：v0.2
-- 狀態：設計已確認，待實作
+- 版本：v0.3
+- 狀態：已實作，待手動驗證
+- v0.3（2026-11-10）：實作與設計的差異：(1) 測試輔助 `LogCapture` 新增 `of(String)`、`of(String, Level)`，因為測試的預設 log 等級是 ERROR，擷取 INFO 需要指定等級；(2) 以 Mockito 模擬 `ChatModel` 的測試（`ChatCitationFlowTest`、`EvalRunnerTestBase`、`ChatControllerTest`）改為 stub／verify 兩個參數的 `chat(request, options)`，第 6 節第 6 項「不影響既有測試」的說法已更正；(3) 第 6 節第 7 項手動驗證尚未執行，步驟已列入 [demo-checklist.md](../../demo-checklist.md) 步驟 28
 - v0.2（2026-11-10）：執行前複查並以程式實測：失敗時的模型名稱改取自請求（listener 不再依賴設定檔）；補上實測確認的行為（3.2）；用途測試改為各呼叫點各自驗證；架構規則不寫死呼叫點數量；待確認新增平台 JSON layout、內容過濾與評測 log 量。
 - 起因：主管在 [M34](../../questions-for-manager.md) 回覆加分項「可觀測性」要做（[requirements.md](../../../requirements.md) 第 12 項）。現有稽核以「一題」為單位，看不到單次模型呼叫；平台把外部呼叫定義為 Outbound Log（[reference.md](../../../reference.md) 6-4），呼叫 OpenAI 目前沒有任何 Outbound log。
 - 前提：維持 [Clean Architecture 分層](2026-11-02-clean-architecture-layering-design.md) 與 `ArchitectureRulesTest` 全綠。
@@ -155,7 +156,7 @@ MDC `logMessage`：照平台的 key=value 摘要格式，例如 `event="external
 
 ### 5.1 listener 本身
 
-- 整段處理包在 try/catch，出錯只記一行 WARN（只有例外類型），不交給 LangChain4j 的預設處理，因為它會連訊息一起印出。
+- `onResponse` 與 `onError` 整段包在 try/catch，出錯只記一行 WARN（只有例外類型），不交給 LangChain4j 的預設處理，因為它會連訊息一起印出。`onRequest` 只把開始時間寫進 attributes，不會丟例外，沒有另外包。
 - listener 不保存狀態；每次呼叫的資料都放在該次呼叫的 attributes。
 - 模型呼叫的例外照原樣往外拋，現有的錯誤碼對應、稽核與使用者看到的訊息都不變。
 
@@ -177,7 +178,7 @@ MDC `logMessage`：照平台的 key=value 摘要格式，例如 `event="external
    - 失敗：`HttpException(429)` 得 `"429"`；逾時得 `"500"` 與 `AI_LLM_TIMEOUT`。
    - 防洩漏：例外訊息放一段標記字串，確認整個 log 輸出（含 StackTrace）都找不到。
    - 寫完 log 後 MDC `logMessage` 還原為原值（含原本沒有值的情況）。
-   - `tokenUsage`、模型名稱為 null 時不出錯，欄位填 `""` 或設定值。
+   - `tokenUsage`、模型名稱為 null 時不出錯，欄位填 `""` 或請求的模型名稱。
    - 沒帶用途時記 `UNKNOWN`。
    - listener 內部出錯時不丟例外，只記 WARN。
 2. **`MessageFreeThrowableTest`**：類型與呼叫位置保留、訊息全部清空、cause 鏈完整、循環的 cause 鏈不會無限迴圈。
@@ -186,7 +187,7 @@ MDC `logMessage`：照平台的 key=value 摘要格式，例如 `event="external
    - `ChatOrchestrator` 一題的所有模型呼叫都有用途（沒有 null）。
 4. **架構規則**：`ArchitectureRulesTest` 新增一條，掃描 application 層原始碼，每個 `chatModel.chat(` 呼叫到結尾 `;` 之間都必須含 `LlmCallPurpose.`；至少要掃到一個呼叫（防止規則失效），不寫死數量。寫法沿用既有的原始碼掃描方式。
 5. **設定**：`LlmConfiguration` 產生的 `ChatModel` 的 `listeners()` 含 `OutboundLlmLogListener`。
-6. **既有測試**：目前沒有測試檢查 `LLM call failed` 這行 log，移除不影響既有斷言；`ScriptedChatModel` 改為覆寫 `doChat()` 後，既有測試應全數通過。
+6. **既有測試**：目前沒有測試檢查 `LLM call failed` 這行 log，移除不影響既有斷言；`ScriptedChatModel` 改為覆寫 `doChat()` 後，既有測試應全數通過。以 Mockito 模擬 `ChatModel` 的測試（`ChatCitationFlowTest`、`EvalRunnerTestBase`、`ChatControllerTest`）因呼叫點改走兩個參數的 `chat(request, options)`，需改為 stub／verify 該方法。
 7. **手動驗證（dev）**：問一題後，在 Debug Console 過濾 `external_call`，每次模型呼叫各有一行，用途、耗時、token 正確；以無效的 API key 觸發一次失敗，確認是 ERROR、有狀態碼、StackTrace 沒有訊息。
 
 ## 7. 範圍外與待確認

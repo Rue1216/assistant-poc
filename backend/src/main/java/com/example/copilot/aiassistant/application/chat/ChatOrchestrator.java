@@ -18,6 +18,7 @@ import com.example.copilot.aiassistant.domain.exception.ErrorCode;
 import com.example.copilot.aiassistant.application.support.RequestContext;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
 import com.example.copilot.aiassistant.application.config.PublishedConfigCache;
+import com.example.copilot.aiassistant.application.llm.LlmCallPurpose;
 import com.example.copilot.aiassistant.application.llm.LlmErrorMapper;
 import com.example.copilot.aiassistant.application.port.CustomerDataPort;
 import com.example.copilot.aiassistant.domain.user.UserContext;
@@ -446,11 +447,9 @@ public class ChatOrchestrator {
             modelCalls++;
             ChatResponse response;
             try {
-                response = chatModel.chat(request);
+                response = chatModel.chat(request, LlmCallPurpose.ANSWER.options());
             } catch (RuntimeException e) {
                 ErrorCode code = errorMapper.map(e);
-                // Type only: provider messages may echo request content.
-                log.error("LLM call failed requestId={} code={} error={}", requestId, code, e.getClass().getName());
                 throw new AssistantException(code);
             }
             if (response.modelName() != null) {

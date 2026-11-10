@@ -1,6 +1,7 @@
 package com.example.copilot.aiassistant.application.chat;
 
 import com.example.copilot.aiassistant.AiAssistantProperties;
+import com.example.copilot.aiassistant.application.llm.LlmCallPurpose;
 import com.example.copilot.aiassistant.application.llm.LlmErrorMapper;
 import com.example.copilot.aiassistant.application.llm.LlmRequestParameters;
 import com.example.copilot.aiassistant.application.support.RequestContext;
@@ -75,7 +76,8 @@ public class StepArgumentExtractor {
             return new Result(Map.of(), false, false, 0, 0, 0);
         }
         try {
-            ChatResponse response = chatModel.chat(request(redactedQuestion, redactedHistory, summary, needy));
+            ChatResponse response = chatModel.chat(
+                    request(redactedQuestion, redactedHistory, summary, needy), LlmCallPurpose.STEP_ARGUMENTS.options());
             TokenUsage usage = response.tokenUsage();
             return parse(response.aiMessage().text(), needy, count(usage == null ? null : usage.inputTokenCount()),
                     count(usage == null ? null : usage.outputTokenCount()),

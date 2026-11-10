@@ -1,6 +1,7 @@
 package com.example.copilot.aiassistant.application.evaluation;
 
 import com.example.copilot.aiassistant.AiAssistantProperties;
+import com.example.copilot.aiassistant.application.llm.LlmCallPurpose;
 import com.example.copilot.aiassistant.application.llm.LlmRequestParameters;
 import com.example.copilot.aiassistant.domain.eval.EvalErrors;
 import com.example.copilot.aiassistant.domain.eval.EvalJudgePrompt;
@@ -65,7 +66,7 @@ public class EvalJudge {
     public JudgeVerdict judge(String question, String answer, List<String> rubric, CustomerContext customer) {
         int tokens = 0;
         try {
-            ChatResponse response = chatModel.chat(request(question, answer, rubric));
+            ChatResponse response = chatModel.chat(request(question, answer, rubric), LlmCallPurpose.JUDGE.options());
             tokens = totalTokens(response.tokenUsage());
             return parse(response.aiMessage().text(), rubric, customer, tokens);
         } catch (RuntimeException e) {

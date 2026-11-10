@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.copilot.TestCustomers;
 import com.example.copilot.aiassistant.AiAssistantProperties;
+import com.example.copilot.aiassistant.application.llm.LlmCallPurpose;
 import com.example.copilot.aiassistant.application.llm.LlmErrorMapper;
 import com.example.copilot.aiassistant.domain.customer.AccessLevel;
 import com.example.copilot.aiassistant.domain.privacy.CustomerContext;
@@ -101,6 +102,15 @@ class HistorySummarizerTest {
         SummaryResult result = summarizer(model).summarize(null, overflow(), CUSTOMER);
 
         assertThat(result).isEqualTo(new SummaryResult(SummaryStatus.SUMMARIZED, "- 本顧客關心月配息", 3, 40, 10, 50));
+    }
+
+    @Test
+    void summaryCallCarriesSummaryPurpose() {
+        ScriptedChatModel model = new ScriptedChatModel().reply(ScriptedChatModel.text(summaryJson("- x"), 5));
+
+        summarizer(model).summarize(null, overflow(), CUSTOMER);
+
+        assertThat(model.purposes()).containsExactly(LlmCallPurpose.SUMMARY);
     }
 
     @Test

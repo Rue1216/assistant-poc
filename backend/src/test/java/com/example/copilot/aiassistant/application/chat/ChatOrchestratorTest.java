@@ -29,6 +29,7 @@ import com.example.copilot.aiassistant.domain.exception.AssistantException;
 import com.example.copilot.aiassistant.domain.exception.ErrorCode;
 import com.example.copilot.aiassistant.interfaces.rest.RequestIdFilter;
 import com.example.copilot.aiassistant.application.config.PublishedConfigCache;
+import com.example.copilot.aiassistant.application.llm.LlmCallPurpose;
 import com.example.copilot.aiassistant.application.llm.LlmErrorMapper;
 import com.example.copilot.aiassistant.domain.customer.AccessLevel;
 import com.example.copilot.aiassistant.application.port.CustomerDataPort;
@@ -313,6 +314,15 @@ class ChatOrchestratorTest {
         assertThat(audit.citationNumbers()).isEmpty();
         assertThat(audit.unverifiedNumbers()).isEmpty();
         assertThat(audit.toolCalls()).isEmpty();
+    }
+
+    @Test
+    void answerRoundsCarryAnswerPurpose() {
+        model.reply(answer(120, "本顧客為 VIP 客群。"));
+
+        ask("幫我整理這位顧客的概況");
+
+        assertThat(model.purposes()).contains(LlmCallPurpose.ANSWER).doesNotContainNull();
     }
 
     @Test
@@ -1319,6 +1329,18 @@ class ChatOrchestratorTest {
         AuditEntry audit = singleAudit();
         assertThat(audit.outcome()).isEqualTo("FAILED");
         assertThat(audit.errorCode()).isEqualTo("AI_LLM_RATE_LIMITED");
+    }
+
+    @Test
+    void modelFailureLeavesTheErrorLogToTheListener() {
+        model.fail(new RateLimitException("429 Too Many Requests"));
+
+        try (LogCapture capture = LogCapture.of(ChatOrchestrator.class, Level.INFO)) {
+            assertThatThrownBy(() -> ask("概況？")).isInstanceOfSatisfying(AssistantException.class,
+                    e -> assertThat(e.code()).isEqualTo(ErrorCode.AI_LLM_RATE_LIMITED));
+
+            assertThat(capture.events()).noneMatch(event -> event.getLevel() == Level.ERROR);
+        }
     }
 
 

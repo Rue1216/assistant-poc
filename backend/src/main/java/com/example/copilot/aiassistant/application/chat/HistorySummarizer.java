@@ -6,6 +6,7 @@ import com.example.copilot.aiassistant.domain.prompt.SummaryPrompt;
 import com.example.copilot.aiassistant.domain.prompt.SummaryResult;
 import com.example.copilot.aiassistant.domain.prompt.SummaryStatus;
 import com.example.copilot.aiassistant.application.support.RequestContext;
+import com.example.copilot.aiassistant.application.llm.LlmCallPurpose;
 import com.example.copilot.aiassistant.application.llm.LlmErrorMapper;
 import com.example.copilot.aiassistant.domain.privacy.CustomerContext;
 import com.example.copilot.aiassistant.domain.privacy.CustomerDeidentifier;
@@ -64,7 +65,8 @@ public class HistorySummarizer {
     public SummaryResult summarize(String previousSummary, List<ChatMessage> overflow, CustomerContext customer) {
         int count = overflow.size();
         try {
-            ChatResponse response = chatModel.chat(request(previousSummary, overflow));
+            ChatResponse response = chatModel.chat(request(previousSummary, overflow),
+                    LlmCallPurpose.SUMMARY.options());
             TokenUsage usage = response.tokenUsage();
             return parse(response.aiMessage(), customer, count,
                     count(usage == null ? null : usage.inputTokenCount()),

@@ -112,6 +112,27 @@ class ArchitectureRulesTest {
                 .isEmpty();
     }
 
+    @Test
+    void applicationModelCallsCarryAPurpose() {
+        Path applicationDir = ROOT.resolve("application");
+        String call = "chatModel.chat(";
+        int calls = 0;
+        List<String> violations = new ArrayList<>();
+        for (Path file : javaFiles(applicationDir)) {
+            String source = read(file);
+            for (int at = source.indexOf(call); at >= 0; at = source.indexOf(call, at + call.length())) {
+                calls++;
+                int end = source.indexOf(';', at);
+                String statement = source.substring(at, end < 0 ? source.length() : end);
+                if (!statement.contains("LlmCallPurpose.")) {
+                    violations.add(relative(ROOT, file) + ": " + statement.replaceAll("\\s+", " "));
+                }
+            }
+        }
+        assertThat(calls).isPositive();
+        assertThat(violations).isEmpty();
+    }
+
     /**
      * Returns "relative/path.java: import line" for every import in the layer that starts with a
      * forbidden prefix. Exempt paths are relative to the layer directory.

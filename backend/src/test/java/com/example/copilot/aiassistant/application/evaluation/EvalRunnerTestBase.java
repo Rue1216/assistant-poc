@@ -15,6 +15,7 @@ import com.example.copilot.aiassistant.domain.eval.EvalCase;
 import com.example.copilot.aiassistant.domain.eval.EvalRun;
 import com.example.copilot.aiassistant.domain.eval.EvalStatus;
 import com.example.copilot.aiassistant.domain.repository.EvalRunRepository;
+import dev.langchain4j.model.chat.ChatRequestOptions;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import java.time.Clock;
 import java.time.Duration;
@@ -42,7 +43,8 @@ abstract class EvalRunnerTestBase extends IntegrationTestBase {
     @BeforeEach
     void wireModel() {
         mongo.remove(new Query(), EvalRun.COLLECTION);
-        when(chatModel.chat(any(ChatRequest.class))).thenAnswer(inv -> scripted.chat(inv.<ChatRequest>getArgument(0)));
+        when(chatModel.chat(any(ChatRequest.class), any(ChatRequestOptions.class)))
+                .thenAnswer(inv -> scripted.chat(inv.<ChatRequest>getArgument(0), inv.<ChatRequestOptions>getArgument(1)));
     }
 
     @AfterEach

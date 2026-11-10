@@ -7,6 +7,7 @@ import com.example.copilot.aiassistant.domain.prompt.RouteSource;
 import com.example.copilot.aiassistant.domain.prompt.RouterPrompt;
 import com.example.copilot.aiassistant.application.support.RequestContext;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
+import com.example.copilot.aiassistant.application.llm.LlmCallPurpose;
 import com.example.copilot.aiassistant.application.llm.LlmErrorMapper;
 import com.example.copilot.aiassistant.application.llm.LlmRequestParameters;
 import dev.langchain4j.data.message.AiMessage;
@@ -70,7 +71,8 @@ public class InstructionRouter {
         List<AssistantConfig> sorted = instructions.stream()
                 .sorted(Comparator.comparing(AssistantConfig::configKey)).toList();
         try {
-            ChatResponse response = chatModel.chat(request(redactedQuestion, redactedHistory, summary, sorted));
+            ChatResponse response = chatModel.chat(
+                    request(redactedQuestion, redactedHistory, summary, sorted), LlmCallPurpose.ROUTE.options());
             TokenUsage usage = response.tokenUsage();
             return parse(response.aiMessage(), sorted, count(usage == null ? null : usage.inputTokenCount()),
                     count(usage == null ? null : usage.outputTokenCount()),

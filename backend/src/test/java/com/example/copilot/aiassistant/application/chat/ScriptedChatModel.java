@@ -6,13 +6,17 @@ import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
+import com.example.copilot.aiassistant.application.llm.LlmCallPurpose;
 import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.chat.listener.ChatModelListener;
+import dev.langchain4j.model.chat.listener.ChatModelRequestContext;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.output.TokenUsage;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.List;
 import java.util.function.Function;
@@ -27,6 +31,7 @@ public class ScriptedChatModel implements ChatModel {
 
     private final Deque<Function<ChatRequest, ChatResponse>> script = new ArrayDeque<>();
     private final List<ChatRequest> requests = new ArrayList<>();
+    private final List<LlmCallPurpose> purposes = new ArrayList<>();
 
     public ScriptedChatModel reply(ChatResponse response) {
         return reply(request -> response);
@@ -45,7 +50,7 @@ public class ScriptedChatModel implements ChatModel {
     }
 
     @Override
-    public ChatResponse chat(ChatRequest request) {
+    public ChatResponse doChat(ChatRequest request) {
         requests.add(request);
         Function<ChatRequest, ChatResponse> step = script.poll();
         if (step == null) {
@@ -56,6 +61,21 @@ public class ScriptedChatModel implements ChatModel {
 
     public List<ChatRequest> requests() {
         return List.copyOf(requests);
+    }
+
+    /** The purpose of each call in call order; null where a call carried no purpose. */
+    public List<LlmCallPurpose> purposes() {
+        return Collections.unmodifiableList(new ArrayList<>(purposes));
+    }
+
+    @Override
+    public List<ChatModelListener> listeners() {
+        return List.of(new ChatModelListener() {
+            @Override
+            public void onRequest(ChatModelRequestContext ctx) {
+                purposes.add(LlmCallPurpose.from(ctx.attributes()).orElse(null));
+            }
+        });
     }
 
     public static ChatResponse text(String text, int totalTokens) {

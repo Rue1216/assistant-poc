@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.application.chat.StepArgumentExtractor.Result;
+import com.example.copilot.aiassistant.application.llm.LlmCallPurpose;
 import com.example.copilot.aiassistant.application.llm.LlmErrorMapper;
 import com.example.copilot.aiassistant.domain.prompt.StepArgumentPrompt;
 import com.example.copilot.aiassistant.domain.tool.AssistantTool;
@@ -56,6 +57,15 @@ class StepArgumentExtractorTest {
         assertThat(r.modelCalled()).isTrue();
         assertThat(r.totalTokens()).isEqualTo(50);
         assertThat(model.requests()).hasSize(1);
+    }
+
+    @Test
+    void extractionCallCarriesStepArgumentsPurpose() {
+        ScriptedChatModel model = new ScriptedChatModel().reply(ScriptedChatModel.text(BOTH, 50));
+
+        extractor(model).extract("2330 的行情和重訊", List.of(), null, tools);
+
+        assertThat(model.purposes()).containsExactly(LlmCallPurpose.STEP_ARGUMENTS);
     }
 
     @Test

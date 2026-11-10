@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.example.copilot.TestCustomers;
 import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.application.chat.ScriptedChatModel;
+import com.example.copilot.aiassistant.application.llm.LlmCallPurpose;
 import com.example.copilot.aiassistant.domain.customer.AccessLevel;
 import com.example.copilot.aiassistant.domain.eval.EvalJudgePrompt;
 import com.example.copilot.aiassistant.domain.eval.JudgeVerdict;
@@ -109,6 +110,15 @@ class EvalJudgeTest {
                 new JudgeVerdict.RubricResult("列出待辦事項", true), new JudgeVerdict.RubricResult("提到風險", false));
         assertThat(v.comment()).isEqualTo("漏列待辦事項");
         assertThat(v.tokens()).isEqualTo(40);
+    }
+
+    @Test
+    void judgeCallCarriesJudgePurpose() {
+        ScriptedChatModel model = new ScriptedChatModel().reply(ScriptedChatModel.text(VALID, 40));
+
+        judge(model).judge("q", "a", RUBRIC, customer);
+
+        assertThat(model.purposes()).containsExactly(LlmCallPurpose.JUDGE);
     }
 
     @Test

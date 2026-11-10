@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
+import com.example.copilot.aiassistant.application.llm.LlmCallPurpose;
 import com.example.copilot.aiassistant.application.llm.LlmErrorMapper;
 import com.example.copilot.aiassistant.domain.prompt.InstructionSelection;
 import com.example.copilot.aiassistant.domain.prompt.RouteDecision;
@@ -105,6 +106,16 @@ class InstructionRouterTest {
         assertThat(root.additionalProperties()).isFalse();
         assertThat(((JsonEnumSchema) root.properties().get("category")).enumValues())
                 .containsExactlyInAnyOrder("instruction.contact-prep", "instruction.market-brief", "none");
+    }
+
+    @Test
+    void routeCallCarriesRoutePurpose() {
+        ScriptedChatModel model = new ScriptedChatModel()
+                .reply(ScriptedChatModel.text("{\"category\":\"none\"}", 30));
+
+        route(model);
+
+        assertThat(model.purposes()).containsExactly(LlmCallPurpose.ROUTE);
     }
 
     @Test

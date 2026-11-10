@@ -20,6 +20,7 @@ import com.example.copilot.IntegrationTestBase;
 import com.example.copilot.TestCustomers;
 import com.example.copilot.TestUsers;
 import com.jayway.jsonpath.JsonPath;
+import dev.langchain4j.model.chat.ChatRequestOptions;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import java.nio.charset.StandardCharsets;
 import org.bson.Document;
@@ -39,7 +40,7 @@ class ChatCitationFlowTest extends IntegrationTestBase {
 
     @Test
     void answerCitesToolResultInResponseAndAudit() throws Exception {
-        when(chatModel.chat(any(ChatRequest.class))).thenReturn(
+        when(chatModel.chat(any(ChatRequest.class), any(ChatRequestOptions.class))).thenReturn(
                 text("{\"category\":\"none\"}", 10), // the routing round comes first
                 toolCalls(100, call("c1", "getCustomer", "{\"sections\":[\"profile\"]}")),
                 text(blocks(block("paragraph", "本顧客屬退休客群", "S1")), 200));

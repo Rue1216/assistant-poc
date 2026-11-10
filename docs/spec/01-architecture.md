@@ -1,6 +1,6 @@
 # 01 架構說明
 
-> 版本：v1.5（POC）・2026-11-03（補架構圖：1.1 全貌、第 2 節 port 替換、2.2 去識別化邊界、3.1 工具迴圈、4 組裝流程、4.1 路由與 4.3 評測改為 mermaid、5.1 分層依賴、5.2 前端元件組成；內容不變；v1.4 2026-11-03：5.1 `domain/exception/` 補錯誤細節介面與三種細節 record，見 [Prompt 管理 review 修正設計](../superpowers/specs/2026-11-02-prompt-admin-review-fixes-design.md) 4.1；v1.3 2026-11-02：後端套件改為 domain／application／interfaces／infrastructure 四層，重寫 5.1 目錄樹、Clean Architecture 對應表與例外說明；v1.2 2026-10-30 新增 5.1 的 Clean Architecture 對應、第 7 節 UI 框架說明、第 9 節與 requirements.md 的差異；v1.1 2026-10-29 為個人 360 內容重寫：`CustomerDataPort` 對應平台兩支 API、每題資料暫存、本顧客註記、`certNo`、mock 帳號與 `scope`，見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
+> 版本：v1.6（POC）・2026-11-10（新增 `OutboundLlmLogListener`：每次模型呼叫寫一行 `Outbound` log，更新 1.2 元件明細圖、5.1 目錄與分層對應；`application/llm/` 加 `LlmCallPurpose`；見 [LLM 可觀測性設計](../superpowers/specs/2026-11-10-llm-observability-design.md)；v1.5 2026-11-03：補架構圖：1.1 全貌、第 2 節 port 替換、2.2 去識別化邊界、3.1 工具迴圈、4 組裝流程、4.1 路由與 4.3 評測改為 mermaid、5.1 分層依賴、5.2 前端元件組成；內容不變；v1.4 2026-11-03：5.1 `domain/exception/` 補錯誤細節介面與三種細節 record，見 [Prompt 管理 review 修正設計](../superpowers/specs/2026-11-02-prompt-admin-review-fixes-design.md) 4.1；v1.3 2026-11-02：後端套件改為 domain／application／interfaces／infrastructure 四層，重寫 5.1 目錄樹、Clean Architecture 對應表與例外說明；v1.2 2026-10-30 新增 5.1 的 Clean Architecture 對應、第 7 節 UI 框架說明、第 9 節與 requirements.md 的差異；v1.1 2026-10-29 為個人 360 內容重寫：`CustomerDataPort` 對應平台兩支 API、每題資料暫存、本顧客註記、`certNo`、mock 帳號與 `scope`，見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
 
 ## 1. 系統元件
 
@@ -66,6 +66,7 @@ flowchart LR
     T[工具們]
     CS[ConfigCommandService<br/>ConfigQueryService]
     AU[AuditLogger]
+    LL[OutboundLlmLogListener<br/>每次模型呼叫寫一行 Outbound log]
     FB[FeedbackController<br/>FeedbackService<br/>FeedbackQueryService]
     EV[EvalController<br/>EvalRunService<br/>EvalRunner 評測執行緒]
     EJ[EvalJudge]
@@ -93,6 +94,7 @@ flowchart LR
   T -->|CustomerDataPort| MP
   T --> TWSE
   O --> AU --> DB
+  LL -.->|監聽每次呼叫| GPT
 ```
 
 ## 2. 模組邊界
@@ -466,7 +468,7 @@ backend/
    │  ├─ application/
    │  │  ├─ port/        CurrentUserPort、CustomerAccessPort、CustomerDataPort（小幫手對平台的唯一依賴）
    │  │  ├─ support/     ClasspathText、RequestContext（MDC requestId）
-   │  │  ├─ llm/         LlmErrorMapper、LlmRequestParameters
+   │  │  ├─ llm/         LlmErrorMapper、LlmRequestParameters、LlmCallPurpose（每次模型呼叫的用途）
    │  │  ├─ chat/        ChatOrchestrator（chat／evaluate）、ChatCommand、CustomerContextFactory（含 forEvaluation，
    │  │  │               只供評測）、InstructionRouter、HistorySummarizer、SuggestionService
    │  │  ├─ config/      ConfigCommandService、ConfigQueryService、ConfigQueryRepository（介面）、ConfigSummary、
@@ -485,7 +487,8 @@ backend/
    │  └─ infrastructure/
    │     ├─ config/      DomainBeanConfiguration（domain 類別的 @Bean）、ClockConfiguration、
    │     │               EvalConfiguration（資料集與單一執行緒 executor）
-   │     ├─ llm/         LlmConfiguration（建立 ChatModel）
+   │     ├─ llm/         LlmConfiguration（建立 ChatModel）、OutboundLlmLogListener（每次模型呼叫寫一行 Outbound log）、
+   │     │               MessageFreeThrowable（失敗 log 的 StackTrace 只留類型與呼叫位置）
    │     ├─ market/      TwseClient（implements TwseGateway）
    │     ├─ mongo/       AssistantConfigDocument、AssistantConfigMapper、AssistantConfigMongoRepository（Spring Data）、
    │     │               AssistantConfigRepositoryImpl、ConfigQueryRepositoryImpl、AuditRecordMapper、
@@ -506,7 +509,7 @@ backend/
 ```mermaid
 flowchart TB
   IF["interfaces.rest<br/>Controller、dto、AssistantExceptionHandler"]
-  INF["infrastructure<br/>Mongo Repository Impl、TwseClient、LlmConfiguration、<br/>DomainBeanConfiguration、ScheduledPublishJob"]
+  INF["infrastructure<br/>Mongo Repository Impl、TwseClient、LlmConfiguration、OutboundLlmLogListener、<br/>DomainBeanConfiguration、ScheduledPublishJob"]
   APP["application<br/>ChatOrchestrator、ConfigCommandService、EvalRunService…<br/>port/：CurrentUserPort、CustomerAccessPort、CustomerDataPort"]
   DOM["domain<br/>record、PromptAssembler、PiiRedactor、工具、AnswerAssembler<br/>repository/：Repository 介面"]
   MP["mockplatform<br/>POC 替身，不分層"]
@@ -527,7 +530,7 @@ flowchart TB
 | Domain | `aiassistant.domain` | 只依賴自己與 JDK 及下述允許的函式庫；不得依賴 Spring、MongoDB、`jakarta.servlet`、`AiAssistantProperties`、其他三層與 `mockplatform` | `AssistantConfig`（record）、`ConfigValidator`、`PromptAssembler`、`AnswerAssembler`、`PiiRedactor`、`CustomerDeidentifier`、`ToolExecutor`、`GetCustomerTool`、`EvalRun`；`repository/` 的 `AssistantConfigRepository`、`AuditRepository`、`EvalRunRepository` 介面 |
 | Application | `aiassistant.application` | domain、`application/port/`、`AiAssistantProperties`、Spring 的 `@Service`／`@Component` 等標註；不得依賴 `org.springframework.data`、`transaction`、MongoDB、`jakarta.servlet`、interfaces、infrastructure | `ChatOrchestrator`、`InstructionRouter`、`ConfigCommandService`／`ConfigQueryService`、`FeedbackService`／`FeedbackQueryService`、`EvalRunService`、`AuditLogger`、`PublishedConfigCache`；`port/` 的 `CurrentUserPort`、`CustomerAccessPort`、`CustomerDataPort`；`ConfigQueryRepository`、`FeedbackStatsQueryRepository` 介面 |
 | Interfaces | `aiassistant.interfaces.rest` | domain 的資料型別（record、enum、`AssistantException`／`ErrorCode`）與 application；不得依賴 `domain.repository`、infrastructure、Spring Data、MongoDB 與 `mockplatform` | `ChatController`、`AdminConfigController`、`EvalController`、`FeedbackController`、各 `dto/`、`AssistantExceptionHandler`、`PerUserRateLimiter` |
-| Infrastructure | `aiassistant.infrastructure` | domain、application 與外部函式庫；不得依賴 interfaces 與 `mockplatform` | `AssistantConfigDocument`（Mongo document）、`AssistantConfigMapper`、`AssistantConfigRepositoryImpl`、`ConfigQueryRepositoryImpl`、`AuditRepositoryImpl`、`TwseClient`、`LlmConfiguration`、`DomainBeanConfiguration`、`ScheduledPublishJob`、`SeedLoader` |
+| Infrastructure | `aiassistant.infrastructure` | domain、application 與外部函式庫；不得依賴 interfaces 與 `mockplatform` | `AssistantConfigDocument`（Mongo document）、`AssistantConfigMapper`、`AssistantConfigRepositoryImpl`、`ConfigQueryRepositoryImpl`、`AuditRepositoryImpl`、`TwseClient`、`LlmConfiguration`、`OutboundLlmLogListener`、`DomainBeanConfiguration`、`ScheduledPublishJob`、`SeedLoader` |
 
 `mockplatform` 是 POC 替身，不分層，整合時刪除；它實作 `application/port/` 的三個介面。四層名稱已對齊平台守則；整合時若平台模組另有命名，只需調整套件前綴，類別的職責與依賴方向不變。
 
