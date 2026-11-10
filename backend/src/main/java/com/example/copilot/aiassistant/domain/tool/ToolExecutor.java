@@ -4,6 +4,7 @@ import com.example.copilot.aiassistant.domain.privacy.PiiRedactor;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -71,7 +72,18 @@ public class ToolExecutor {
     @SuppressWarnings({"unchecked", "rawtypes"})
     private ToolResult run(AssistantTool tool, Record args, ToolContext context) {
         Duration timeout = tool.timeout().compareTo(timeoutCeiling) < 0 ? tool.timeout() : timeoutCeiling;
-        Future<ToolResult> future = executor.submit(() -> (ToolResult) tool.execute(args, context));
+        // The tool runs on another thread: hand it a copy of the caller's MDC so its logs keep the traceId.
+        Map<String, String> callerMdc = MDC.getCopyOfContextMap();
+        Future<ToolResult> future = executor.submit(() -> {
+            if (callerMdc != null) {
+                MDC.setContextMap(callerMdc);
+            }
+            try {
+                return (ToolResult) tool.execute(args, context);
+            } finally {
+                MDC.clear();
+            }
+        });
         try {
             ToolResult result = future.get(timeout.toNanos(), TimeUnit.NANOSECONDS);
             return result != null ? result : executionFailed();

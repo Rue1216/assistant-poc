@@ -18,9 +18,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.core.LogEvent;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -232,6 +238,82 @@ class ToolExecutorTest {
             assertThat(outcome.payloadForModel()).doesNotContain("citationId");
         }
         assertThat(ids.issued()).isEmpty();
+    }
+
+    @AfterEach
+    void clearMdc() {
+        MDC.clear();
+    }
+
+    @Test
+    void toolThreadSeesTheCallersMdc() {
+        MDC.put("traceId", "trace-1");
+        MDC.put("spanId", "span-1");
+        AtomicReference<Map<String, String>> seen = new AtomicReference<>();
+        run(() -> {
+            seen.set(MDC.getCopyOfContextMap());
+            return ToolResult.success("ok", null);
+        });
+        assertThat(seen.get()).containsEntry("traceId", "trace-1").containsEntry("spanId", "span-1");
+    }
+
+    @Test
+    void callerWithoutMdcDoesNotFail() {
+        AtomicReference<String> seen = new AtomicReference<>("unset");
+        ToolOutcome outcome = run(() -> {
+            seen.set(MDC.get("traceId"));
+            return ToolResult.success("ok", null);
+        });
+        assertThat(outcome.result().status()).isEqualTo(ToolStatus.SUCCESS);
+        assertThat(seen.get()).isNull();
+    }
+
+    @Test
+    void callersMdcIsUnchangedAfterTimeoutAndFailure() {
+        MDC.put("traceId", "trace-1");
+        run(Duration.ofMillis(100), Duration.ofSeconds(5), ToolExecutorTest::sleepThenSucceed);
+        run(() -> {
+            throw new RuntimeException("boom");
+        });
+        assertThat(MDC.getCopyOfContextMap()).containsOnly(Map.entry("traceId", "trace-1"));
+    }
+
+    @Test
+    void concurrentCallsEachSeeTheirOwnTraceId() throws Exception {
+        CountDownLatch bothInside = new CountDownLatch(2);
+        FakeTool<NoArgs> tool = new FakeTool<>("probe", NoArgs.class, AccessLevel.LIMITED, Duration.ofSeconds(10),
+                (a, c) -> {
+                    bothInside.countDown();
+                    try {
+                        bothInside.await(5, TimeUnit.SECONDS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    return ToolResult.success(MDC.get("traceId"), null);
+                });
+        ToolExecutor executor = executorFor(tool, Duration.ofSeconds(10));
+        Map<String, ToolOutcome> outcomes = new ConcurrentHashMap<>();
+        List<Thread> callers = new ArrayList<>();
+        for (String id : List.of("a", "b")) {
+            Thread caller = new Thread(() -> {
+                MDC.put("traceId", id);
+                try {
+                    outcomes.put(id, executor.execute(
+                            ToolExecutionRequest.builder().id("1").name("probe").arguments("{}").build(), context,
+                            Set.of("probe"), new CitationIds()));
+                } finally {
+                    MDC.clear();
+                }
+            });
+            callers.add(caller);
+            caller.start();
+        }
+        for (Thread caller : callers) {
+            caller.join(10_000);
+            assertThat(caller.isAlive()).isFalse();
+        }
+        assertThat(outcomes.get("a").result().data()).isEqualTo("a");
+        assertThat(outcomes.get("b").result().data()).isEqualTo("b");
     }
 
     @Test

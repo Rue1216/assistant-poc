@@ -381,11 +381,13 @@ class EvalRunnerTest extends EvalRunnerTestBase {
     }
 
     @Test
-    void logsCountersOnlyAndSetsTraceId() {
+    void logsCountersOnlyAndRunsUnderTheRunIdAsTraceId() {
         AtomicReference<String> during = new AtomicReference<>();
+        AtomicReference<String> duringSpan = new AtomicReference<>();
         AtomicReference<String> duringJudge = new AtomicReference<>();
         scripted.reply(request -> {
             during.set(MDC.get(RequestContext.MDC_KEY));
+            duringSpan.set(MDC.get(RequestContext.SPAN_KEY));
             return ScriptedChatModel.answer(ANSWER_TOKENS, "這是回答");
         });
         scripted.reply(request -> {
@@ -399,6 +401,7 @@ class EvalRunnerTest extends EvalRunnerTestBase {
         scriptFullCase();
         EvalRun run = insertRun(3, Duration.ofSeconds(1));
         MDC.put(RequestContext.MDC_KEY, "outer");
+        MDC.put(RequestContext.SPAN_KEY, "outer-span");
         List<LogEvent> events;
         try (LogCapture capture = LogCapture.of(EvalRunner.class, Level.INFO)) {
             runner.run(run, snapshot());
@@ -406,10 +409,13 @@ class EvalRunnerTest extends EvalRunnerTestBase {
         } finally {
             // Restored to what the caller had.
             assertThat(MDC.get(RequestContext.MDC_KEY)).isEqualTo("outer");
+            assertThat(MDC.get(RequestContext.SPAN_KEY)).isEqualTo("outer-span");
             MDC.remove(RequestContext.MDC_KEY);
+            MDC.remove(RequestContext.SPAN_KEY);
         }
 
-        assertThat(during.get()).isEqualTo("e" + run.id().substring(run.id().length() - 7));
+        assertThat(during.get()).isEqualTo(run.id());
+        assertThat(duringSpan.get()).matches("[0-9a-f]{32}");
         // The judge call runs under the same trace id, so its failure lines can be tied to the run.
         assertThat(duringJudge.get()).isEqualTo(during.get());
         List<String> lines = events.stream().map(LogCapture::render).toList();
@@ -420,5 +426,39 @@ class EvalRunnerTest extends EvalRunnerTestBase {
                 && l.contains("chatTokens=" + 6 * ANSWER_TOKENS) && l.contains("judgeTokens=" + 6 * JUDGE_TOKENS));
         assertThat(String.join("\n", lines)).doesNotContain("question of").doesNotContain("這是回答")
                 .doesNotContain("評語內容").doesNotContain("rubric of");
+    }
+
+    @Test
+    void summaryLogLinesAreWrittenUnderTheRunTraceId() {
+        for (int i = 0; i < 3; i++) {
+            scriptFullCase();
+        }
+        EvalRun run = insertRun(3, Duration.ofSeconds(1));
+        List<LogEvent> events;
+        try (LogCapture capture = LogCapture.of(EvalRunner.class, Level.INFO)) {
+            runner.run(run, snapshot());
+            events = capture.events();
+        }
+
+        LogEvent finished = events.stream()
+                .filter(e -> LogCapture.render(e).startsWith("eval run finished"))
+                .findFirst().orElseThrow();
+        assertThat((Object) finished.getContextData().getValue(RequestContext.MDC_KEY)).isEqualTo(run.id());
+    }
+
+    @Test
+    void mdcIsRestoredWhenTheRunFailsMidway() {
+        // A model failure is absorbed into the case, so the judge is what blows up in the middle of the run.
+        answerStep();
+        doThrow(new IllegalStateException("boom")).when(judge).judge(any(), any(), any(), any());
+        EvalRun run = insertRun(3, Duration.ofSeconds(1));
+        MDC.remove(RequestContext.MDC_KEY);
+        MDC.remove(RequestContext.SPAN_KEY);
+
+        runner.run(run, snapshot());
+
+        assertThat(reload(run).errorCode()).isEqualTo("AI_INTERNAL_ERROR");
+        assertThat(MDC.get(RequestContext.MDC_KEY)).isNull();
+        assertThat(MDC.get(RequestContext.SPAN_KEY)).isNull();
     }
 }

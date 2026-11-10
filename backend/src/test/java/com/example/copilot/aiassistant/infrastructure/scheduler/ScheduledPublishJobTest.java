@@ -47,6 +47,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.AdditionalAnswers;
+import org.slf4j.MDC;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.TransactionSystemException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -85,6 +86,8 @@ class ScheduledPublishJobTest extends IntegrationTestBase {
 
     @AfterEach
     void restoreSeed() {
+        MDC.remove("traceId");
+        MDC.remove("spanId");
         mongoRepository.deleteAll();
         seedLoader.run(new DefaultApplicationArguments());
         cache.invalidate();
@@ -308,6 +311,37 @@ class ScheduledPublishJobTest extends IntegrationTestBase {
         doThrow(new IllegalStateException("secret")).when(broken).publishDue();
 
         new ScheduledPublishJob(broken).run();
+    }
+
+    @Test
+    void runsUnderAFreshTraceIdAndClearsItAfterwards() {
+        ConfigCommandService spy = mock(ConfigCommandService.class);
+        List<String> seen = new ArrayList<>();
+        doAnswer(inv -> {
+            seen.add(MDC.get("traceId"));
+            seen.add(MDC.get("spanId"));
+            return 0;
+        }).when(spy).publishDue();
+        ScheduledPublishJob traced = new ScheduledPublishJob(spy);
+
+        traced.run();
+        traced.run();
+
+        assertThat(seen).hasSize(4).allSatisfy(id -> assertThat(id).matches("[0-9a-f]{32}"));
+        assertThat(seen.get(0)).isNotEqualTo(seen.get(2));
+        assertThat(MDC.get("traceId")).isNull();
+        assertThat(MDC.get("spanId")).isNull();
+    }
+
+    @Test
+    void traceIdIsClearedWhenPublishDueThrows() {
+        ConfigCommandService broken = mock(ConfigCommandService.class);
+        doThrow(new IllegalStateException("secret")).when(broken).publishDue();
+
+        new ScheduledPublishJob(broken).run();
+
+        assertThat(MDC.get("traceId")).isNull();
+        assertThat(MDC.get("spanId")).isNull();
     }
 
     private String nameInCache() {

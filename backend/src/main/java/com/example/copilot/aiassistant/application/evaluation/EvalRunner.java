@@ -82,26 +82,36 @@ public class EvalRunner {
         Progress progress = new Progress();
         progress.docVersion = run.docVersion();
         String status = "FAILED";
+        // The whole run, including its summary line, is logged under the run id as trace id, with a fresh span.
+        String previousTrace = MDC.get(RequestContext.MDC_KEY);
+        String previousSpan = MDC.get(RequestContext.SPAN_KEY);
+        MDC.put(RequestContext.MDC_KEY, run.id());
+        MDC.put(RequestContext.SPAN_KEY, RequestContext.newId());
         try {
-            if (interrupted(run)) {
-                status = "INTERRUPTED";
-                return;
+            try {
+                if (interrupted(run)) {
+                    status = "INTERRUPTED";
+                    return;
+                }
+                // A queued run's heartbeat is as old as its insert; do not go on if it was marked stale meanwhile.
+                if (!repository.touch(run.id(), progress.docVersion, clock.instant())) {
+                    status = "INTERRUPTED";
+                    return;
+                }
+                progress.docVersion++;
+                status = execute(run, snapshot, progress);
+            } catch (RuntimeException e) {
+                // Class name only: the message may echo question, answer or customer data.
+                log.error("eval run failed runId={} error={}", run.id(), e.getClass().getSimpleName());
+                status = fail(run, progress, INTERNAL_ERROR) ? "FAILED" : "INTERRUPTED";
+            } finally {
+                log.info("eval run finished runId={} status={} durationMs={} chatTokens={} judgeTokens={}", run.id(),
+                        status, Duration.between(began, clock.instant()).toMillis(), progress.chatTokens,
+                        progress.judgeTokens);
             }
-            // A queued run's heartbeat is as old as its insert; do not go on if it was marked stale meanwhile.
-            if (!repository.touch(run.id(), progress.docVersion, clock.instant())) {
-                status = "INTERRUPTED";
-                return;
-            }
-            progress.docVersion++;
-            status = execute(run, snapshot, progress);
-        } catch (RuntimeException e) {
-            // Class name only: the message may echo question, answer or customer data.
-            log.error("eval run failed runId={} error={}", run.id(), e.getClass().getSimpleName());
-            status = fail(run, progress, INTERNAL_ERROR) ? "FAILED" : "INTERRUPTED";
         } finally {
-            log.info("eval run finished runId={} status={} durationMs={} chatTokens={} judgeTokens={}", run.id(),
-                    status, Duration.between(began, clock.instant()).toMillis(), progress.chatTokens,
-                    progress.judgeTokens);
+            restore(RequestContext.MDC_KEY, previousTrace);
+            restore(RequestContext.SPAN_KEY, previousSpan);
         }
     }
 
@@ -169,18 +179,11 @@ public class EvalRunner {
         if (customer.isEmpty()) {
             report = EvaluationReport.failed(CUSTOMER_NOT_FOUND);
         } else {
-            // The turn and its judgement run under a trace id derived from the run, so their log lines can be
-            // tied back to it.
-            String previous = MDC.get(RequestContext.MDC_KEY);
-            MDC.put(RequestContext.MDC_KEY, "e" + run.id().substring(run.id().length() - 7));
-            try {
-                report = orchestrator.evaluate(c.question(), EVAL_USER, customer.get(), configs);
-                if ("ANSWERED".equals(report.outcome())) {
-                    verdict = judge.judge(report.redactedQuestion(), report.answer(), c.rubric(), customer.get());
-                    progress.judgeTokens += verdict.tokens();
-                }
-            } finally {
-                restore(previous);
+            // The turn and its judgement log under the run's trace id, which run(...) has already put in the MDC.
+            report = orchestrator.evaluate(c.question(), EVAL_USER, customer.get(), configs);
+            if ("ANSWERED".equals(report.outcome())) {
+                verdict = judge.judge(report.redactedQuestion(), report.answer(), c.rubric(), customer.get());
+                progress.judgeTokens += verdict.tokens();
             }
         }
         progress.chatTokens += report.totalTokens();
@@ -217,11 +220,11 @@ public class EvalRunner {
         return true;
     }
 
-    private static void restore(String previous) {
+    private static void restore(String key, String previous) {
         if (previous == null) {
-            MDC.remove(RequestContext.MDC_KEY);
+            MDC.remove(key);
         } else {
-            MDC.put(RequestContext.MDC_KEY, previous);
+            MDC.put(key, previous);
         }
     }
 

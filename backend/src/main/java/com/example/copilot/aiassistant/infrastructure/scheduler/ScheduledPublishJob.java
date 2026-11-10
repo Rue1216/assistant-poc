@@ -1,7 +1,9 @@
 package com.example.copilot.aiassistant.infrastructure.scheduler;
 
 import com.example.copilot.aiassistant.application.config.ConfigCommandService;
+import com.example.copilot.aiassistant.application.support.RequestContext;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -20,6 +22,8 @@ public class ScheduledPublishJob {
 
     @Scheduled(fixedDelayString = "${ai-assistant.config.schedule-check-interval}")
     void run() {
+        MDC.put(RequestContext.MDC_KEY, RequestContext.newId());
+        MDC.put(RequestContext.SPAN_KEY, RequestContext.newId());
         try {
             int published = configService.publishDue();
             if (published > 0) {
@@ -27,6 +31,9 @@ public class ScheduledPublishJob {
             }
         } catch (RuntimeException e) {
             log.warn("scheduled publish run failed error={}", e.getClass().getName());
+        } finally {
+            MDC.remove(RequestContext.MDC_KEY);
+            MDC.remove(RequestContext.SPAN_KEY);
         }
     }
 }
