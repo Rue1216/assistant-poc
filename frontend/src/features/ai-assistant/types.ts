@@ -36,7 +36,7 @@ export interface HistorySummary {
 }
 
 export interface ChatResponse {
-  requestId: string
+  traceId: string
   answer: string
   blocks: AnswerBlock[]
   citations: Citation[]
@@ -71,7 +71,7 @@ export type FeedbackRating = 'UP' | 'DOWN'
 export interface ChatMessageError {
   code: string
   message: string
-  requestId?: string
+  traceId?: string
 }
 
 export interface ChatMessage {
@@ -91,8 +91,8 @@ export interface ChatMessage {
   citations?: Citation[]
   disclaimer?: string | null
   toolCalls?: ToolCallSummary[]
-  /** Server request id of the answer; feedback is addressed by it. */
-  requestId?: string
+  /** Server trace id of the answer; feedback is addressed by it. */
+  traceId?: string
   feedback?: FeedbackRating | null
   error?: ChatMessageError
   /** Folded into the rolling summary: no longer sent as history. */

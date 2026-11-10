@@ -97,7 +97,7 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
       if (current !== controller) return
       user.state = 'done'
       bot.state = 'done'
-      bot.requestId = res.requestId
+      bot.traceId = res.traceId
       bot.content = res.answer
       bot.queriedAt = res.queriedAt
       bot.blocks = res.blocks
@@ -119,7 +119,7 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
         bot.state = 'error'
         bot.error =
           e instanceof ApiError
-            ? { code: e.code, message: e.message, requestId: e.requestId }
+            ? { code: e.code, message: e.message, traceId: e.traceId }
             : { code: 'UNKNOWN', message: '發生未預期的錯誤，請稍後再試' }
       }
     } finally {
@@ -166,7 +166,7 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
    */
   async function rate(messageId: string, rating: FeedbackRating | null): Promise<void> {
     const m = messages.value.find((x) => x.id === messageId)
-    if (!m || !m.requestId) return
+    if (!m || !m.traceId) return
     let entry = feedbackState.get(messageId)
     if (!entry) {
       const initial = m.feedback ?? null
@@ -180,7 +180,7 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
     while (entry.desired !== entry.confirmed) {
       const sending = entry.desired
       try {
-        await aiAssistantApi.putFeedback(m.requestId, sending)
+        await aiAssistantApi.putFeedback(m.traceId, sending)
         if (feedbackState.get(messageId) !== entry) return // conversation was reset meanwhile
         entry.confirmed = sending
       } catch {

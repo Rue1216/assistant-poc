@@ -16,15 +16,15 @@ declare module 'axios' {
 export class ApiError extends Error {
   status: number
   code: string
-  requestId?: string
+  traceId?: string
   details: unknown[]
 
-  constructor(status: number, code: string, message: string, requestId?: string, details: unknown[] = []) {
+  constructor(status: number, code: string, message: string, traceId?: string, details: unknown[] = []) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.code = code
-    this.requestId = requestId
+    this.traceId = traceId
     this.details = details
   }
 }
@@ -39,7 +39,7 @@ export function setUnauthorizedHandler(handler: (() => void) | null): void {
 interface ErrorBody {
   code: string
   message: string
-  requestId?: string
+  traceId?: string
   details?: unknown[]
 }
 
@@ -68,7 +68,7 @@ apiClient.interceptors.response.use(
     const response = axiosError.response
     let apiError: ApiError
     if (response && isErrorBody(data)) {
-      apiError = new ApiError(response.status, data.code, data.message, data.requestId, data.details ?? [])
+      apiError = new ApiError(response.status, data.code, data.message, data.traceId, data.details ?? [])
     } else if (response) {
       // the server (or a proxy) answered, but not with an ApiError body: not a connectivity problem
       apiError = new ApiError(response.status, INTERNAL_ERROR_CODE, INTERNAL_ERROR_MESSAGE)

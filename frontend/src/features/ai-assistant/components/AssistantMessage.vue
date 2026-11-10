@@ -84,7 +84,7 @@ async function copy(): Promise<void> {
           複製
         </button>
         <FeedbackButtons
-          v-if="message.state === 'done' && message.requestId"
+          v-if="message.state === 'done' && message.traceId"
           :rating="message.feedback ?? null"
           @rate="emit('rate', $event)"
         />

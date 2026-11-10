@@ -17,7 +17,7 @@ const CITATION: Citation = {
 
 function response(answer: string): ChatResponse {
   return {
-    requestId: 'r1',
+    traceId: '0af7651916cd43dd8448eb211c80319c',
     answer,
     blocks: [{ type: 'paragraph', text: answer, citations: [1] }],
     citations: [CITATION],
@@ -225,12 +225,12 @@ describe('useAssistantStore', () => {
   })
 
   it('keeps an error message with details and retries the question', async () => {
-    chat.mockRejectedValueOnce(new ApiError(429, 'AI_RATE_LIMITED', '目前提問次數較多', 'a1b2c3d4'))
+    chat.mockRejectedValueOnce(new ApiError(429, 'AI_RATE_LIMITED', '目前提問次數較多', '463ac35c9f6413ad48485a3953bb6124'))
     const store = useAssistantStore()
     store.bindCustomer(RETIREE)
     await store.send('hello')
     expect(store.messages.map((m) => m.state)).toEqual(['error', 'error'])
-    expect(store.messages[1]!.error).toEqual({ code: 'AI_RATE_LIMITED', message: '目前提問次數較多', requestId: 'a1b2c3d4' })
+    expect(store.messages[1]!.error).toEqual({ code: 'AI_RATE_LIMITED', message: '目前提問次數較多', traceId: '463ac35c9f6413ad48485a3953bb6124' })
 
     chat.mockResolvedValueOnce(response('ok'))
     await store.retry(store.messages[1]!.id)
@@ -385,9 +385,9 @@ describe('useAssistantStore', () => {
       return store
     }
 
-    it('send stores requestId', async () => {
+    it('send stores traceId', async () => {
       const store = await answered()
-      expect(store.messages[1]!.requestId).toBe('r1')
+      expect(store.messages[1]!.traceId).toBe('0af7651916cd43dd8448eb211c80319c')
     })
 
     it('rate updates optimistically and calls api', async () => {
@@ -396,7 +396,7 @@ describe('useAssistantStore', () => {
       putFeedback.mockReturnValue(d.promise)
       const p = store.rate(store.messages[1]!.id, 'UP')
       expect(store.messages[1]!.feedback).toBe('UP')
-      expect(putFeedback).toHaveBeenCalledWith('r1', 'UP')
+      expect(putFeedback).toHaveBeenCalledWith('0af7651916cd43dd8448eb211c80319c', 'UP')
       d.resolve()
       await p
       expect(store.messages[1]!.feedback).toBe('UP')

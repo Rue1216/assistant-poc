@@ -65,8 +65,8 @@ export const aiAssistantApi = {
   },
 
   /** Not silent: a failure (e.g. 404 AI_FEEDBACK_NOT_FOUND) shows the global toast. */
-  async putFeedback(requestId: string, rating: FeedbackRating | null): Promise<void> {
-    await apiClient.put(`/ai-assistant/chat/${encodeURIComponent(requestId)}/feedback`, { rating })
+  async putFeedback(traceId: string, rating: FeedbackRating | null): Promise<void> {
+    await apiClient.put(`/ai-assistant/chat/${encodeURIComponent(traceId)}/feedback`, { rating })
   },
 
   // ---- Prompt management (02 section 3) ----

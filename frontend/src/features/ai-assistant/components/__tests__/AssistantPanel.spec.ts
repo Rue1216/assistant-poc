@@ -22,7 +22,7 @@ const CATEGORIES: SuggestionCategory[] = [
 ]
 
 function answer(text = '回答'): ChatResponse {
-  return { requestId: 'r', answer: text, blocks: [{ type: 'paragraph', text, citations: [] }], citations: [], queriedAt: '2026-10-19T14:03:24+08:00', disclaimer: null, toolCalls: [], historySummary: null }
+  return { traceId: '0af7651916cd43dd8448eb211c80319c', answer: text, blocks: [{ type: 'paragraph', text, citations: [] }], citations: [], queriedAt: '2026-10-19T14:03:24+08:00', disclaimer: null, toolCalls: [], historySummary: null }
 }
 
 async function mountPanel(certNo = RETIREE, roleKey = 'SALES_RM') {
@@ -171,12 +171,12 @@ describe('AssistantPanel', () => {
     await wrapper.find('button.ai-send').trigger('click')
     expect(wrapper.text()).toContain('正在查詢資料並整理回答')
 
-    reject(new ApiError(429, 'AI_RATE_LIMITED', '目前提問次數較多，請稍候再試', 'a1b2c3d4'))
+    reject(new ApiError(429, 'AI_RATE_LIMITED', '目前提問次數較多，請稍候再試', '463ac35c9f6413ad48485a3953bb6124'))
     await flushPromises()
     expect(wrapper.text()).not.toContain('正在查詢資料並整理回答')
     const err = wrapper.find('[role="alert"]')
     expect(err.text()).toContain('目前提問次數較多，請稍候再試')
-    expect(err.text()).toContain('AI_RATE_LIMITED · 追蹤碼 a1b2c3d4')
+    expect(err.text()).toContain('AI_RATE_LIMITED · 追蹤碼 463ac35c9f6413ad48485a3953bb6124')
 
     chat.mockResolvedValue(answer('重試成功'))
     await err.find('button').trigger('click')

@@ -38,7 +38,7 @@ describe('apiClient', () => {
     apiClient.defaults.adapter = failWith(409, {
       code: 'AI_CONFIG_CONFLICT',
       message: '內容已被他人更新，請重新載入',
-      requestId: 'req-1',
+      traceId: '463ac35c9f6413ad48485a3953bb6124',
       details: [],
     })
     const err = await apiClient.get('/x').catch((e) => e)
@@ -46,7 +46,14 @@ describe('apiClient', () => {
     expect(err.status).toBe(409)
     expect(err.code).toBe('AI_CONFIG_CONFLICT')
     expect(err.message).toBe('內容已被他人更新，請重新載入')
-    expect(err.requestId).toBe('req-1')
+    expect(err.traceId).toBe('463ac35c9f6413ad48485a3953bb6124')
+  })
+
+  it('ignores a legacy requestId field', async () => {
+    apiClient.defaults.adapter = failWith(400, { code: 'AI_X', message: 'm', requestId: 'old' })
+    const err = await apiClient.get('/x').catch((e) => e)
+    expect(err).toBeInstanceOf(ApiError)
+    expect(err.traceId).toBeUndefined()
   })
 
   it('shows toast with server message', async () => {

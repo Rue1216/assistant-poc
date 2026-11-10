@@ -113,19 +113,19 @@ describe('AssistantMessage', () => {
 })
 
 describe('AssistantMessage feedback', () => {
-  it('shows feedback buttons for a done answer with requestId', () => {
-    const w = mount(AssistantMessage, { props: { message: msg({ requestId: 'r1' }) } })
+  it('shows feedback buttons for a done answer with traceId', () => {
+    const w = mount(AssistantMessage, { props: { message: msg({ traceId: '0af7651916cd43dd8448eb211c80319c' }) } })
     expect(w.findComponent({ name: 'FeedbackButtons' }).exists()).toBe(true)
   })
 
-  it('hides them without requestId or on error', () => {
+  it('hides them without traceId or on error', () => {
     expect(mount(AssistantMessage, { props: { message: msg() } }).findComponent({ name: 'FeedbackButtons' }).exists()).toBe(false)
-    const err = msg({ requestId: 'r1', state: 'error' })
+    const err = msg({ traceId: '0af7651916cd43dd8448eb211c80319c', state: 'error' })
     expect(mount(AssistantMessage, { props: { message: err } }).findComponent({ name: 'FeedbackButtons' }).exists()).toBe(false)
   })
 
   it('emits rate upward', async () => {
-    const w = mount(AssistantMessage, { props: { message: msg({ requestId: 'r1', feedback: null }) } })
+    const w = mount(AssistantMessage, { props: { message: msg({ traceId: '0af7651916cd43dd8448eb211c80319c', feedback: null }) } })
     await w.get('[aria-label="有幫助"]').trigger('click')
     expect(w.emitted('rate')).toEqual([['UP']])
   })

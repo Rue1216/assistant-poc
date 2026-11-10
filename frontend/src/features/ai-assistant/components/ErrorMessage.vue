@@ -8,7 +8,7 @@ defineEmits<{ retry: [] }>()
 const reference = computed(() => {
   const e = props.message.error
   if (!e) return ''
-  return e.requestId ? `${e.code} · 追蹤碼 ${e.requestId}` : e.code
+  return e.traceId ? `${e.code} · 追蹤碼 ${e.traceId}` : e.code
 })
 </script>
 
