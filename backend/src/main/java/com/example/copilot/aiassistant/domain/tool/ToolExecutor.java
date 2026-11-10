@@ -26,7 +26,7 @@ import tools.jackson.databind.node.StringNode;
 @Slf4j
 public class ToolExecutor {
 
-    private static final String REQUEST_ID_KEY = "requestId";
+    private static final String TRACE_ID_KEY = "traceId";
     private static final int MAX_NAME_LENGTH = 64;
     private static final String UNKNOWN_PURPOSE = "未知工具";
 
@@ -100,7 +100,7 @@ public class ToolExecutor {
         }
         RuntimeException safe = new RuntimeException(root.getClass().getName());
         safe.setStackTrace(root.getStackTrace());
-        log.error("requestId={} tool={} {} ({})", MDC.get(REQUEST_ID_KEY), toolName, what,
+        log.error("traceId={} tool={} {} ({})", MDC.get(TRACE_ID_KEY), toolName, what,
                 error.getClass().getName(), safe);
     }
 

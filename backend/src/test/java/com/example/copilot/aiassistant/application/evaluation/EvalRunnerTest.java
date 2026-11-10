@@ -17,7 +17,7 @@ import com.example.copilot.aiassistant.domain.eval.EvalErrors;
 import com.example.copilot.aiassistant.domain.eval.EvalRun;
 import com.example.copilot.aiassistant.domain.eval.EvalStatus;
 import com.example.copilot.aiassistant.domain.repository.EvalRunRepository;
-import com.example.copilot.aiassistant.interfaces.rest.RequestIdFilter;
+import com.example.copilot.aiassistant.application.support.RequestContext;
 import com.example.copilot.aiassistant.domain.customer.AccessLevel;
 import com.example.copilot.aiassistant.domain.privacy.PiiRedactor;
 import com.example.copilot.aiassistant.domain.tool.ToolRegistry;
@@ -385,11 +385,11 @@ class EvalRunnerTest extends EvalRunnerTestBase {
         AtomicReference<String> during = new AtomicReference<>();
         AtomicReference<String> duringJudge = new AtomicReference<>();
         scripted.reply(request -> {
-            during.set(MDC.get(RequestIdFilter.MDC_KEY));
+            during.set(MDC.get(RequestContext.MDC_KEY));
             return ScriptedChatModel.answer(ANSWER_TOKENS, "這是回答");
         });
         scripted.reply(request -> {
-            duringJudge.set(MDC.get(RequestIdFilter.MDC_KEY));
+            duringJudge.set(MDC.get(RequestContext.MDC_KEY));
             return ScriptedChatModel.text("{\"refused\":false,\"rubric\":[{\"index\":1,\"met\":true}],"
                     + "\"comment\":\"評語內容\"}", JUDGE_TOKENS);
         });
@@ -398,15 +398,15 @@ class EvalRunnerTest extends EvalRunnerTestBase {
         scriptFullCase();
         scriptFullCase();
         EvalRun run = insertRun(3, Duration.ofSeconds(1));
-        MDC.put(RequestIdFilter.MDC_KEY, "outer");
+        MDC.put(RequestContext.MDC_KEY, "outer");
         List<LogEvent> events;
         try (LogCapture capture = LogCapture.of(EvalRunner.class, Level.INFO)) {
             runner.run(run, snapshot());
             events = capture.events();
         } finally {
             // Restored to what the caller had.
-            assertThat(MDC.get(RequestIdFilter.MDC_KEY)).isEqualTo("outer");
-            MDC.remove(RequestIdFilter.MDC_KEY);
+            assertThat(MDC.get(RequestContext.MDC_KEY)).isEqualTo("outer");
+            MDC.remove(RequestContext.MDC_KEY);
         }
 
         assertThat(during.get()).isEqualTo("e" + run.id().substring(run.id().length() - 7));

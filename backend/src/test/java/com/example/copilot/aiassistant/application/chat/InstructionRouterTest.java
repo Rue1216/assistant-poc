@@ -247,7 +247,7 @@ class InstructionRouterTest {
 
             List<String> lines = capture.events().stream().map(LogCapture::render).toList();
             assertThat(lines).hasSize(1);
-            assertThat(lines.getFirst()).contains("chat route failed requestId=", "code=AI_LLM_UNAVAILABLE")
+            assertThat(lines.getFirst()).contains("chat route failed traceId=", "code=AI_LLM_UNAVAILABLE")
                     .doesNotContain("提問內容子丑寅");
         }
     }

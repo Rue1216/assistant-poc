@@ -86,8 +86,8 @@ public class WorkflowRunner {
             AssistantTool<?> tool = registry.find(step.toolName()).orElse(null);
             if (tool == null) {
                 // A reason code only: the marker text is instruction content.
-                log.warn("workflow step dropped requestId={} reason=TOOL_NOT_REGISTERED",
-                        RequestContext.currentRequestId());
+                log.warn("workflow step dropped traceId={} reason=TOOL_NOT_REGISTERED",
+                        RequestContext.currentTraceId());
                 droppedNotices.add(notice(UNKNOWN_PURPOSE));
                 continue;
             }
@@ -141,7 +141,7 @@ public class WorkflowRunner {
             return steps;
         }
         // Counts only: marker text is instruction content.
-        log.warn("workflow steps cut requestId={} steps={} kept={}", RequestContext.currentRequestId(), steps.size(),
+        log.warn("workflow steps cut traceId={} steps={} kept={}", RequestContext.currentTraceId(), steps.size(),
                 WorkflowValidator.MAX_STEPS);
         return steps.subList(0, WorkflowValidator.MAX_STEPS);
     }

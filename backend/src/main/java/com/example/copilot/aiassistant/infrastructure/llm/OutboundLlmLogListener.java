@@ -109,9 +109,9 @@ public class OutboundLlmLogListener implements ChatModelListener {
     }
 
     private ObjectNode llm(ObjectNode json, String purpose, String model) {
-        String requestId = MDC.get(RequestContext.MDC_KEY);
+        String traceId = MDC.get(RequestContext.MDC_KEY);
         ObjectNode llm = json.putObject("llm");
-        llm.put("request_id", requestId == null ? "" : requestId);
+        llm.put("trace_id", traceId == null ? "" : traceId);
         llm.put("purpose", purpose);
         llm.put("model", model == null ? "" : model);
         return llm;

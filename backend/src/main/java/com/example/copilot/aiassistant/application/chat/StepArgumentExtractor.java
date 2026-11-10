@@ -112,7 +112,7 @@ public class StepArgumentExtractor {
 
     private Result failed(ErrorCode code, long in, long out, long total) {
         // Code only: neither the question nor the model output may reach the log.
-        log.warn("step arguments failed requestId={} code={}", RequestContext.currentRequestId(), code);
+        log.warn("step arguments failed traceId={} code={}", RequestContext.currentTraceId(), code);
         return new Result(Map.of(), true, true, in, out, total);
     }
 

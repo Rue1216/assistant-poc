@@ -196,7 +196,7 @@ class HistorySummarizerTest {
 
             List<String> lines = capture.events().stream().map(LogCapture::render).toList();
             assertThat(lines).hasSize(1);
-            assertThat(lines.getFirst()).contains("chat summary failed requestId=", "code=AI_LLM_UNAVAILABLE")
+            assertThat(lines.getFirst()).contains("chat summary failed traceId=", "code=AI_LLM_UNAVAILABLE")
                     .doesNotContain("提問內容子丑寅", "摘要內容卯辰巳");
         }
     }

@@ -148,10 +148,10 @@ public class ChatOrchestrator {
             turn.audit(turn.assembled, "ANSWERED", null);
             long citedBlocks = result.blocks().stream()
                     .filter(b -> b.type() != BlockType.HEADING && !b.citations().isEmpty()).count();
-            log.info("chat answered requestId={} userId={} durationMs={} modelCalls={} toolCalls={} totalTokens={} "
+            log.info("chat answered traceId={} userId={} durationMs={} modelCalls={} toolCalls={} totalTokens={} "
                             + "inputTokens={} outputTokens={} "
                             + "blocks={} citedBlocks={} peakOutputTokens={} routeSource={} instructionKey={} summaryIn={} summaryStatus={} summarizedMessages={} summaryTokens={}",
-                    turn.requestId, user.userId(),
+                    turn.traceId, user.userId(),
                     turn.elapsedMs(), turn.modelCalls, turn.executed.size(), turn.totalTokens, turn.inputTokens,
                     turn.outputTokens, result.blocks().size(),
                     citedBlocks, turn.peakOutputTokens, turn.routeSource, turn.instructionKey,
@@ -181,7 +181,7 @@ public class ChatOrchestrator {
         } catch (RuntimeException e) {
             ErrorCode code = e instanceof AssistantException a ? a.code() : ErrorCode.AI_INTERNAL_ERROR;
             // Code only: the question, the answer and exception messages may carry customer content.
-            log.warn("eval turn failed requestId={} code={}", turn.requestId, code);
+            log.warn("eval turn failed traceId={} code={}", turn.traceId, code);
             return turn.report("FAILED", code.name(), null);
         }
     }
@@ -196,7 +196,7 @@ public class ChatOrchestrator {
     /** The state of one {@link #chat} or {@link #evaluate} call. */
     private final class Turn {
 
-        private final String requestId = RequestContext.currentRequestId();
+        private final String traceId = RequestContext.currentTraceId();
         private final CitationIds citationIds = new CitationIds();
         private final Instant started = clock.instant();
         private final Instant deadline = started.plus(limits.requestTimeout());
@@ -548,7 +548,7 @@ public class ChatOrchestrator {
                     .map(e -> citation(e.getValue(), successful.get(e.getKey()),
                             assembled.cited().contains(e.getKey())))
                     .toList();
-            return new ChatResult(requestId, assembled.blocks(), assembled.answer(), citations, queriedAt,
+            return new ChatResult(traceId, assembled.blocks(), assembled.answer(), citations, queriedAt,
                     disclaimer, toolCalls, newSummary);
         }
 
@@ -594,9 +594,9 @@ public class ChatOrchestrator {
                 return;
             }
             audit(null, "FAILED", code.name());
-            log.warn("chat failed requestId={} userId={} code={} durationMs={} modelCalls={} toolCalls={} "
+            log.warn("chat failed traceId={} userId={} code={} durationMs={} modelCalls={} toolCalls={} "
                             + "totalTokens={} inputTokens={} outputTokens={} routeSource={} instructionKey={} summaryIn={} summaryStatus={} summarizedMessages={} summaryTokens={}",
-                    requestId, user.userId(), code, elapsedMs(), modelCalls,
+                    traceId, user.userId(), code, elapsedMs(), modelCalls,
                     executed.size(), totalTokens, inputTokens, outputTokens, routeSource, instructionKey, summaryIn, summaryStatus, summarizedMessages,
                     summaryTokens);
         }
@@ -609,11 +609,11 @@ public class ChatOrchestrator {
             List<PromptVersion> versions = prompt == null ? List.of() : prompt.versions();
             List<ToolOutcome> outcomes = executed.stream().map(ExecutedTool::outcome).toList();
             auditLogger.record(answer == null
-                    ? new AuditEntry(requestId, user, customer, redactedQuestion, null, false, outcome, errorCode,
+                    ? new AuditEntry(traceId, user, customer, redactedQuestion, null, false, outcome, errorCode,
                             outcomes, Map.of(), List.of(), elapsedMs(), modelCalls, inputTokens,
                             outputTokens, totalTokens, versions, routeSource, instructionKey, summaryIn, summaryStatus, summarizedMessages,
                             summaryTokens, modelName)
-                    : new AuditEntry(requestId, user, customer, redactedQuestion, answer.annotatedAnswer(),
+                    : new AuditEntry(traceId, user, customer, redactedQuestion, answer.annotatedAnswer(),
                             answer.truncated(), outcome, errorCode, outcomes, answer.citationNumbers(),
                             answer.unverifiedNumbers(), elapsedMs(), modelCalls, inputTokens, outputTokens, totalTokens,
                             versions, routeSource, instructionKey, summaryIn, summaryStatus, summarizedMessages,

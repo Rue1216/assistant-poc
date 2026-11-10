@@ -30,7 +30,7 @@ public class FeedbackService {
         if (!audits.setFeedback(requestId, userId, rating, clock.instant())) {
             throw new AssistantException(ErrorCode.AI_FEEDBACK_NOT_FOUND);
         }
-        log.info("feedback set requestId={} answerRequestId={} userId={} rating={}",
-                RequestContext.currentRequestId(), requestId, userId, rating == null ? "NONE" : rating);
+        log.info("feedback set traceId={} answerTraceId={} userId={} rating={}",
+                RequestContext.currentTraceId(), requestId, userId, rating == null ? "NONE" : rating);
     }
 }

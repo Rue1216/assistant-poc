@@ -27,7 +27,7 @@ import com.example.copilot.aiassistant.domain.chat.ChatResult;
 import com.example.copilot.aiassistant.domain.chat.EvaluationReport;
 import com.example.copilot.aiassistant.domain.exception.AssistantException;
 import com.example.copilot.aiassistant.domain.exception.ErrorCode;
-import com.example.copilot.aiassistant.interfaces.rest.RequestIdFilter;
+import com.example.copilot.aiassistant.application.support.RequestContext;
 import com.example.copilot.aiassistant.application.config.PublishedConfigCache;
 import com.example.copilot.aiassistant.application.llm.LlmCallPurpose;
 import com.example.copilot.aiassistant.application.llm.LlmErrorMapper;
@@ -118,7 +118,7 @@ class ChatOrchestratorTest {
     private static final String DISCLAIMER = "資訊僅供內部經營參考，不構成投資建議";
     private static final String TWSE_BASE = "https://openapi.twse.com.tw/v1";
     private static final String TWSE_SOURCE = "臺灣證券交易所 OpenAPI";
-    private static final String REQUEST_ID = "req00001";
+    private static final String TRACE_ID = "req00001";
     private static final Instant NOW = Instant.parse("2026-10-20T04:00:00Z");
     private static final Validator VALIDATOR = Validation.buildDefaultValidatorFactory().getValidator();
     private static final List<String> RETIREE_IDENTIFIERS = List.of("王小明", TestCustomers.RETIREE, "0912-000-111",
@@ -150,7 +150,7 @@ class ChatOrchestratorTest {
 
     @BeforeEach
     void setUp() throws IOException {
-        MDC.put(RequestIdFilter.MDC_KEY, REQUEST_ID);
+        MDC.put(RequestContext.MDC_KEY, TRACE_ID);
         CustomerDataPort port = MockCustomerPorts.adapter();
         twse = twseClient();
         orchestrator = orchestrator(new ToolRegistry(List.of(new GetCustomerTool(redactor),
@@ -225,7 +225,7 @@ class ChatOrchestratorTest {
 
     @AfterEach
     void clearMdc() {
-        MDC.remove(RequestIdFilter.MDC_KEY);
+        MDC.remove(RequestContext.MDC_KEY);
     }
 
     private TwseClient twseClient() throws IOException {
@@ -292,7 +292,7 @@ class ChatOrchestratorTest {
 
         ChatResult result = ask("幫我整理這位顧客的概況");
 
-        assertThat(result.requestId()).isEqualTo(REQUEST_ID);
+        assertThat(result.requestId()).isEqualTo(TRACE_ID);
         assertThat(result.answer()).isEqualTo("本顧客為 VIP 客群。");
         assertThat(result.blocks()).containsExactly(new AnswerBlock(BlockType.PARAGRAPH, "本顧客為 VIP 客群。", List.of()));
         assertThat(result.toolCalls()).isEmpty();
@@ -307,7 +307,7 @@ class ChatOrchestratorTest {
         AuditEntry audit = singleAudit();
         assertThat(audit.outcome()).isEqualTo("ANSWERED");
         assertThat(audit.errorCode()).isNull();
-        assertThat(audit.requestId()).isEqualTo(REQUEST_ID);
+        assertThat(audit.requestId()).isEqualTo(TRACE_ID);
         assertThat(audit.redactedQuestion()).isEqualTo("幫我整理這位顧客的概況");
         assertThat(audit.answer()).isEqualTo("本顧客為 VIP 客群。");
         assertThat(audit.answerTruncated()).isFalse();
@@ -1553,7 +1553,7 @@ class ChatOrchestratorTest {
 
         assertThat(lines).noneSatisfy(line -> assertThat(line).containsAnyOf("chat answered", "chat failed"));
         assertThat(lines).anySatisfy(line -> assertThat(line).contains("eval turn failed",
-                "requestId=" + REQUEST_ID, "code=AI_LLM_UNAVAILABLE"));
+                "traceId=" + TRACE_ID, "code=AI_LLM_UNAVAILABLE"));
         assertThat(lines).allSatisfy(line -> assertThat(line).doesNotContain("提問內容子丑寅", "回答"));
     }
 
@@ -1584,7 +1584,7 @@ class ChatOrchestratorTest {
             lines = capture.events().stream().map(LogCapture::render).toList();
         }
 
-        assertThat(lines).anySatisfy(line -> assertThat(line).contains("chat answered", "requestId=" + REQUEST_ID,
+        assertThat(lines).anySatisfy(line -> assertThat(line).contains("chat answered", "traceId=" + TRACE_ID,
                 "userId=ICRM00028", "modelCalls=2", "toolCalls=1", "totalTokens=250", "blocks=2", "citedBlocks=1",
                 "peakOutputTokens=30"));
         assertThat(lines).allSatisfy(line -> assertThat(line).doesNotContain("提問內容子丑寅", "回答內容甲乙丙",
@@ -1602,7 +1602,7 @@ class ChatOrchestratorTest {
         }
 
         assertThat(lines).anySatisfy(line -> assertThat(line).contains("chat failed",
-                "requestId=" + REQUEST_ID, "code=AI_ANSWER_FORMAT_INVALID", "modelCalls=1", "toolCalls=0"));
+                "traceId=" + TRACE_ID, "code=AI_ANSWER_FORMAT_INVALID", "modelCalls=1", "toolCalls=0"));
         assertThat(lines).allSatisfy(line -> assertThat(line).doesNotContain("秘密內容壬癸", "提問內容子丑寅",
                 "\"blocks\"", "quote"));
     }

@@ -103,7 +103,7 @@ public class InstructionRouter {
 
     private RouteDecision failed(ErrorCode code, long in, long out, long total) {
         // Code only: neither the question nor the model output may reach the log.
-        log.warn("chat route failed requestId={} code={}", RequestContext.currentRequestId(), code);
+        log.warn("chat route failed traceId={} code={}", RequestContext.currentTraceId(), code);
         return new RouteDecision(null, RouteSource.FALLBACK, true, in, out, total);
     }
 

@@ -40,7 +40,7 @@ class OutboundLlmLogListenerTest {
 
     @BeforeEach
     void setUp() {
-        MDC.put("requestId", "r-1");
+        MDC.put("traceId", "r-1");
         attrs = new HashMap<>(Map.of(LlmCallPurpose.class, LlmCallPurpose.ROUTE));
     }
 
@@ -94,7 +94,8 @@ class OutboundLlmLogListenerTest {
             assertThat(json.get("duration_ms").isString()).isTrue();
             assertThat(json.get("duration_ms").asString()).matches("\\d+");
             assertThat(json.get("execution_time").asString()).isEqualTo(json.get("duration_ms").asString());
-            assertThat(json.at("/llm/request_id").asString()).isEqualTo("r-1");
+            assertThat(json.at("/llm/trace_id").asString()).isEqualTo("r-1");
+            assertThat(json.at("/llm").has("request_id")).isFalse();
             assertThat(json.at("/llm/purpose").asString()).isEqualTo("ROUTE");
             assertThat(json.at("/llm/model").asString()).isEqualTo("gpt-x");
             assertThat(json.at("/llm/input_tokens").asString()).isEqualTo("100");
@@ -177,13 +178,13 @@ class OutboundLlmLogListenerTest {
     }
 
     @Test
-    void missingRequestIdIsBlank() {
-        MDC.remove("requestId");
+    void missingTraceIdIsBlank() {
+        MDC.remove("traceId");
         try (LogCapture logs = capture()) {
             request();
             respond(response("gpt-x", new TokenUsage(1, 1)));
 
-            assertThat(json(logs.events().get(0)).at("/llm/request_id").asString()).isEmpty();
+            assertThat(json(logs.events().get(0)).at("/llm/trace_id").asString()).isEmpty();
         }
     }
 

@@ -35,8 +35,9 @@ class AssistantExceptionHandlerTest extends IntegrationTestBase {
                 .andExpect(jsonPath("$.code").value("AI_CONFIG_CONFLICT"))
                 .andExpect(jsonPath("$.message").value("內容已被他人更新，請重新載入後再編輯"))
                 .andReturn();
-        String headerId = result.getResponse().getHeader("X-Request-Id");
-        assertThat(headerId).matches("[0-9a-f]{8}");
+        String headerId = result.getResponse().getHeader("X-Trace-Id");
+        assertThat(headerId).matches("[0-9a-f]{32}");
+        assertThat(result.getResponse().getHeader("X-Request-Id")).isNull();
         assertThat(result.getResponse().getContentAsString(StandardCharsets.UTF_8))
                 .contains("\"requestId\":\"" + headerId + "\"");
     }
@@ -123,10 +124,10 @@ class AssistantExceptionHandlerTest extends IntegrationTestBase {
     }
 
     @Test
-    void unauthenticatedResponseStillCarriesRequestId() throws Exception {
+    void unauthenticatedResponseStillCarriesTraceId() throws Exception {
         mockMvc.perform(post("/test-support/conflict").with(csrf()))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AI_UNAUTHENTICATED"))
-                .andExpect(header().exists("X-Request-Id"));
+                .andExpect(header().exists("X-Trace-Id"));
     }
 }

@@ -83,7 +83,7 @@ public class AuditLogger {
             repository.insert(toRecord(entry));
         } catch (Exception e) {
             // Class name only: messages and the entry may contain question/answer text.
-            log.error("Audit write failed requestId={} error={}", entry == null ? null : entry.requestId(),
+            log.error("Audit write failed traceId={} error={}", entry == null ? null : entry.requestId(),
                     e.getClass().getName());
         }
     }
@@ -135,7 +135,7 @@ public class AuditLogger {
     private static List<PromptVersion> versions(AuditEntry e) {
         List<PromptVersion> all = e.promptVersions() == null ? List.of() : e.promptVersions();
         if (all.size() > MAX_PROMPT_VERSIONS) {
-            log.warn("Audit promptVersions truncated requestId={} count={}", e.requestId(), all.size());
+            log.warn("Audit promptVersions truncated traceId={} count={}", e.requestId(), all.size());
             return all.subList(0, MAX_PROMPT_VERSIONS);
         }
         return all;

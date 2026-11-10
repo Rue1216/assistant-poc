@@ -1,5 +1,6 @@
 package com.example.copilot.aiassistant.interfaces.rest;
 
+import com.example.copilot.aiassistant.application.support.RequestContext;
 import com.example.copilot.aiassistant.domain.exception.AssistantException;
 import com.example.copilot.aiassistant.domain.exception.ErrorCode;
 import com.example.copilot.aiassistant.domain.exception.ErrorDetail;
@@ -24,7 +25,7 @@ public class AssistantExceptionHandler {
 
     @ExceptionHandler(AssistantException.class)
     ResponseEntity<ApiError> handleAssistant(AssistantException e) {
-        log.warn("requestId={} code={}", RequestIdFilter.current(), e.code());
+        log.warn("traceId={} code={}", RequestContext.currentTraceId(), e.code());
         return respond(e.code(), e.details());
     }
 
@@ -34,7 +35,7 @@ public class AssistantExceptionHandler {
                 .map(fe -> new FieldDetail(fe.getField()))
                 .distinct()
                 .toList();
-        log.warn("requestId={} code={}", RequestIdFilter.current(), ErrorCode.AI_INPUT_INVALID);
+        log.warn("traceId={} code={}", RequestContext.currentTraceId(), ErrorCode.AI_INPUT_INVALID);
         return respond(ErrorCode.AI_INPUT_INVALID, details);
     }
 
@@ -63,26 +64,26 @@ public class AssistantExceptionHandler {
     }
 
     private ResponseEntity<ApiError> invalid(List<FieldDetail> details) {
-        log.warn("requestId={} code={}", RequestIdFilter.current(), ErrorCode.AI_INPUT_INVALID);
+        log.warn("traceId={} code={}", RequestContext.currentTraceId(), ErrorCode.AI_INPUT_INVALID);
         return respond(ErrorCode.AI_INPUT_INVALID, details);
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     ResponseEntity<ApiError> handleUnreadable(HttpMessageNotReadableException e) {
-        log.warn("requestId={} code={}", RequestIdFilter.current(), ErrorCode.AI_INPUT_INVALID);
+        log.warn("traceId={} code={}", RequestContext.currentTraceId(), ErrorCode.AI_INPUT_INVALID);
         return respond(ErrorCode.AI_INPUT_INVALID, List.of());
     }
 
     @ExceptionHandler(AccessDeniedException.class)
     ResponseEntity<ApiError> handleAccessDenied(AccessDeniedException e) {
-        log.warn("requestId={} code={}", RequestIdFilter.current(), ErrorCode.AI_FORBIDDEN);
+        log.warn("traceId={} code={}", RequestContext.currentTraceId(), ErrorCode.AI_FORBIDDEN);
         return respond(ErrorCode.AI_FORBIDDEN, List.of());
     }
 
     @ExceptionHandler(Exception.class)
     ResponseEntity<ApiError> handleUnexpected(Exception e) {
         // Only the exception class is logged; the message may contain sensitive text and is never returned.
-        log.error("requestId={} unexpected exception type={}", RequestIdFilter.current(), e.getClass().getName());
+        log.error("traceId={} unexpected exception type={}", RequestContext.currentTraceId(), e.getClass().getName());
         return respond(ErrorCode.AI_INTERNAL_ERROR, List.of());
     }
 

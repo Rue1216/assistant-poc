@@ -95,7 +95,7 @@ public class HistorySummarizer {
 
     private SummaryResult failed(ErrorCode code, int count, long in, long out, long total) {
         // Code only: neither the messages nor the model output may reach the log.
-        log.warn("chat summary failed requestId={} code={}", RequestContext.currentRequestId(), code);
+        log.warn("chat summary failed traceId={} code={}", RequestContext.currentTraceId(), code);
         return new SummaryResult(SummaryStatus.FAILED, null, count, in, out, total);
     }
 
