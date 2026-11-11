@@ -1,0 +1,1092 @@
+/* ==========================================================================
+   個人 360 頁面替身（平台替身，整合時刪除）
+   版面（reference.md）：
+     | A 顧客名片 | C AuM          | D LuM＋信用卡 |
+     | B 經營     | E 會員 | F 財富潛力 | G 產品結構 |
+     | （跨 3 列）| H 資產意圖 | I 負債外匯意圖 | J 往來深度 |
+     |            | K 消費 | L 通路 | M 數位 |
+   圖表色（--series-* / --cat-*）定義在 tokens.css，light / dark 各自以 dataviz validator 驗證；
+   淺色 cat-3/4/5 對比 < 3:1，所以一律搭配數值表或標籤。
+   ========================================================================== */
+
+.c360 {
+  max-width: 1720px;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-6) 120px;
+}
+
+/* ---- 頂部列 ---- */
+
+.c360-topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.c360-topbar .breadcrumb {
+  margin: 0;
+}
+
+.c360-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 10px 0 6px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  text-decoration: none;
+}
+
+.c360-back:hover {
+  border-color: var(--green-300);
+  color: var(--green-700);
+}
+
+.c360-topbar__time {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
+}
+
+/* --------------------------------------------------------------------------
+   Grid：左欄 A/B + 右側 6 欄（C、D 各 3 欄；E–M 各 2 欄自動排入）
+   -------------------------------------------------------------------------- */
+
+.c360-grid {
+  display: grid;
+  grid-template-columns: 320px repeat(6, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.c360-a { grid-column: 1; grid-row: 1; }
+.c360-b { grid-column: 1; grid-row: 2 / span 3; }
+.c360-c { grid-column: 2 / span 3; grid-row: 1; }
+.c360-d { grid-column: 5 / span 3; grid-row: 1; }
+.c360-grid > .dash-card:not(.c360-c, .c360-d) { grid-column: span 2; }
+
+/* LIMITED 角色：只顯示名片，B–M 以一行說明取代 */
+.c360-limited {
+  grid-column: 2 / -1;
+  grid-row: 1;
+  align-self: start;
+  padding: var(--space-5);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+/* 載入中／查無顧客 */
+.c360-loading {
+  color: var(--color-text-muted);
+}
+
+.c360-notfound {
+  padding: var(--space-6);
+  border: 1px solid var(--red-200);
+  border-radius: var(--radius-lg);
+  background: var(--red-50);
+  color: var(--red-700);
+}
+
+/* --------------------------------------------------------------------------
+   A 顧客名片
+   -------------------------------------------------------------------------- */
+
+.c360-namecard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+}
+
+.c360-namecard__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.c360-namecard__avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--gradient-ai);
+  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.c360-namecard__name-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.c360-namecard__name {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--color-text-strong);
+}
+
+.c360-namecard__id {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.c360-namecard__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+  margin-top: auto;
+}
+
+.c360-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.c360-tag {
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--green-50);
+  color: var(--green-700);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.c360-tag--muted {
+  background: var(--gray-50);
+  color: var(--color-text-muted);
+}
+
+.c360-kv {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px var(--space-4);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+}
+
+.c360-kv dt {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.c360-kv dd {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+/* --------------------------------------------------------------------------
+   B 關鍵提醒 / 專屬活動 / 經營洞見
+   -------------------------------------------------------------------------- */
+
+.c360-ops {
+  padding: var(--space-5);
+}
+
+.c360-section + .c360-section {
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--color-border);
+}
+
+.c360-section__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: var(--space-3);
+  font-size: var(--text-md);
+  font-weight: 700;
+  color: var(--color-text-strong);
+}
+
+.c360-section__title::before {
+  content: "";
+  width: 4px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--color-primary);
+}
+
+.c360-section__hint {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  font-weight: 400;
+  color: var(--color-text-subtle);
+}
+
+.c360-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: var(--amber-50);
+  color: var(--amber-700);
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.alert-list,
+.campaign-list,
+.insight-list {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.alert-list__item {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--blue-50);
+  font-size: var(--text-sm);
+}
+
+.alert-list__item div,
+.campaign-list div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.alert-list__item span:not(.alert-list__icon),
+.campaign-list span:not(.badge),
+.insight-list span {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.alert-list__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--blue-700);
+  color: var(--color-surface);
+  font-size: 11px;
+  font-weight: 700;
+  font-style: italic;
+}
+
+.alert-list__item--warn {
+  background: var(--amber-50);
+}
+
+.alert-list__item--warn .alert-list__icon {
+  background: var(--amber-500);
+  color: #fff;
+  font-style: normal;
+}
+
+.campaign-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--text-sm);
+}
+
+.campaign-list li:last-child {
+  border-bottom: 0;
+}
+
+.insight-list li {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  border-left: 3px solid var(--green-300);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: var(--color-surface-alt);
+  font-size: var(--text-sm);
+}
+
+/* --------------------------------------------------------------------------
+   Dashboard 卡片共用
+   -------------------------------------------------------------------------- */
+
+.dash-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: var(--space-4) var(--space-5) var(--space-5);
+}
+
+.dash-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.dash-card__title {
+  font-size: var(--text-md);
+  font-weight: 700;
+  color: var(--color-text-strong);
+}
+
+.dash-card__meta {
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
+  white-space: nowrap;
+}
+
+.dash-card__body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-3);
+  flex: 1;
+}
+
+.dash-verdict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 8px;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.dash-verdict strong {
+  color: var(--color-text-strong);
+}
+
+/* ---- Segmented control（C 的比較對象切換） ---- */
+
+.seg {
+  display: inline-flex;
+  margin-left: auto;
+  padding: 2px;
+  border-radius: var(--radius-md);
+  background: var(--gray-50);
+  border: 1px solid var(--color-border);
+}
+
+.seg label {
+  padding: 2px 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.seg label:hover {
+  color: var(--color-text);
+}
+
+.seg input:checked + label {
+  background: var(--color-surface);
+  color: var(--color-text-strong);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+
+.seg input:focus-visible + label {
+  outline: 3px solid var(--color-focus-ring);
+}
+
+/* ---- Hero 數字 ---- */
+
+.hero-num {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.hero-num__value {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-text-strong);
+}
+
+.hero-num__unit {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.delta {
+  margin-left: var(--space-2);
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--gray-50);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.delta--up {
+  background: var(--green-50);
+  color: var(--green-700);
+}
+
+/* --------------------------------------------------------------------------
+   C AuM：多環圓弧圖 + 明細表；比較欄位與刻度依 seg 切換
+   -------------------------------------------------------------------------- */
+
+.aum {
+  display: grid;
+  grid-template-columns: minmax(170px, 230px) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-5);
+}
+
+.aum__chart {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.aum__scale {
+  font-size: 11px;
+  color: var(--color-text-subtle);
+}
+
+.aum__tick {
+  display: inline-block;
+  width: 2px;
+  height: 10px;
+  margin-right: 4px;
+  vertical-align: -1px;
+  background: var(--color-text-strong);
+}
+
+.aum-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.aum-table th,
+.aum-table td {
+  padding: 5px 0;
+  border-bottom: 1px dashed var(--color-border);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.aum-table tbody th,
+.aum-table tfoot th,
+.aum-table thead th:first-child {
+  text-align: left;
+  font-weight: 400;
+}
+
+.aum-table tbody th .legend__swatch {
+  display: inline-block;
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+
+.aum-table thead th {
+  font-size: var(--text-xs);
+  font-weight: 400;
+  color: var(--color-text-subtle);
+}
+
+.aum-table td,
+.aum-table thead th + th {
+  padding-left: var(--space-3);
+}
+
+.aum-table td:nth-of-type(1) {
+  font-weight: 700;
+  color: var(--color-text-strong);
+}
+
+.aum-table td:nth-of-type(2) {
+  color: var(--color-text-muted);
+}
+
+.aum-table small {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--color-text-subtle);
+}
+
+.aum-table tfoot th,
+.aum-table tfoot td {
+  border-bottom: 0;
+  font-weight: 700;
+  color: var(--color-text-strong);
+}
+
+/* 比較模式：顯示比較欄與環上刻度 */
+.c360-c .cmp { display: none; }
+.c360-c:has(#aum-cmp-group:checked) .cmp--group,
+.c360-c:has(#aum-cmp-top:checked) .cmp--top { display: inline; }
+.c360-c:has(#aum-cmp-group:checked) :is(td, th).cmp--group,
+.c360-c:has(#aum-cmp-top:checked) :is(td, th).cmp--top { display: table-cell; }
+
+/* --------------------------------------------------------------------------
+   D LuM：堆疊長條 + 明細 + 信用卡額度
+   -------------------------------------------------------------------------- */
+
+.stack {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+}
+
+.stack__seg {
+  flex-grow: 0;
+  flex-shrink: 1;
+  min-width: 3px;
+  transition: opacity var(--duration-fast);
+}
+
+.stack__seg:first-child { border-radius: 4px 0 0 4px; }
+.stack__seg:last-child { border-radius: 0 4px 4px 0; }
+.stack:hover .stack__seg:not(:hover) { opacity: 0.45; }
+
+.meter {
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+}
+
+.meter__head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.meter__head strong {
+  color: var(--color-text-strong);
+}
+
+.meter__track {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--gray-100);
+  overflow: hidden;
+}
+
+.meter__bar {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--cat-6);
+}
+
+/* ---- 類別色（C / D 組成） ---- */
+
+.c1 { --c: var(--cat-1); }
+.c2 { --c: var(--cat-2); }
+.c3 { --c: var(--cat-3); }
+.c4 { --c: var(--cat-4); }
+.c5 { --c: var(--cat-5); }
+.c6 { --c: var(--cat-6); }
+
+.stack__seg:is(.c1, .c2, .c3, .c4, .c5, .c6),
+.legend__swatch:is(.c1, .c2, .c3, .c4, .c5, .c6) { background: var(--c); }
+.chart__arc:is(.c1, .c2, .c3, .c4, .c5, .c6) { stroke: var(--c); }
+
+/* --------------------------------------------------------------------------
+   圖例
+   -------------------------------------------------------------------------- */
+
+.legend {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 16px;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend strong {
+  margin-left: 2px;
+  color: var(--color-text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.legend__swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.legend__swatch.s1 { background: var(--series-1); }
+.legend__swatch.s2 { background: var(--series-2); }
+
+.legend--table {
+  flex-direction: column;
+  justify-content: flex-start;
+  font-size: var(--text-sm);
+}
+
+.legend--table li {
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--color-border);
+}
+
+.legend--table li:last-child {
+  border-bottom: 0;
+}
+
+.legend__pct {
+  margin-left: auto;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.legend--table strong {
+  width: 64px;
+  text-align: right;
+}
+
+/* --------------------------------------------------------------------------
+   SVG 圖表共用
+   -------------------------------------------------------------------------- */
+
+.chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  font-family: var(--font-sans);
+}
+
+.chart__grid {
+  fill: none;
+  stroke: var(--chart-grid);
+  stroke-width: 1;
+}
+
+.chart__tick {
+  fill: var(--chart-text);
+  font-size: 11px;
+}
+
+.chart__tick--ring {
+  fill: var(--color-text-muted);
+  font-size: 10px;
+}
+
+.chart__tick--hl {
+  fill: var(--color-text-strong);
+  font-weight: 700;
+}
+
+/* 環形 */
+.chart__track {
+  fill: none;
+  stroke: var(--gray-100);
+  stroke-linecap: round;
+}
+
+.chart__arc {
+  fill: none;
+  stroke-linecap: round;
+  transition: stroke-width var(--duration-fast);
+}
+
+.chart__arc:hover { stroke-width: 13; }
+
+.chart__marker {
+  stroke: var(--color-text-strong);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.chart--rings {
+  max-width: 230px;
+}
+
+/* 雷達 */
+.chart--radar {
+  max-width: 360px;
+  margin: 0 auto;
+}
+
+.chart__series.s1 { color: var(--series-1); }
+.chart__series.s2 { color: var(--series-2); }
+
+.chart__area {
+  fill: currentColor;
+  fill-opacity: 0.16;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.chart__series.s2 .chart__area {
+  fill-opacity: 0.06;
+  stroke-dasharray: 5 4;
+}
+
+.chart__dot {
+  fill: currentColor;
+  stroke: var(--color-surface);
+  stroke-width: 2;
+  transition: r var(--duration-fast);
+}
+
+.chart__dot:hover { r: 6; }
+
+.chart__dot--hl {
+  fill: var(--series-hl);
+}
+
+.chart__dot--hl:hover { r: 8; }
+
+/* --------------------------------------------------------------------------
+   E 會員等級：五段進度軸
+   -------------------------------------------------------------------------- */
+
+.tier {
+  --tier-dot: 14px;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  list-style: none;
+  margin: 4px -4px 0;
+  padding: 0;
+}
+
+/* 軌道：從第一個點中心到最後一個點中心 */
+.tier::before,
+.tier__fill {
+  content: "";
+  position: absolute;
+  top: calc(var(--tier-dot) / 2 - 2px);
+  left: 10%;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.tier::before {
+  right: 10%;
+  background: var(--gray-100);
+}
+
+.tier__fill {
+  width: calc(80% * var(--tier-progress) / 100);
+  background: var(--color-primary);
+}
+
+.tier__step {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--text-xs);
+  text-align: center;
+}
+
+.tier__dot {
+  width: var(--tier-dot);
+  height: var(--tier-dot);
+  margin-bottom: 4px;
+  border-radius: 50%;
+  border: 2px solid var(--gray-200);
+  background: var(--color-surface);
+}
+
+.tier__step strong {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.tier__step span {
+  color: var(--color-text-subtle);
+  font-size: 11px;
+}
+
+.tier__step.is-done .tier__dot {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+}
+
+.tier__step.is-current .tier__dot {
+  border-color: var(--color-primary);
+  background: var(--color-surface);
+  box-shadow: 0 0 0 4px var(--color-focus-ring);
+}
+
+.tier__step.is-current strong {
+  color: var(--green-700);
+}
+
+.tier__next {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.tier__next strong {
+  color: var(--color-text-strong);
+}
+
+.perks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+.perks > div {
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+}
+
+.perks > div:last-child {
+  border-style: dashed;
+}
+
+.perks h3 {
+  margin-bottom: 4px;
+  font-size: var(--text-xs);
+  color: var(--color-text-strong);
+}
+
+.perks ul {
+  padding-left: 1.1em;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+/* --------------------------------------------------------------------------
+   G 產品結構：KPI + 分組長條（單一 % 軸）
+   -------------------------------------------------------------------------- */
+
+.kpi {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 2px var(--space-3);
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+}
+
+.kpi__label {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.kpi__value {
+  grid-row: span 2;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--color-text-strong);
+}
+
+.kpi__cmp {
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
+}
+
+.kpi__cmp strong {
+  color: var(--green-700);
+}
+
+.gbars {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gbars li {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  font-size: var(--text-sm);
+}
+
+.gbars__label {
+  color: var(--color-text-muted);
+}
+
+.gbars__bars {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gbars__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gbars__bar {
+  height: 10px;
+  border-radius: 0 4px 4px 0;
+  transition: opacity var(--duration-fast);
+}
+
+.gbars__bar.s1 { background: var(--series-1); }
+.gbars__bar.s2 { background: var(--series-2); }
+
+.gbars__value {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.gbars:hover .gbars__row:not(:hover) .gbars__bar {
+  opacity: 0.4;
+}
+
+/* --------------------------------------------------------------------------
+   H / I 最強意圖、K 消費族群
+   -------------------------------------------------------------------------- */
+
+.intent-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  background: var(--orange-50);
+  font-size: var(--text-xs);
+  color: var(--orange-700);
+}
+
+.intent-top__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--series-hl);
+}
+
+.intent-top strong {
+  color: var(--color-text-strong);
+  font-size: var(--text-sm);
+}
+
+.intent-top span:last-child {
+  color: var(--color-text-muted);
+}
+
+.persona {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.persona__label {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+/* --------------------------------------------------------------------------
+   Responsive
+   -------------------------------------------------------------------------- */
+
+@media (max-width: 1440px) {
+  .c360-grid {
+    grid-template-columns: 290px repeat(6, minmax(0, 1fr));
+  }
+  .aum {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+}
+
+@media (max-width: 1200px) {
+  .c360-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .c360-grid > * {
+    grid-column: auto !important;
+    grid-row: auto !important;
+  }
+  /* A、B 改為整列；B 的三個區段並排 */
+  .c360-grid > .c360-a,
+  .c360-grid > .c360-b,
+  .c360-grid > .c360-limited {
+    grid-column: 1 / -1 !important;
+  }
+  .c360-ops {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-5);
+  }
+  .c360-section + .c360-section {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
+  .aum {
+    grid-template-columns: minmax(170px, 230px) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .c360 {
+    padding: var(--space-3) var(--space-4) 120px;
+  }
+  .c360-topbar .breadcrumb,
+  .c360-topbar__time {
+    display: none;
+  }
+  .c360-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .c360-ops {
+    display: block;
+  }
+  .c360-section + .c360-section {
+    margin-top: var(--space-5);
+    padding-top: var(--space-5);
+    border-top: 1px solid var(--color-border);
+  }
+  .aum {
+    grid-template-columns: 1fr;
+  }
+}
