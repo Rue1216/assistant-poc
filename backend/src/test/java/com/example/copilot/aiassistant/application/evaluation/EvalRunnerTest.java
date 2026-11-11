@@ -452,13 +452,17 @@ class EvalRunnerTest extends EvalRunnerTestBase {
         answerStep();
         doThrow(new IllegalStateException("boom")).when(judge).judge(any(), any(), any(), any());
         EvalRun run = insertRun(3, Duration.ofSeconds(1));
-        MDC.remove(RequestContext.MDC_KEY);
-        MDC.remove(RequestContext.SPAN_KEY);
+        MDC.put(RequestContext.MDC_KEY, "outer");
+        MDC.put(RequestContext.SPAN_KEY, "outer-span");
+        try {
+            runner.run(run, snapshot());
 
-        runner.run(run, snapshot());
-
-        assertThat(reload(run).errorCode()).isEqualTo("AI_INTERNAL_ERROR");
-        assertThat(MDC.get(RequestContext.MDC_KEY)).isNull();
-        assertThat(MDC.get(RequestContext.SPAN_KEY)).isNull();
+            assertThat(reload(run).errorCode()).isEqualTo("AI_INTERNAL_ERROR");
+            assertThat(MDC.get(RequestContext.MDC_KEY)).isEqualTo("outer");
+            assertThat(MDC.get(RequestContext.SPAN_KEY)).isEqualTo("outer-span");
+        } finally {
+            MDC.remove(RequestContext.MDC_KEY);
+            MDC.remove(RequestContext.SPAN_KEY);
+        }
     }
 }

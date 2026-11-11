@@ -10,6 +10,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -22,8 +23,11 @@ import dev.langchain4j.exception.InternalServerException;
 import dev.langchain4j.model.chat.ChatRequestOptions;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import java.util.List;
+import org.bson.Document;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
@@ -32,6 +36,8 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 class ChatControllerTest extends IntegrationTestBase {
 
     private static final String URL = "/api/ai-assistant/customers/{id}/chat";
+
+    @Autowired MongoTemplate mongo;
 
     @BeforeEach
     void modelAnswers() {
@@ -85,7 +91,35 @@ class ChatControllerTest extends IntegrationTestBase {
     }
 
     @Test
-    void tooLongHistorySummaryIs400() throws Exception {
+    void overlongCallerTraceIdIsEchoedInFullAndClippedInAudit() throws Exception {
+        String caller = "t".repeat(200);
+        // ICRM00024 is used by no other chat test, so these extra calls leave the other tests' rate-limit budget alone.
+        MvcResult r = mockMvc.perform(post(URL, TestCustomers.RETIREE).with(TestUsers.as("ICRM00024")).with(csrf())
+                        .header("X-B3-TraceId", caller)
+                        .contentType(MediaType.APPLICATION_JSON).content(body("幫我整理這位顧客的概況")))
+                .andExpect(status().isOk())
+                .andReturn();
+        assertThat(JsonPath.<String>read(r.getResponse().getContentAsString(), "$.traceId")).isEqualTo(caller);
+        assertThat(r.getResponse().getHeader("X-Trace-Id")).isEqualTo(caller);
+        Document audit = mongo.getCollection("COLL_ICRM_AI_ASSISTANT_AUDIT")
+                .find(new Document("traceId", caller.substring(0, 64))).first();
+        assertThat(audit).isNotNull();
+    }
+
+    @Test
+    void answerCanBeRatedWithTheReturnedTraceId() throws Exception {
+        String traceId = JsonPath.read(chat(TestCustomers.RETIREE, TestUsers.as("ICRM00024"), body("幫我整理這位顧客的概況"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(), "$.traceId");
+        mockMvc.perform(put("/api/ai-assistant/chat/{id}/feedback", traceId).with(TestUsers.as("ICRM00024")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"rating\":\"UP\"}"))
+                .andExpect(status().isNoContent());
+        Document audit = mongo.getCollection("COLL_ICRM_AI_ASSISTANT_AUDIT").find(new Document("traceId", traceId)).first();
+        assertThat(audit).isNotNull();
+        assertThat(audit.getString("feedback")).isEqualTo("UP");
+    }
+
+    @Test
+    void tooLongHistorySummaryIs400()throws Exception {
         chat(TestCustomers.RETIREE, TestUsers.as("ICRM00018"),
                 "{\"message\":\"hi\",\"historySummary\":\"" + "摘".repeat(1001) + "\"}")
                 .andExpect(status().isBadRequest())

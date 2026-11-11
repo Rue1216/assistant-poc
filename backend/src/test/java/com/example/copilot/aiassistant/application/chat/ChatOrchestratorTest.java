@@ -118,7 +118,7 @@ class ChatOrchestratorTest {
     private static final String DISCLAIMER = "資訊僅供內部經營參考，不構成投資建議";
     private static final String TWSE_BASE = "https://openapi.twse.com.tw/v1";
     private static final String TWSE_SOURCE = "臺灣證券交易所 OpenAPI";
-    private static final String TRACE_ID = "req00001";
+    private static final String TRACE_ID = "463ac35c9f6413ad48485a3953bb6124";
     private static final Instant NOW = Instant.parse("2026-10-20T04:00:00Z");
     private static final Validator VALIDATOR = Validation.buildDefaultValidatorFactory().getValidator();
     private static final List<String> RETIREE_IDENTIFIERS = List.of("王小明", TestCustomers.RETIREE, "0912-000-111",
