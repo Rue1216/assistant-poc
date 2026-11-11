@@ -171,7 +171,7 @@ function onInput(e: Event): void {
 }
 .ai-quick-pop[open] summary {
   background: var(--color-primary);
-  color: #fff;
+  color: var(--color-text-on-primary);
 }
 .ai-quick-pop__list {
   display: flex;
@@ -224,7 +224,7 @@ function onInput(e: Event): void {
   border: 0;
   border-radius: 10px;
   background: var(--color-primary);
-  color: #fff;
+  color: var(--color-text-on-primary);
   cursor: pointer;
   transition: background var(--duration-fast);
 }

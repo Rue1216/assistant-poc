@@ -44,6 +44,7 @@ vi.mock("@/composables/use-toast", () => ({
 import { ApiError, apiClient } from "@/utils/api-client";
 import { createAppRouter } from "@/router/index";
 import { useAuthStore } from "@/stores/use-auth-store";
+import { settleValidation } from "../../../helpers/settle-validation";
 import PromptManagementPage from "@/views/maintenance/prompt-management/prompt-management-page.vue";
 import { run, runSummary } from "../../../fixtures/eval-fixtures";
 
@@ -903,7 +904,7 @@ describe("PromptManagementPage", () => {
       new ApiError(409, "AI_CONFIG_CONFLICT", "x"),
     );
     await byText(w, ".pm-actionbar button", "儲存").trigger("click");
-    await flushPromises();
+    await settleValidation();
 
     await w.find(".pm-banner--conflict button").trigger("click");
     expect(w.find('[role="dialog"]').text()).toContain(
@@ -1102,7 +1103,7 @@ describe("PromptManagementPage", () => {
         : full(key, HISTORY[key]!.find((h) => h.version === v)!),
     );
     await dialog().find("form").trigger("submit");
-    await flushPromises();
+    await settleValidation();
 
     expect(dialog().exists()).toBe(false);
     expect(w.find(".pm-confighead h2").text()).toBe("電話開場白");
@@ -1118,6 +1119,7 @@ describe("PromptManagementPage", () => {
     await keyInput!.setValue("Phone Opening");
     await nameInput!.setValue("電話開場白");
     await dialog().find("form").trigger("submit");
+    await settleValidation();
     expect(dialog().text()).toContain("Key 只能使用小寫英數與連字號");
     expect(api.createConfig).not.toHaveBeenCalled();
 
@@ -1126,7 +1128,7 @@ describe("PromptManagementPage", () => {
     );
     await keyInput!.setValue("phone-opening");
     await dialog().find("form").trigger("submit");
-    await flushPromises();
+    await settleValidation();
 
     expect(api.createConfig).toHaveBeenCalledWith({
       configKey: "instruction.phone-opening",

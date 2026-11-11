@@ -1,7 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
-import type { ChatMessage, FeedbackRating, SuggestionCategory } from "@/beans/ai-assistant-bean";
-import { formatTaipei, formatTaipeiTime } from "@/utils/taipei-time";
+import type {
+  ChatMessage,
+  FeedbackRating,
+  SuggestionCategory,
+} from "@/beans/ai-assistant-bean";
+import {
+  formatTaipei,
+  formatTaipeiTime,
+  isTaipeiToday,
+} from "@/utils/taipei-time";
 import WelcomeCard from "@/components/ai-assistant/welcome-card.vue";
 import UserMessage from "@/components/ai-assistant/user-message.vue";
 import AssistantMessage from "@/components/ai-assistant/assistant-message.vue";
@@ -31,9 +39,7 @@ const box = ref<HTMLElement | null>(null);
 /** Space below the thread so the newest question can reach the top while its answer is still short. */
 const tailHeight = ref(0);
 function timeLabel(iso: string): string {
-  // compare calendar days in Asia/Taipei; formatTaipei is "YYYY/MM/DD HH:mm"
-  const day = (t: string) => formatTaipei(t).slice(0, 10);
-  return day(iso) === day(new Date().toISOString())
+  return isTaipeiToday(iso)
     ? `今天 ${formatTaipeiTime(iso)}`
     : formatTaipei(iso);
 }
@@ -184,7 +190,7 @@ watch(
   padding: var(--space-4);
   background: var(--gray-25);
   scroll-behavior: smooth;
-  overflowscroll-behavior: contain;
+  overscroll-behavior: contain;
 }
 .ai-thread {
   display: flex;

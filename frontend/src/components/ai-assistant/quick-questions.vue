@@ -58,6 +58,6 @@ const visible = computed(() => props.categories.filter((c) => c.questions.length
 .ai-cat--1 { background: var(--green-500); }
 .ai-cat--2 { background: var(--teal-400); }
 .ai-cat--3 { background: var(--green-300); }
-.ai-cat--4 { background: #6aa84f; }
-.ai-cat--5 { background: #3d8fb3; }
+.ai-cat--4 { background: var(--ai-cat-4); }
+.ai-cat--5 { background: var(--ai-cat-5); }
 </style>

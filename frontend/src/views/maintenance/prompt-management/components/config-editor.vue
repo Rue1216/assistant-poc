@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { computed, useId } from 'vue'
+import { computed, useId, watch } from 'vue'
+import { useForm } from 'vee-validate'
+import { toTypedSchema } from '@vee-validate/zod'
 import type { PromptAdmin } from '@/composables/use-prompt-admin'
 import type { ConfigType, PublishMode, SaveMode } from '@/beans/prompt-management-bean'
 import MarkdownEditor from '@/views/maintenance/prompt-management/components/markdown-editor.vue'
 import PublishBar from '@/views/maintenance/prompt-management/components/publish-bar.vue'
 import ValidationPanel from '@/views/maintenance/prompt-management/components/validation-panel.vue'
+import { draftFormSchema } from '@/views/maintenance/prompt-management/prompt-management-schema'
 import '@/assets/styles/prompt-admin.css'
 
 const props = defineProps<{
@@ -23,11 +26,27 @@ const state = computed(() => props.admin.state)
 const wc = computed(() => props.admin.state.workingCopy!)
 const scheduledAt = computed(() => (wc.value.status === 'SCHEDULED' ? wc.value.scheduledAt : null))
 
-function onSave(mode: SaveMode) {
-  void props.admin.save(mode)
+// The field values stay in usePromptAdmin (dirty tracking, reload and save read them there); this form
+// mirrors name and change note so they are validated before a save or publish goes out.
+const { errors, validate, setValues } = useForm({ validationSchema: toTypedSchema(draftFormSchema) })
+let validated = false
+watch(
+  () => [state.value.form.name, state.value.form.changeNote] as const,
+  ([name, changeNote]) => setValues({ name, changeNote }, validated),
+  { immediate: true },
+)
+
+/** After the first attempt the errors follow the fields as they are edited. */
+async function validateForm(): Promise<boolean> {
+  validated = true
+  return (await validate()).valid
 }
-function onPublish(mode: PublishMode, date: string, time: string) {
-  void props.admin.publish(mode, date, time)
+
+async function onSave(mode: SaveMode): Promise<void> {
+  if (await validateForm()) void props.admin.save(mode)
+}
+async function onPublish(mode: PublishMode, date: string, time: string): Promise<void> {
+  if (await validateForm()) void props.admin.publish(mode, date, time)
 }
 </script>
 
@@ -59,7 +78,9 @@ function onPublish(mode: PublishMode, date: string, time: string) {
             class="input"
             maxlength="50"
             :readonly="!canEdit"
+            :aria-invalid="!!errors.name"
           />
+          <span v-if="errors.name" class="field__error" role="alert">{{ errors.name }}</span>
         </div>
         <div class="field">
           <label class="field__label" :for="`${id}-note`">修改說明</label>
@@ -70,7 +91,9 @@ function onPublish(mode: PublishMode, date: string, time: string) {
             maxlength="200"
             placeholder="選填，例如：補充無權限時的回覆方式"
             :readonly="!canEdit"
+            :aria-invalid="!!errors.changeNote"
           />
+          <span v-if="errors.changeNote" class="field__error" role="alert">{{ errors.changeNote }}</span>
         </div>
       </div>
 

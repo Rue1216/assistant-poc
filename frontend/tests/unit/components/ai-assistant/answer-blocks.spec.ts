@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import type { AnswerBlock, Citation } from '@/beans/ai-assistant-bean'
-import AnswerBlocks from '@/components/ai-assistant/answer-blocks'
+import AnswerBlocks from '@/components/ai-assistant/answer-blocks.vue'
 
 const CITATION: Citation = {
   id: 1,

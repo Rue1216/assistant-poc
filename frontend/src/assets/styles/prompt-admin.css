@@ -154,6 +154,12 @@
   padding: var(--space-4);
 }
 
+.field__error {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--red-600);
+}
+
 .dialog__backdrop {
   position: absolute;
   inset: 0;

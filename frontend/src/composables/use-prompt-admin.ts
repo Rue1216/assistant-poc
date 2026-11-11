@@ -2,7 +2,7 @@ import { computed, reactive, watch, type Ref } from 'vue'
 import { ApiError } from '@/utils/api-client'
 import { useToast } from '@/composables/use-toast'
 import { promptManagementApi } from '@/views/maintenance/prompt-management/prompt-management-api'
-import { CONFLICT, INPUT_INVALID, OVERWRITE_PENDING, VALIDATION_FAILED } from '@/views/maintenance/prompt-management/prompt-management-constant'
+import { CONFLICT, INPUT_INVALID, OVERWRITE_PENDING, SCHEDULE_ERROR, VALIDATION_FAILED } from '@/views/maintenance/prompt-management/prompt-management-constant'
 import { diffLines, type DiffLine } from '@/utils/markdown/line-diff'
 import { formatTaipei, taipeiDateTimeToIso } from '@/utils/taipei-time'
 import type {
@@ -17,7 +17,6 @@ import type {
   VersionHistoryItem,
 } from '@/beans/prompt-management-bean'
 
-export const SCHEDULE_ERROR = '預約時間需在 1 分鐘後、90 天內'
 /** 05 section 2.1 AI_INTERNAL_ERROR wording, for unexpected client-side failures. */
 export const GENERIC_ERROR = '系統發生錯誤，請稍後再試'
 

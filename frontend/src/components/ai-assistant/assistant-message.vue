@@ -3,7 +3,7 @@ import { computed, ref } from "vue";
 import type { ChatMessage, FeedbackRating } from "@/beans/ai-assistant-bean";
 import { formatTaipeiTime } from "@/utils/taipei-time";
 import { useToast } from "@/composables/use-toast";
-import AnswerBlocks from "@/components/ai-assistant/answer-blocks";
+import AnswerBlocks from "@/components/ai-assistant/answer-blocks.vue";
 import CitationList from "@/components/ai-assistant/citation-list.vue";
 import FeedbackButtons from "@/components/ai-assistant/feedback-buttons.vue";
 
@@ -107,7 +107,7 @@ async function copy(): Promise<void> {
   height: 28px;
   border-radius: 50%;
   background: var(--gradient-ai);
-  color: #fff;
+  color: var(--color-text-on-primary);
   font-size: 13px;
 }
 .ai-msg__content {

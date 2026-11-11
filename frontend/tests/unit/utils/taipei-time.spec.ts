@@ -4,7 +4,11 @@ import {
   formatTaipeiShort,
   formatTaipeiShortSeconds,
   formatTaipeiTime,
+  isTaipeiDateTime,
+  isTaipeiToday,
   isoToTaipeiDateTime,
+  nextHourTaipei,
+  nowIso,
   taipeiDateTimeToIso,
 } from '@/utils/taipei-time'
 
@@ -57,6 +61,30 @@ describe('taipeiTime', () => {
     expect(formatTaipeiShortSeconds('2026-10-19T06:03:24Z')).toBe('10/19 14:03:24')
     expect(formatTaipeiShortSeconds('2026-10-19T06:03:05.999+00:00')).toBe('10/19 14:03:05')
     expect(formatTaipeiShortSeconds('not-a-date')).toBe('not-a-date')
+  })
+
+  it('rejects dates and times that do not exist', () => {
+    expect(isTaipeiDateTime('2026-10-24', '09:00')).toBe(true)
+    expect(isTaipeiDateTime('2026-02-30', '09:00')).toBe(false)
+    expect(isTaipeiDateTime('2026-10-24', '25:00')).toBe(false)
+    expect(() => taipeiDateTimeToIso('2026-02-30', '09:00')).toThrow()
+  })
+
+  it('tells whether an instant is today in Taipei', () => {
+    const now = Date.parse('2026-10-24T15:30:00Z') // 10/24 23:30 in Taipei
+    expect(isTaipeiToday('2026-10-23T16:00:00Z', now)).toBe(true) // 10/24 00:00 Taipei
+    expect(isTaipeiToday('2026-10-23T15:59:59Z', now)).toBe(false) // 10/23 23:59 Taipei
+    expect(isTaipeiToday('2026-10-24T16:00:00Z', now)).toBe(false) // 10/25 00:00 Taipei
+    expect(isTaipeiToday('not-a-date', now)).toBe(false)
+  })
+
+  it('gives the next full hour at least one hour away, across midnight', () => {
+    expect(nextHourTaipei(Date.parse('2026-10-24T01:20:00Z'))).toEqual({ date: '2026-10-24', time: '11:00' })
+    expect(nextHourTaipei(Date.parse('2026-10-24T15:00:00Z'))).toEqual({ date: '2026-10-25', time: '00:00' })
+  })
+
+  it('returns the current instant as UTC ISO', () => {
+    expect(nowIso()).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
   })
 
   it('returns the input unchanged when it is not a date', () => {

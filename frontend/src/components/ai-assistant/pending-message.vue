@@ -23,7 +23,7 @@
   height: 28px;
   border-radius: 50%;
   background: var(--gradient-ai);
-  color: #fff;
+  color: var(--color-text-on-primary);
   font-size: 13px;
 }
 .ai-msg__content {

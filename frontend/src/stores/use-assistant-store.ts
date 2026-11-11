@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { ApiError } from '@/utils/api-client'
 import { aiAssistantApi } from '@/components/ai-assistant/ai-assistant-api'
+import { nowIso } from '@/utils/taipei-time'
 import type { ChatMessage, FeedbackRating, HistoryItem } from '@/beans/ai-assistant-bean'
 
 export const MAX_HISTORY_MESSAGES = 20
@@ -78,7 +79,7 @@ export const useAssistantStore = defineStore('aiAssistant', () => {
     if (!message || !cid || pending.value || unavailable.value) return
 
     const { items: history, ids } = buildHistory()
-    const now = new Date().toISOString()
+    const now = nowIso()
     const r = round.value
     messages.value.push(
       { id: nextId(), role: 'user', content: message, state: 'pending', createdAt: now, round: r, ...(categoryKey ? { categoryKey } : {}) },

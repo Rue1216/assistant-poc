@@ -48,8 +48,8 @@ onBeforeUnmount(() => store.reset())
   border: 0;
   border-radius: 50%;
   background: var(--gradient-ai);
-  color: #fff;
-  box-shadow: 0 10px 28px rgba(14, 122, 85, 0.35);
+  color: var(--color-text-on-primary);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--green-600) 35%, transparent);
   cursor: pointer;
   transition:
     transform var(--duration-fast),
@@ -57,7 +57,7 @@ onBeforeUnmount(() => store.reset())
 }
 .ai-fab:hover {
   transform: translateY(-2px);
-  box-shadow: 0 14px 32px rgba(14, 122, 85, 0.42);
+  box-shadow: 0 14px 32px color-mix(in srgb, var(--green-600) 42%, transparent);
 }
 .ai-fab:focus-visible {
   outline: 3px solid var(--color-focus-ring);

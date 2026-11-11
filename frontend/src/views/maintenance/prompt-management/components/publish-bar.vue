@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { useForm } from 'vee-validate'
+import { toTypedSchema } from '@vee-validate/zod'
 import { isoToTaipeiDateTime, nextHourTaipei } from '@/utils/taipei-time'
+import { scheduleSchema } from '@/views/maintenance/prompt-management/prompt-management-schema'
 import type { PublishMode, SaveMode } from '@/beans/prompt-management-bean'
 import '@/assets/styles/prompt-admin.css'
 
@@ -19,8 +22,12 @@ const emit = defineEmits<{
 
 /** DRAFT only: the date and time row is opened by 預約… and closed by 取消 (a scheduled copy always shows it) */
 const scheduling = ref(false)
-const date = ref('')
-const time = ref('')
+
+const { errors, defineField, validate, resetForm } = useForm({ validationSchema: toTypedSchema(scheduleSchema) })
+const [date] = defineField('date')
+const [time] = defineField('time')
+/** The server's range error wins over the field check: it is about the values that were sent. */
+const shownError = computed(() => props.scheduleError ?? errors.value.date ?? null)
 
 // 02 section 3.0: a scheduled working copy starts with its current time, otherwise the next full hour
 watch(
@@ -28,11 +35,20 @@ watch(
   ([status, scheduledAt]) => {
     scheduling.value = false
     const when = status === 'SCHEDULED' && scheduledAt ? isoToTaipeiDateTime(scheduledAt) : nextHourTaipei()
-    date.value = when.date
-    time.value = when.time
+    resetForm({ values: when })
   },
   { immediate: true },
 )
+
+function publishNow(): void {
+  emit('publish', 'IMMEDIATE', date.value ?? '', time.value ?? '')
+}
+
+/** A malformed date or time stays here; the parent only gets values it can turn into an instant. */
+async function publishScheduled(): Promise<void> {
+  const { valid } = await validate()
+  if (valid) emit('publish', 'SCHEDULED', date.value ?? '', time.value ?? '')
+}
 </script>
 
 <template>
@@ -47,9 +63,9 @@ watch(
       <!-- 已排程: 取消排程 [日期][時間] 儲存 …; 草稿預約中: 儲存 [日期][時間] 取消 預約發布 (spec 3.1) -->
       <template v-if="status === 'SCHEDULED' && canPublish">
         <span class="pm-publish__when">
-          <input v-model="date" class="input" type="date" aria-label="預約日期" :aria-invalid="!!scheduleError" />
-          <input v-model="time" class="input" type="time" aria-label="預約時間" :aria-invalid="!!scheduleError" />
-          <span v-if="scheduleError" class="pm-publish__error" role="alert">{{ scheduleError }}</span>
+          <input v-model="date" class="input" type="date" aria-label="預約日期" :aria-invalid="!!shownError" />
+          <input v-model="time" class="input" type="time" aria-label="預約時間" :aria-invalid="!!shownError" />
+          <span v-if="shownError" class="pm-publish__error" role="alert">{{ shownError }}</span>
         </span>
       </template>
 
@@ -57,30 +73,30 @@ watch(
 
       <template v-if="status === 'DRAFT' && scheduling && canPublish">
         <span class="pm-publish__when">
-          <input v-model="date" class="input" type="date" aria-label="預約日期" :aria-invalid="!!scheduleError" />
-          <input v-model="time" class="input" type="time" aria-label="預約時間" :aria-invalid="!!scheduleError" />
-          <span v-if="scheduleError" class="pm-publish__error" role="alert">{{ scheduleError }}</span>
+          <input v-model="date" class="input" type="date" aria-label="預約日期" :aria-invalid="!!shownError" />
+          <input v-model="time" class="input" type="time" aria-label="預約時間" :aria-invalid="!!shownError" />
+          <span v-if="shownError" class="pm-publish__error" role="alert">{{ shownError }}</span>
         </span>
       </template>
 
       <template v-if="canPublish">
         <template v-if="status === 'SCHEDULED'">
-          <button class="btn btn--secondary" type="button" :disabled="busy" @click="emit('publish', 'IMMEDIATE', date, time)">
+          <button class="btn btn--secondary" type="button" :disabled="busy" @click="publishNow">
             立即發布
           </button>
-          <button class="btn btn--primary" type="button" :disabled="busy" @click="emit('publish', 'SCHEDULED', date, time)">
+          <button class="btn btn--primary" type="button" :disabled="busy" @click="publishScheduled">
             更新預約
           </button>
         </template>
         <template v-else-if="scheduling">
           <button class="btn btn--link" type="button" :disabled="busy" @click="scheduling = false">取消</button>
-          <button class="btn btn--primary" type="button" :disabled="busy" @click="emit('publish', 'SCHEDULED', date, time)">
+          <button class="btn btn--primary" type="button" :disabled="busy" @click="publishScheduled">
             預約發布
           </button>
         </template>
         <template v-else>
           <button class="btn btn--secondary" type="button" :disabled="busy" @click="scheduling = true">預約…</button>
-          <button class="btn btn--primary" type="button" :disabled="busy" @click="emit('publish', 'IMMEDIATE', date, time)">
+          <button class="btn btn--primary" type="button" :disabled="busy" @click="publishNow">
             立即發布
           </button>
         </template>

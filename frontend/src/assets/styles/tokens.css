@@ -21,6 +21,9 @@
   --teal-500: #14a08c;
   --gradient-ai: linear-gradient(135deg, var(--green-500) 0%, var(--teal-400) 100%);
   --gradient-soft: linear-gradient(180deg, #f3fbf7 0%, #ffffff 100%);
+  /* 快捷問題分類色點（第 4、5 類；前三類沿用品牌綠與 teal） */
+  --ai-cat-4: #6aa84f;
+  --ai-cat-5: #3d8fb3;
 
   /* ---- Neutrals（略帶綠調的灰） ---- */
   --gray-0: #ffffff;

@@ -8,19 +8,19 @@
 
 ## 1. 要複製的檔案
 
-共 93 個：`src/` 55 個、`tests/` 38 個。
+共 97 個：`src/` 56 個、`tests/` 41 個。
 
 ### 1.1 `src/`
 
 | 目錄 | 檔案 |
 | --- | --- |
 | `src/beans/` | `ai-assistant-bean.ts`、`prompt-management-bean.ts` |
-| `src/components/ai-assistant/` | `ai-assistant-api.ts`、`ai-assistant-constant.ts`、`answer-blocks.ts`、`assistant-header.vue`、`assistant-launcher.vue`、`assistant-message.vue`、`assistant-panel.vue`、`chat-composer.vue`、`citation-list.vue`、`error-message.vue`、`feedback-buttons.vue`、`message-list.vue`、`pending-message.vue`、`quick-questions.vue`、`thumb-icon.vue`、`user-message.vue`、`welcome-card.vue` |
+| `src/components/ai-assistant/` | `ai-assistant-api.ts`、`ai-assistant-constant.ts`、`answer-blocks.vue`、`assistant-header.vue`、`assistant-launcher.vue`、`assistant-message.vue`、`assistant-panel.vue`、`chat-composer.vue`、`citation-list.vue`、`error-message.vue`、`feedback-buttons.vue`、`message-list.vue`、`pending-message.vue`、`quick-questions.vue`、`thumb-icon.vue`、`user-message.vue`、`welcome-card.vue` |
 | `src/composables/` | `use-assistant-chat.ts`、`use-suggestions.ts`、`use-prompt-admin.ts`、`use-prompt-evaluation.ts` |
 | `src/stores/` | `use-assistant-store.ts` |
 | `src/utils/` | `taipei-time.ts` |
 | `src/utils/markdown/` | `parser.ts`、`safe-markdown.ts`、`line-diff.ts`、`example-questions.ts` |
-| `src/views/maintenance/prompt-management/` | `prompt-management-page.vue`、`prompt-management-api.ts`、`prompt-management-constant.ts`、`prompt-labels.ts`、`diff-rows.ts`、`evaluation-format.ts` |
+| `src/views/maintenance/prompt-management/` | `prompt-management-page.vue`、`prompt-management-api.ts`、`prompt-management-constant.ts`、`prompt-management-schema.ts`、`prompt-labels.ts`、`diff-rows.ts`、`evaluation-format.ts` |
 | `src/views/maintenance/prompt-management/components/` | `config-editor.vue`、`config-header.vue`、`config-picker.vue`、`confirm-dialog.vue`、`evaluation-case-list.vue`、`evaluation-cases-dialog.vue`、`evaluation-history.vue`、`evaluation-summary.vue`、`evaluation-verdict.vue`、`evaluation-view.vue`、`markdown-editor.vue`、`new-instruction-dialog.vue`、`publish-bar.vue`、`tool-picker.vue`、`validation-panel.vue`、`version-diff.vue`、`version-list.vue`、`version-viewer.vue`、`versions-tab.vue` |
 | `src/assets/styles/` | `prompt-admin.css` |
 
@@ -31,13 +31,14 @@
 | 目錄 | 檔案 |
 | --- | --- |
 | `tests/unit/components/ai-assistant/` | `answer-blocks`、`assistant-launcher`、`assistant-message`、`assistant-panel`、`citation-list`、`feedback-buttons`、`message-list`、`quick-questions`（各 `.spec.ts`） |
-| `tests/unit/composables/` | `use-prompt-admin.spec.ts`、`use-prompt-evaluation.spec.ts` |
+| `tests/unit/composables/` | `use-assistant-chat.spec.ts`、`use-prompt-admin.spec.ts`、`use-prompt-evaluation.spec.ts` |
 | `tests/unit/stores/` | `use-assistant-store.spec.ts` |
 | `tests/unit/utils/` | `taipei-time.spec.ts` |
 | `tests/unit/utils/markdown/` | `parser`、`safe-markdown`、`line-diff`、`example-questions`（各 `.spec.ts`） |
-| `tests/unit/views/maintenance/prompt-management/` | `prompt-management-page.spec.ts`、`prompt-management-api.spec.ts`、`prompt-management-api.stats.spec.ts`、`diff-rows.spec.ts`、`evaluation-format.spec.ts` |
+| `tests/unit/views/maintenance/prompt-management/` | `prompt-management-page.spec.ts`、`prompt-management-api.spec.ts`、`prompt-management-api-stats.spec.ts`、`prompt-management-schema.spec.ts`、`diff-rows.spec.ts`、`evaluation-format.spec.ts` |
 | `tests/unit/views/maintenance/prompt-management/components/` | `config-editor`、`config-picker`、`evaluation-case-list`、`evaluation-cases-dialog`、`evaluation-history`、`evaluation-summary`、`evaluation-view`、`markdown-editor`、`publish-bar`、`tool-picker`、`validation-panel`、`version-diff`、`version-list`、`version-viewer`、`versions-tab`（各 `.spec.ts`） |
 | `tests/unit/fixtures/` | `eval-fixtures.ts`、`test-customers.ts` |
+| `tests/unit/helpers/` | `settle-validation.ts`（等 vee-validate 5 ms 的驗證 debounce） |
 
 複製前先確認平台沒有同路徑的檔案，特別是 `src/utils/markdown/`、`src/utils/taipei-time.ts`、`src/composables/use-suggestions.ts`。有衝突時改小幫手這邊的檔名，並同步改 import。
 
@@ -65,7 +66,7 @@
 
 替身的測試也不複製：`tests/unit/utils/api-client.spec.ts`、`tests/unit/utils/formatters.spec.ts`、`tests/unit/router/`、`tests/unit/composables/use-theme.spec.ts`、`tests/unit/components/layout/`、`tests/unit/components/charts/`、`tests/unit/views/dev/`、`tests/unit/views/management/`、`tests/unit/fixtures/customer-360-fixtures.ts`。
 
-`index.html`、`vite.config.ts`、`vitest.config.ts`、`tsconfig*.json`、`package.json` 是 POC 自己的設定，不複製。小幫手沒有用到平台以外的 npm 套件。
+`index.html`、`vite.config.ts`、`vitest.config.ts`、`tsconfig*.json`、`package.json` 是 POC 自己的設定，不複製。小幫手用到的 npm 套件 `dayjs`、`vee-validate`、`@vee-validate/zod`、`zod` 都是規範指定的套件；接入時版本以平台 `package.json` 為準，`@vee-validate/zod` 需搭配 zod 3（POC 用 `zod@3.25.76`）。
 
 ## 3. 接入點
 
@@ -106,7 +107,7 @@ import AssistantLauncher from '@/components/ai-assistant/assistant-launcher.vue'
 
 | 類別 | 變數 |
 | --- | --- |
-| 小幫手專用 | `--ai-gap`、`--ai-width`、`--gradient-ai`、`--gradient-soft` |
+| 小幫手專用 | `--ai-gap`、`--ai-width`、`--gradient-ai`、`--gradient-soft`、`--ai-cat-4`、`--ai-cat-5` |
 | 語意色 | `--color-border`、`--color-border-strong`、`--color-focus-ring`、`--color-primary`、`--color-primary-active`、`--color-primary-border`、`--color-primary-hover`、`--color-primary-subtle`、`--color-surface`、`--color-text`、`--color-text-muted`、`--color-text-on-primary`、`--color-text-strong`、`--color-text-subtle` |
 | 色票 | `--amber-50/200/700`、`--gray-25/50/100/200/400/700/900`、`--green-50/100/200/300/400/500/600/700/800`、`--red-50/200/600/700`、`--teal-400` |
 | 字體與字級 | `--font-sans`、`--font-mono`、`--text-xs/sm/md/lg/xl/2xl`、`--leading-tight` |
@@ -130,7 +131,7 @@ import AssistantLauncher from '@/components/ai-assistant/assistant-launcher.vue'
 
 ## 4. 行為差異待辦
 
-這次只對齊目錄與命名，下列項目仍與 `frontend-instructions.md` 不同，接入時處理。
+日期（dayjs）與表單驗證（VeeValidate + zod）已改完，見第 5 節。下列項目仍與 `frontend-instructions.md` 不同，接入時處理。
 
 | 項目 | 現況 | 規範 | 備註 |
 | --- | --- | --- | --- |
@@ -139,8 +140,6 @@ import AssistantLauncher from '@/components/ai-assistant/assistant-launcher.vue'
 | 元件直接呼叫 API | `tool-picker.vue` 直接呼叫 `promptManagementApi.tools()` | 元件不直接呼叫 API（§6） | 移到 composable |
 | 訊息提示 | `useToast().show()`，4 個檔案 | 平台的訊息機制 | |
 | 權限判斷 | `useAuthStore().hasPermission(code)`，3 處 | 平台 store 的 `permissions`、`hasAnyRole()`（§5） | |
-| 日期 | `utils/taipei-time.ts` 以固定 +8 位移自行換算與格式化 | `dayjs`，顯示用 `formatDate`（§10） | |
-| 表單驗證 | 手寫 | VeeValidate + zod（§6） | Prompt 編輯器、新增指令對話框、排程發布 |
 | ESLint | 未設定 | 零 error（§1） | template 標籤已是 kebab-case；import 順序未檢查 |
 | JSDoc | 部分有 | composable、store action、公開 utility 必須有（§3） | |
 
@@ -148,4 +147,6 @@ import AssistantLauncher from '@/components/ai-assistant/assistant-launcher.vue'
 
 - **聊天 API 放在 `src/components/ai-assistant/ai-assistant-api.ts`**，不在 `views/{模組}/`。對話視窗沒有自己的頁面，放進顧客模組會把它綁死在個人 360。平台若有不同安排，搬這支檔案與 `ai-assistant-constant.ts`，再改 `stores/use-assistant-store.ts` 與 `composables/use-suggestions.ts` 的 import。
 - **聊天元件沒有 `icrm-` 前綴**。它們是小幫手專用，不是 `components/shared/` 的通用元件。
+- **日期時間用 `utils/taipei-time.ts`，不用平台的 `formatDate`**。它以 dayjs（`utc`、`customParseFormat` plugin 在檔內 extend）固定讀成 +08:00，顯示格式含時分（`YYYY/MM/DD HH:mm`、`MM/DD HH:mm` 等），也負責排程欄位與 ISO 的互轉；`formatDate` 只有 `YYYY-MM-DD`，涵蓋不到。若平台 `formatters.ts` 已有含時間、固定台北時區的格式，可改用並刪掉對應函式。
+- **表單 schema 放在 `views/maintenance/prompt-management/prompt-management-schema.ts`**（zod），新增問題分類、編輯器名稱與修改說明、排程日期時間三組。名稱規則對齊後端 `SaveDraftRequest` / `CreateConfigRequest`。編輯器的欄位值仍由 `usePromptAdmin` 的 `state.form` 持有（未儲存判斷、重新載入都讀它），vee-validate 表單只鏡像兩個欄位做驗證。
 - **Prompt 管理頁的子元件放在 `views/maintenance/prompt-management/components/`**，`prompt-labels.ts`、`diff-rows.ts`、`evaluation-format.ts` 放在模組資料夾內。規範只列出 `*-page.vue`、`*-api.ts`、`*-constant.ts` 三種檔案，沒有規定頁面專用的元件與輔助函式放哪。

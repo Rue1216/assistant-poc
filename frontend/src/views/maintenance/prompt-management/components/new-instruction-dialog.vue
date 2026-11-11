@@ -1,40 +1,35 @@
 <script setup lang="ts">
 import { nextTick, ref, useId, watch } from 'vue'
+import { useForm } from 'vee-validate'
+import { toTypedSchema } from '@vee-validate/zod'
+import { newInstructionSchema } from '@/views/maintenance/prompt-management/prompt-management-schema'
 import '@/assets/styles/prompt-admin.css'
 
 const props = withDefaults(defineProps<{ open: boolean; busy?: boolean }>(), { busy: false })
 const emit = defineEmits<{ create: [keySuffix: string, name: string]; cancel: [] }>()
 
-/** The part after "instruction." of 02 section 3 configKey `^(system|instruction)\.[a-z0-9-]{1,50}$`. */
-const KEY_SUFFIX_PATTERN = /^[a-z0-9-]{1,50}$/
-
 const id = useId()
-const key = ref('')
-const name = ref('')
-const keyError = ref<string | null>(null)
-const nameError = ref<string | null>(null)
 const keyInput = ref<HTMLInputElement | null>(null)
+
+const { errors, defineField, handleSubmit, resetForm } = useForm({
+  validationSchema: toTypedSchema(newInstructionSchema),
+  initialValues: { keySuffix: '', name: '' },
+})
+// errors appear on submit, not while typing
+const [keySuffix] = defineField('keySuffix', { validateOnModelUpdate: false })
+const [name] = defineField('name', { validateOnModelUpdate: false })
 
 watch(
   () => props.open,
   async (open) => {
     if (!open) return
-    key.value = ''
-    name.value = ''
-    keyError.value = null
-    nameError.value = null
+    resetForm()
     await nextTick()
     keyInput.value?.focus()
   },
 )
 
-function submit() {
-  const k = key.value.trim()
-  const n = name.value.trim()
-  keyError.value = KEY_SUFFIX_PATTERN.test(k) ? null : 'Key 只能使用小寫英數與連字號，1–50 字'
-  nameError.value = n && n.length <= 50 ? null : '請輸入名稱（最多 50 字）'
-  if (!keyError.value && !nameError.value) emit('create', k, n)
-}
+const submit = handleSubmit((values) => emit('create', values.keySuffix, values.name))
 
 function cancel() {
   if (!props.busy) emit('cancel')
@@ -50,19 +45,19 @@ function cancel() {
       <div class="dialog__fields">
         <div class="field">
           <label class="field__label" :for="`${id}-key`">Key</label>
-          <div class="input-prefix" :class="{ 'is-invalid': keyError }">
+          <div class="input-prefix" :class="{ 'is-invalid': errors.keySuffix }">
             <span class="input-prefix__text">instruction.</span>
             <input
               :id="`${id}-key`"
               ref="keyInput"
-              v-model="key"
+              v-model="keySuffix"
               class="input"
               placeholder="phone-opening"
               autocomplete="off"
-              :aria-invalid="!!keyError"
+              :aria-invalid="!!errors.keySuffix"
             />
           </div>
-          <span v-if="keyError" class="field__error" role="alert">{{ keyError }}</span>
+          <span v-if="errors.keySuffix" class="field__error" role="alert">{{ errors.keySuffix }}</span>
           <span v-else class="field__hint">小寫英數與連字號，最多 50 字，建立後不可修改</span>
         </div>
         <div class="field">
@@ -73,9 +68,9 @@ function cancel() {
             class="input"
             placeholder="例如：電話開場白"
             maxlength="50"
-            :aria-invalid="!!nameError"
+            :aria-invalid="!!errors.name"
           />
-          <span v-if="nameError" class="field__error" role="alert">{{ nameError }}</span>
+          <span v-if="errors.name" class="field__error" role="alert">{{ errors.name }}</span>
         </div>
       </div>
       <div class="dialog__actions">
@@ -123,11 +118,5 @@ function cancel() {
 
 .input-prefix .input:focus {
   box-shadow: none;
-}
-
-.field__error {
-  font-size: var(--text-xs);
-  font-weight: 600;
-  color: var(--red-600);
 }
 </style>

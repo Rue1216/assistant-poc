@@ -30,9 +30,9 @@ defineEmits<{ ask: [question: string, categoryKey: string] }>()
   margin: 0 auto var(--space-3);
   border-radius: 14px;
   background: var(--gradient-ai);
-  color: #fff;
+  color: var(--color-text-on-primary);
   font-size: 22px;
-  box-shadow: 0 8px 20px rgba(14, 122, 85, 0.25);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--green-600) 25%, transparent);
 }
 .ai-welcome__title {
   font-size: var(--text-lg);

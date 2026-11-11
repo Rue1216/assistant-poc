@@ -1,6 +1,6 @@
 <script setup lang="ts">
 defineProps<{ canStartNew: boolean }>()
-defineEmits<{ newChat: []; close: [] }>()
+defineEmits<{ 'new-chat': []; close: [] }>()
 </script>
 
 <template>
@@ -22,7 +22,7 @@ defineEmits<{ newChat: []; close: [] }>()
         title="開新對話"
         aria-label="開新對話"
         :disabled="!canStartNew"
-        @click="$emit('newChat')"
+        @click="$emit('new-chat')"
       >
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -45,7 +45,7 @@ defineEmits<{ newChat: []; close: [] }>()
   gap: var(--space-3);
   padding: 14px 12px 14px 16px;
   background: var(--gradient-ai);
-  color: #fff;
+  color: var(--color-text-on-primary);
 }
 .ai-header__mark {
   display: grid;
@@ -54,8 +54,8 @@ defineEmits<{ newChat: []; close: [] }>()
   width: 36px;
   height: 36px;
   border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.2);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+  background: color-mix(in srgb, var(--color-text-on-primary) 20%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text-on-primary) 25%, transparent);
 }
 .ai-header__text {
   flex: 1;
@@ -78,19 +78,19 @@ defineEmits<{ newChat: []; close: [] }>()
   border: 0;
   border-radius: var(--radius-md);
   background: transparent;
-  color: #fff;
+  color: var(--color-text-on-primary);
   cursor: pointer;
   transition: background var(--duration-fast);
 }
 .ai-icon-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.18);
+  background: color-mix(in srgb, var(--color-text-on-primary) 18%, transparent);
 }
 .ai-icon-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 .ai-icon-btn:focus-visible {
-  outline: 2px solid #fff;
+  outline: 2px solid var(--color-text-on-primary);
   outline-offset: 1px;
 }
 </style>

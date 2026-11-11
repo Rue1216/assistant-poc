@@ -22,6 +22,7 @@ vi.mock('@/composables/use-toast', () => ({ useToast: () => ({ show: vi.fn() }) 
 import { ApiError } from '@/utils/api-client'
 import { usePromptAdmin } from '@/composables/use-prompt-admin'
 import ConfigEditor from '@/views/maintenance/prompt-management/components/config-editor.vue'
+import { settleValidation } from '../../../../helpers/settle-validation'
 
 /** backend SafetyRules.TEXT (code-only; must never reach the admin screen) */
 const SAFETY_RULE_LINES = [
@@ -167,16 +168,33 @@ describe('ConfigEditor', () => {
     await wrapper.find('#' + wrapper.find('.pm-form-row input').attributes('id')).setValue('新名稱')
 
     await button(wrapper, '立即發布').trigger('click')
-    await flushPromises()
+    await settleValidation()
 
     expect(api.saveDraft.mock.calls[0]![1]).toMatchObject({ name: '新名稱', saveMode: 'KEEP_STATUS', docVersion: 3 })
     expect(api.publish.mock.calls[0]![1]).toEqual({ publishMode: 'IMMEDIATE', docVersion: 4 })
+  })
+
+  it('does not save a blank name and shows the error under the field until it is fixed', async () => {
+    const { wrapper } = await mountEditor(version('SYSTEM_INSTRUCTION', 'DRAFT'))
+    const nameInput = wrapper.find('.pm-form-row input')
+    await nameInput.setValue('   ')
+    await button(wrapper, '儲存').trigger('click')
+    await settleValidation()
+
+    expect(api.saveDraft).not.toHaveBeenCalled()
+    expect(wrapper.find('.field__error').text()).toBe('請輸入名稱（最多 50 字）')
+    expect(nameInput.attributes('aria-invalid')).toBe('true')
+
+    await nameInput.setValue('新名稱')
+    await settleValidation()
+    expect(wrapper.find('.field__error').exists()).toBe(false)
   })
 
   it('disables the action buttons while a request is in flight', async () => {
     const { wrapper } = await mountEditor(version('SYSTEM_INSTRUCTION', 'DRAFT'))
     api.saveDraft.mockReturnValue(new Promise(() => {}))
     await button(wrapper, '儲存').trigger('click')
+    await settleValidation()
     for (const b of wrapper.findAll('.pm-actionbar button')) expect(b.attributes('disabled')).toBeDefined()
   })
 
@@ -191,7 +209,7 @@ describe('ConfigEditor', () => {
       ]),
     )
     await button(wrapper, '儲存').trigger('click')
-    await flushPromises()
+    await settleValidation()
 
     expect(wrapper.find('.pm-validate summary').text()).toBe('✕ 1 項未通過')
     expect(wrapper.find('.pm-validate__list--fail').text()).toContain('REQUIRED_SECTION')
@@ -215,7 +233,7 @@ describe('ConfigEditor', () => {
     await wrapper.find('textarea').setValue('我的未儲存內容')
     api.saveDraft.mockRejectedValue(new ApiError(409, 'AI_CONFIG_CONFLICT', 'x'))
     await button(wrapper, '儲存').trigger('click')
-    await flushPromises()
+    await settleValidation()
 
     const banner = wrapper.find('.pm-banner--conflict')
     expect(banner.text()).toContain('內容已被他人更新')

@@ -43,7 +43,7 @@ const reference = computed(() => {
   height: 22px;
   border-radius: 50%;
   background: var(--red-600);
-  color: #fff;
+  color: var(--color-text-on-primary);
   font-size: 12px;
   font-weight: 700;
 }

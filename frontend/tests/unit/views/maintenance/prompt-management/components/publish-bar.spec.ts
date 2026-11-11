@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import PublishBar from '@/views/maintenance/prompt-management/components/publish-bar.vue'
+import { settleValidation } from '../../../../helpers/settle-validation'
 
 type Props = InstanceType<typeof PublishBar>['$props']
 
@@ -72,7 +73,19 @@ describe('PublishBar', () => {
     await w.find('input[type="date"]').setValue('2026-11-01')
     await w.find('input[type="time"]').setValue('10:30')
     await btn(w, '預約發布').trigger('click')
+    await settleValidation()
     expect(w.emitted('publish')![0]).toEqual(['SCHEDULED', '2026-11-01', '10:30'])
+  })
+
+  it('keeps a malformed schedule here and shows the range message', async () => {
+    const w = mountBar()
+    await btn(w, '預約…').trigger('click')
+    await w.find('input[type="date"]').setValue('')
+    await btn(w, '預約發布').trigger('click')
+    await settleValidation()
+    expect(w.emitted('publish')).toBeUndefined()
+    expect(w.find('.pm-publish__error').text()).toBe('預約時間需在 1 分鐘後、90 天內')
+    expect(w.find('input[type="date"]').attributes('aria-invalid')).toBe('true')
   })
 
   it('scheduled shows 取消排程 儲存 立即發布 更新預約 and no 捨棄草稿', () => {
@@ -87,6 +100,7 @@ describe('PublishBar', () => {
     await btn(w, '取消排程').trigger('click')
     expect(w.emitted('save')![0]).toEqual(['DRAFT'])
     await btn(w, '更新預約').trigger('click')
+    await settleValidation()
     expect(w.emitted('publish')![0]).toEqual(['SCHEDULED', '2026-10-24', '09:00'])
   })
 
