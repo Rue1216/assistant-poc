@@ -49,9 +49,9 @@ flowchart LR
 ```mermaid
 flowchart LR
   subgraph Browser
-    H[宿主外殼 platform-mock<br/>個人 360 頁面]
-    W[對話視窗<br/>features/ai-assistant]
-    A[Prompt 管理頁<br/>features/ai-assistant/admin]
+    H[宿主外殼（平台替身）<br/>個人 360 頁面]
+    W[對話視窗<br/>components/ai-assistant]
+    A[Prompt 管理頁<br/>views/maintenance/prompt-management]
   end
   subgraph Backend[Spring Boot]
     CC[ChatController]
@@ -102,9 +102,9 @@ flowchart LR
 | 模組             | 位置                                 | 整合時                                       |
 | ---------------- | ------------------------------------ | -------------------------------------------- |
 | 小幫手後端       | `backend/.../aiassistant`            | 搬進平台                                     |
-| 小幫手前端       | `frontend/src/features/ai-assistant` | 搬進平台                                     |
+| 小幫手前端       | `frontend/src` 內依平台分層放置，清單見 `frontend/PORTING.md` 第 1 節 | 照目錄複製進平台 |
 | 平台替身（後端） | `backend/.../mockplatform`           | 刪除，改由平台實作 port                      |
-| 平台替身（前端） | `frontend/src/platform-mock`         | 刪除，改用平台的 `api-client`、Toast、layout |
+| 平台替身（前端） | `frontend/src` 內與平台同路徑的檔案，清單見 `frontend/PORTING.md` 第 2 節 | 不複製，改用平台的 `api-client`、Toast、layout |
 
 整合時只換掉右邊的替身，小幫手本身不改：
 
@@ -113,11 +113,11 @@ flowchart LR
   subgraph AI["小幫手（整合時搬進平台，不修改）"]
     direction TB
     AIBE["後端 aiassistant"] --> PORTS{{"CurrentUserPort<br/>CustomerAccessPort<br/>CustomerDataPort"}}
-    AIFE["前端 features/ai-assistant"] --> FEDEP{{"apiClient、useToast、useAuthStore<br/>個人 360 頁面"}}
+    AIFE["前端（PORTING.md 第 1 節的檔案）"] --> FEDEP{{"apiClient、useToast、useAuthStore<br/>個人 360 頁面"}}
   end
   subgraph POC["POC：平台替身（整合時刪除）"]
     MP["mockplatform<br/>9 個假帳號、範圍規則、7 位假顧客"]
-    PM["platform-mock<br/>外框、登入、個人 360 頁"]
+    PM["前端替身<br/>外框、登入、個人 360 頁"]
   end
   subgraph REAL["整合後：平台"]
     PS["平台既有 service<br/>範圍規則、getCustomer、getRealTimeCustomer"]
@@ -187,7 +187,7 @@ flowchart LR
 
 ### 2.3 前端依賴的平台能力
 
-小幫手前端只依賴以下四項，POC 由 `platform-mock` 提供：
+小幫手前端只依賴以下四項，POC 由平台替身提供（`utils/api-client.ts`、`composables/use-toast.ts`、`stores/use-auth-store.ts`、`views/management/customer/`）：
 
 - `apiClient`：包裝 axios 的 HTTP client，支援 `AbortSignal`
 - `useToast()`：全域 Toast
@@ -546,46 +546,55 @@ flowchart TB
 ### 5.2 前端
 
 ```
-frontend/src/
-├─ styles/          tokens.css、base.css（取自 prototype/styles，作為全域 CSS variables 與基礎樣式）
-├─ features/ai-assistant/
-│  ├─ components/   AssistantLauncher（接收 certNo）、AssistantPanel、AssistantHeader、
-│  │                MessageList、WelcomeCard、QuickQuestions、UserMessage、AssistantMessage
-│  │                （內含 AnswerBlocks、CitationList、FeedbackButtons）、PendingMessage、
-│  │                ErrorMessage、ChatComposer
-│  ├─ admin/        PromptManagementPage（內容／版本／評測三個分頁）、ConfigPicker（標題列的設定選單）、
-│  │                ConfigHeader、ConfigEditor（不顯示平台安全規則）、MarkdownEditor（編輯 / 預覽分頁）、
-│  │                ValidationPanel（自動執行的發布前檢查）、PublishBar、VersionsTab（VersionList、
-│  │                VersionDiff、VersionViewer；比較、檢視、以此版本建立草稿）、
-│  │                ConfirmDialog、NewInstructionDialog、EvaluationView、EvaluationVerdict、EvaluationSummary、
-│  │                EvaluationCaseList、EvaluationHistory、EvaluationCasesDialog、evaluationFormat.ts
-│  ├─ markdown/     parser.ts、SafeMarkdown.ts、lineDiff.ts（逐行差異，自行實作）
-│  ├─ api/          aiAssistantApi.ts
-│  ├─ stores/       useAssistantStore.ts（對話以 certNo 為單位，換顧客即清空；「開新對話」保留畫面上的訊息，只把目前這一輪送作歷史）
-│  ├─ composables/  useAssistantChat.ts、useSuggestions.ts、usePromptAdmin.ts、usePromptEvaluation.ts（評測狀態與輪詢）、
-│  │                taipeiTime.ts
-│  └─ types.ts
-└─ platform-mock/   apiClient、useToast、useAuthStore、router、useTheme（深色模式切換）、
-                    layout（頂部列 + 左側選單；個人 360 頁不顯示左側選單）、
-                    styles/customer-360.css
-                    頁面：登入（9 個員工帳號，選單顯示「帳號 職稱」）、首頁、顧客經營（/customer：輸入 certNo + 列表）、
-                          個人 360（/customer/:certNo，版面照 prototype 的 A–M 區塊，卡片讀 mock API，放置小幫手；
-                          pages/customer360/ 為各區塊元件，含自寫 SVG 的 RadarChart、RingChart、PairBars）、
-                          後台管理（/maintenance/prompt-management，掛載 PromptManagementPage）
+frontend/
+├─ PORTING.md       平移說明：要複製的檔案、不可複製的替身、接入點、行為差異待辦
+├─ src/             依平台 frontend-instructions.md §2 的分層；（替身）標示整合時不複製的檔案
+│  ├─ assets/styles/  prompt-admin.css；（替身）tokens.css、base.css（取自 prototype/styles）、customer-360.css
+│  ├─ beans/          ai-assistant-bean.ts（對話電文）、prompt-management-bean.ts（Prompt 管理與評測電文）；
+│  │                  （替身）customer-bean.ts
+│  ├─ components/
+│  │  ├─ ai-assistant/  assistant-launcher（接收 certNo）、assistant-panel、assistant-header、
+│  │  │                 message-list、welcome-card、quick-questions、user-message、assistant-message
+│  │  │                 （內含 answer-blocks、citation-list、feedback-buttons）、pending-message、
+│  │  │                 error-message、chat-composer、thumb-icon；
+│  │  │                 ai-assistant-api.ts（chat、suggestions、putFeedback）、ai-assistant-constant.ts
+│  │  ├─ charts/        （替身）radar-chart、ring-chart（自寫 SVG）
+│  │  └─ layout/        （替身）main-layout（頂部列 + 左側選單；個人 360 頁不顯示左側選單）、toast-host
+│  ├─ composables/    use-assistant-chat.ts、use-suggestions.ts、use-prompt-admin.ts、
+│  │                  use-prompt-evaluation.ts（評測狀態與輪詢）；（替身）use-toast.ts、use-theme.ts（深色模式切換）
+│  ├─ router/         （替身）index.ts
+│  ├─ stores/         use-assistant-store.ts（對話以 certNo 為單位，換顧客即清空；「開新對話」保留畫面上的訊息，
+│  │                  只把目前這一輪送作歷史）；（替身）use-auth-store.ts
+│  ├─ utils/          taipei-time.ts、markdown/（parser.ts、safe-markdown.ts、line-diff.ts（逐行差異，自行實作）、
+│  │                  example-questions.ts）；（替身）api-client.ts、formatters.ts
+│  └─ views/
+│     ├─ maintenance/prompt-management/
+│     │                 prompt-management-page.vue（內容／版本／評測三個分頁）、prompt-management-api.ts、
+│     │                 prompt-management-constant.ts、prompt-labels.ts、diff-rows.ts、evaluation-format.ts
+│     │  └─ components/ config-picker（標題列的設定選單）、config-header、config-editor（不顯示平台安全規則）、
+│     │                 markdown-editor（編輯 / 預覽分頁）、validation-panel（自動執行的發布前檢查）、publish-bar、
+│     │                 versions-tab（version-list、version-diff、version-viewer；比較、檢視、以此版本建立草稿）、
+│     │                 confirm-dialog、new-instruction-dialog、tool-picker、evaluation-view、evaluation-verdict、
+│     │                 evaluation-summary、evaluation-case-list、evaluation-history、evaluation-cases-dialog
+│     ├─ management/customer/  （替身）顧客經營（/customer：輸入 certNo + 列表）、個人 360（/customer/:certNo，
+│     │                 版面照 prototype 的 A–M 區塊，卡片讀 mock API，放置小幫手；components/ 為各區塊元件）
+│     ├─ dev/           （替身）dev-login-page（9 個員工帳號，選單顯示「帳號 職稱」）
+│     └─ home-page.vue  （替身）首頁
+└─ tests/unit/      對應 src/ 的路徑；fixtures/ 放共用測試資料
 ```
 
-執行時的元件組成（`platform-mock` 框內的元件整合時換成平台的對應元件）：
+執行時的元件組成（「平台替身」框內的元件整合時換成平台的對應元件；圖中為元件與函式的識別字，檔名為對應的 kebab-case）：
 
 ```mermaid
 flowchart TD
-  subgraph PM["platform-mock（整合時換成平台）"]
+  subgraph PM["平台替身（整合時換成平台）"]
     C360[個人 360 頁面]
     ADM[後台管理路由]
     AUTH[useAuthStore]
     TOAST[useToast]
     API[apiClient]
   end
-  subgraph AA["features/ai-assistant"]
+  subgraph AA["小幫手"]
     L["AssistantLauncher（cert-no）"] --> P[AssistantPanel]
     P --> H[AssistantHeader]
     P --> ML[MessageList]
@@ -597,25 +606,27 @@ flowchart TD
     P --> UC[useAssistantChat] --> ST[useAssistantStore]
     P --> US[useSuggestions]
     ST --> AAPI[aiAssistantApi]
+    UPA --> PAPI[promptManagementApi]
     US --> AAPI
-    PMP["PromptManagementPage<br/>內容／版本／評測分頁"] --> UPA["usePromptAdmin<br/>usePromptEvaluation"] --> AAPI
+    PMP["PromptManagementPage<br/>內容／版本／評測分頁"] --> UPA["usePromptAdmin<br/>usePromptEvaluation"]
   end
   C360 --> L
   ADM --> PMP
   L --> AUTH
   AM --> TOAST
   AAPI --> API
+  PAPI --> API
 ```
 
 **視覺依據**：小幫手與 Prompt 管理頁照 `prototype/chatbot.html`、`prototype/prompt-management.html`（元件拆分照 prototype 註解中的 Vue 元件名稱，樣式取自 `prototype/styles/chatbot.css`、`prompt-management.css`，改寫為元件的 scoped CSS）。`prototype/` 不進版控，所以用到的樣式要複製進 `frontend/`。prototype 中標示「原型切換，Vue 版不實作」的控制列不實作。
 
-平台替身（`platform-mock`）的外框與個人 360 頁面也照 `prototype/chatbot.html`、`prototype/prompt-management.html`，讓 demo 畫面接近實際平台（2026-10-27）：
+平台替身的外框與個人 360 頁面也照 `prototype/chatbot.html`、`prototype/prompt-management.html`，讓 demo 畫面接近實際平台（2026-10-27）：
 
 - 個人 360：進入時先查 `GET /api/mock/customers/{certNo}/cip`，`stopUseCustomerDataFlag = "Y"` 時只顯示對話框「此為停止蒐集利用個資顧客，故無法查詢」，確認後回顧客清單，不呼叫其他 API、不顯示小幫手按鈕；否則在 `FULL` 時並行取 `/360` 與 `/real-time`，A–M 卡片由資料驅動，demo 時畫面數字與小幫手的回答一致。`LIMITED` 時只顯示遮蔽過的名片，其他區塊以一行說明取代。圖表用自寫 SVG 元件，不新增套件。
-- 樣式放在 `platform-mock/styles/customer-360.css`，整合時隨 `platform-mock` 一起刪除。
+- 樣式放在 `assets/styles/customer-360.css`，屬於替身，整合時不複製。
 - 登入、首頁、顧客列表 prototype 沒有畫，只套用 `base.css` 的共用樣式。
 
-**深色模式**：`tokens.css` 的 `html.dark` 覆蓋色票，元件只用 token，不另寫深色規則。POC 由 `platform-mock` 的 `useTheme` 切換 `<html>` 的 `dark` class，選擇存在 localStorage（`platform-theme`），未選擇時依系統設定；`index.html` 在掛載前先套用，避免閃爍。小幫手本身不提供切換按鈕，跟隨宿主頁面。
+**深色模式**：`tokens.css` 的 `html.dark` 覆蓋色票，元件只用 token，不另寫深色規則。POC 由替身的 `useTheme`（`composables/use-theme.ts`）切換 `<html>` 的 `dark` class，選擇存在 localStorage（`platform-theme`），未選擇時依系統設定；`index.html` 在掛載前先套用，避免閃爍。小幫手本身不提供切換按鈕，跟隨宿主頁面。
 
 ## 6. 設定（application.yml）
 
@@ -733,9 +744,9 @@ OPENAI_API_KEY=sk-...
 
 ## 8. 整合指引（摘要）
 
-1. 複製 `aiassistant` 套件和 `features/ai-assistant` 資料夾到平台。
+1. 複製 `aiassistant` 套件到平台；前端依 `frontend/PORTING.md` 第 1 節照目錄複製（路徑已與平台分層一致，不必改 import）。
 2. 在平台實作 `CurrentUserPort`、`CustomerAccessPort`（沿用平台既有的顧客範圍規則）、`CustomerDataPort`。
-3. 前端把 `platform-mock` 的 `apiClient`、`useToast`、`useAuthStore` 換成平台的對應元件；在平台的個人 360 頁面放置 `<AssistantLauncher>`，把 `PromptManagementPage` 掛到後台管理模組的路由。
+3. 前端不複製替身（`frontend/PORTING.md` 第 2 節），改接平台的 `apiClient`、訊息提示、`useAuthStore`；在平台的個人 360 頁面放置 `<assistant-launcher>`，把 `prompt-management-page.vue` 掛到後台管理模組的路由。接入點與尚未對齊規範的行為見 `frontend/PORTING.md` 第 3、4 節。
 4. 把 `PiiRedactor`（及 `ConfigValidator` 的「顧客編號」規則）的 `certNo` 格式換成平台實際格式；`CustomerAccessPort` 對停止蒐集利用個資的顧客一律回 `NONE`。
 5. 依平台規範調整套件名稱、權限碼、錯誤回應格式。
 6. 用平台的 migration 機制建立 collection、validator、index，取代 POC 的啟動 initializer。

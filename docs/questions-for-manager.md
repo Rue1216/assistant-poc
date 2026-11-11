@@ -54,21 +54,21 @@
 - **問題**：`api-client` 和 composable 的典型寫法是什麼（型別定義、錯誤攔截）？有沒有支援用 `AbortController` 取消請求？
 - **為何要問**：對話視窗需要「取消」，也要沿用統一的呼叫方式。
 - **預設假設**：`api-client` 支援傳入 `AbortSignal`，新增 `useAiAssistantChat` composable。
-- **回覆**：
+- **回覆**：（2026-11-11，依 `frontend-instructions.md` §4）一律透過 `utils/api-client.ts` 的 `apiClient` 呼叫後端；API 函式放 `views/{模組}/{模組}-api.ts`，跨頁共用的查詢邏輯放 `composables/use-*.ts`；回應型別為 `ApiResponse<T>`、`PageResponse<T>`（`beans/shared-bean.ts`）；`timeout` 30 秒、`withCredentials`。小幫手前端已依此分層放置（見 `frontend/PORTING.md`）。**待確認**：`apiClient` 是否支援傳入 `AbortSignal`，以及對話請求需要的 150 秒逾時能否逐次覆寫。
 
 ### S7. 錯誤回應格式與全域 Toast
 
 - **問題**：後端錯誤回應的結構是什麼（例如 `{ code, message, traceId }`）？前端怎麼把錯誤對應到 Toast？錯誤碼有沒有命名規則？
 - **為何要問**：錯誤碼清單必須和既有格式對齊。
 - **預設假設**：沿用既有錯誤回應結構，新增 `AI_` 前綴的錯誤碼。
-- **回覆**：
+- **回覆**：（2026-11-11，依 `frontend-instructions.md` §4-1）回應為 `ApiResponse<T>`（`success`、`errorMessage`、`data`、`serviceCode`、`unavailableSections`、`traceId`、`timestamp`）。HTTP 200 且 `success=false`、以及 400/404/405/409，由 `apiClient` 顯示後端 `errorMessage` 並 reject `HandledError`，呼叫端以 `isHandledError()` 跳過；401 導向 ADFS 登入；403 導向 `/forbidden`；5xx 或斷線導向 `/internal-error`。POC 目前是 reject `ApiError` 並由呼叫端讀 `code`，與此不同，需前後端一起調整（`frontend/PORTING.md` 第 4 節）。**待確認**：錯誤碼的命名規則，以及呼叫端要自行顯示錯誤（不跳全域提示）時的作法。
 
 ### S8. 對話視窗掛載位置
 
 - **問題**：登入後的頁面有沒有共用 layout（App.vue、MainLayout 或 route meta）？要掛在哪裡，才能讓「所有已授權頁面」都顯示助理按鈕？
 - **為何要問**：決定 widget 的掛載點，以及頁面沒權限時要怎麼隱藏。
 - **預設假設**：（已確定）只放在個人 360 頁面元件中，不掛全域 layout；需確認平台 360 頁面元件的位置與如何取得頁面上的顧客編號。
-- **回覆**：
+- **回覆**：（2026-11-11，依 `frontend-instructions.md` §2）頁面在 `views/management/customer/`，共用 layout 在 `components/layout/`。小幫手元件放 `components/ai-assistant/`，在個人 360 頁以 `<assistant-launcher :cert-no="…">` 掛載（`frontend/PORTING.md` 3.2）。**待確認**：平台個人 360 頁元件的實際檔名，以及頁面上顧客證號的取得方式。
 
 ### S9. 路由權限守衛與後台選單
 
@@ -420,7 +420,7 @@
 #### M35. 平移交付方式
 
 - **問題**：「複製貼上平移」的單位是什麼（整個後端模組、前端資料夾、設定檔）？需要附上平移說明文件嗎？
-- **預設假設**：後端一個獨立套件（加上 `backend/lib-repo/` 的第三方 jar）、前端一個獨立資料夾，設定集中管理，並附上平移步驟說明。
+- **預設假設**：後端一個獨立套件（加上 `backend/lib-repo/` 的第三方 jar）；前端依平台分層目錄放置，照目錄複製，平台替身不複製（2026-11-11 起，清單與接入步驟見 `frontend/PORTING.md`）；設定集中管理，並附上平移步驟說明。
 - **回覆**：
 
 ### H. 資料量與擴充

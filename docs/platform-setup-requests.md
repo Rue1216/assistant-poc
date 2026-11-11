@@ -99,7 +99,7 @@ POC 是單一程序。平台在 K8s 上會跑多個 pod，以下 4 個元件的�
 
 - 套件版本已照平台 frontend/package.json 固定（見 01-architecture.md 第 7 節）。
 - `npm audit` 回報平台指定的 axios 1.17.0 有高風險漏洞（受影響範圍 1.0.0～1.19.0），建議升到 1.20.0 以上；vite 7.3.5（只影響 dev server）、vue 3.5.33（只影響 SSR）也有回報。版本是否調整由平台決定。
-- 前端整合時把 `platform-mock` 的 `apiClient`、`useToast`、`useAuthStore` 換成平台元件；CSRF 依平台在 sit/uat/prod 的設定處理。
+- 前端整合時不複製替身（清單見 `frontend/PORTING.md` 第 2 節），`apiClient`、`useToast`、`useAuthStore` 改用平台元件；CSRF 依平台在 sit/uat/prod 的設定處理。
 
 ## 8. Prompt 評測需要的資源
 

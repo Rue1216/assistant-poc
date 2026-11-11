@@ -199,7 +199,7 @@ for (const file of walk('src')) {
   const names = [...text.matchAll(/^import\s+([A-Z][A-Za-z0-9]*)\s+from\s+['"]@\/[^'"]+['"]/gm)].map((m) => m[1])
   let template = text.slice(start, end)
   for (const name of names) {
-    template = template.replace(new RegExp(`<(/?)${name}(?=[\\s/>])`, 'g'), (_m, slash) => {
+    template = template.replace(new RegExp(`<(/?)${name}(?=[^A-Za-z0-9_-])`, 'g'), (_m, slash) => {
       count += 1
       return `<${slash}${kebab(name)}`
     })
