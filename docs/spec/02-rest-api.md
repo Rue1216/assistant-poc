@@ -11,7 +11,7 @@ Path 省略 base path `/api/ai-assistant`，點 Path 可跳到該章節。編輯
 | **對話** | | | | | |
 | 2.1 | `POST` | [`/customers/{certNo}/chat`](#api-chat) | 針對頁面上的顧客送出一個問題（同步，不串流） | `AI_ASSISTANT_USE`，且可存取該顧客 | 200 |
 | 2.2 | `GET` | [`/customers/{certNo}/suggestions`](#api-suggestions) | 取得快捷問題（各分類的範例問題） | 同 2.1 | 200 |
-| 2.3 | `PUT` | [`/chat/{requestId}/feedback`](#api-feedback) | 對回答按讚／倒讚或取消 | `AI_ASSISTANT_USE` | 204 |
+| 2.3 | `PUT` | [`/chat/{traceId}/feedback`](#api-feedback) | 對回答按讚／倒讚或取消 | `AI_ASSISTANT_USE` | 204 |
 | **Prompt 管理：設定與版本** | | | | | |
 | 3.1 | `GET` | [`/admin/configs`](#api-configs-list) | 列出所有設定 | `AI_CONFIG_READ` | 200 |
 | 3.2 | `POST` | [`/admin/configs`](#api-configs-create) | 新增問題分類，建立 v1 草稿 | `AI_CONFIG_EDIT` | 201 |
@@ -44,7 +44,7 @@ Path 省略 base path `/api/ai-assistant`，點 Path 可跳到該章節。編輯
 | CSRF      | 寫入類請求需帶 `X-XSRF-TOKEN` header（值取自 `XSRF-TOKEN` cookie，axios 會自動處理）    |
 | 格式      | `application/json; charset=UTF-8`                                                       |
 | 時間      | ISO 8601，含時區，例如 `2026-10-19T14:03:22+08:00`                                      |
-| 追蹤      | 每個回應都有 `X-Request-Id` header；錯誤回應的 body 也帶 `requestId`                    |
+| 追蹤      | 每個回應都有 `X-Trace-Id` header（平台 `TraceIdFilter`）；對話與錯誤回應的 body 也帶 `traceId`（與 header 同值）。呼叫端帶 `X-B3-TraceId` 時沿用該值，否則由平台產生 32 碼小寫十六進位 |
 | 錯誤格式  | 見第 5 節與 [05-error-codes.md](05-error-codes.md)                                      |
 
 ### 1.1 使用範圍
@@ -185,7 +185,7 @@ Path 省略 base path `/api/ai-assistant`，點 Path 可跳到該章節。編輯
 
 | 欄位                      | 型別           | 說明                                                                                                 |
 | ------------------------- | -------------- | ---------------------------------------------------------------------------------------------------- |
-| `requestId`               | string         | 追蹤用                                                                                               |
+| `traceId`                 | string         | 追蹤用                                                                                               |
 | `blocks`                  | array          | 回答的區塊，前端依序渲染；文字已去識別化，以「本顧客」稱呼顧客。最多 40 個區塊，文字合計最多 8000 字 |
 | `blocks[].type`           | string         | `heading`、`paragraph`、`bullet`、`numbered`                                                         |
 | `blocks[].text`           | string         | 區塊文字，只含行內格式（粗體、連結），不含標題或清單符號，也不含 `[S1]` 這類標註                     |
@@ -222,7 +222,7 @@ Path 省略 base path `/api/ai-assistant`，點 Path 可跳到該章節。編輯
 
 ```json
 {
-    "requestId": "a1b2c3d4",
+    "traceId": "463ac35c9f6413ad48485a3953bb6124",
     "blocks": [
         { "type": "heading", "text": "待處理提醒", "citations": [] },
         {
@@ -340,12 +340,12 @@ Path 省略 base path `/api/ai-assistant`，點 Path 可跳到該章節。編輯
 
 <a id="api-feedback"></a>
 
-### 2.3 `PUT /api/ai-assistant/chat/{requestId}/feedback`
+### 2.3 `PUT /api/ai-assistant/chat/{traceId}/feedback`
 
 對一則成功的回答按讚／倒讚，或取消。設計見 [prompt-evaluation-design](../superpowers/specs/2026-10-24-prompt-evaluation-design.md) 第 3 節。
 
 - **權限**：`AI_ASSISTANT_USE`
-- **`requestId`**：對話回應中的 `requestId`，格式 `^[0-9a-f]{8}$`，不符 → 400 `AI_INPUT_INVALID`
+- **`traceId`**：對話回應中的 `traceId`，格式 `^[0-9a-f]{16,32}$`，不符 → 400 `AI_INPUT_INVALID`。呼叫端帶入的 `X-B3-TraceId` 不符合此格式時，該則回答無法評分
 - **不計入提問頻率限制**（`AI_RATE_LIMITED` 只針對對話 API）。
 
 Request：
@@ -359,15 +359,15 @@ Request：
 | `rating` | string \| null | `UP`（有幫助）、`DOWN`（沒有幫助）或 `null`（取消）；其他值 → 400 `AI_INPUT_INVALID` |
 
 - **204**，沒有 body。
-- 處理：更新符合 `{ requestId, userId: 目前使用者, outcome: "ANSWERED" }` 的稽核紀錄，寫入 `feedback` 與 `feedbackAt`（取消時 `feedback` 為 null，`feedbackAt` 仍更新）。`requestId` 只有 8 碼十六進位，所以一定同時比對 `userId`；同一人有兩筆相同 `requestId` 時更新 `createdAt` 最新的一筆。
+- 處理：更新符合 `{ traceId, userId: 目前使用者, outcome: "ANSWERED" }` 的稽核紀錄，寫入 `feedback` 與 `feedbackAt`（取消時 `feedback` 為 null，`feedbackAt` 仍更新）。`traceId` 可能由呼叫端帶入而重複，所以一定同時比對 `userId`；同一人有兩筆相同 `traceId` 時更新 `createdAt` 最新的一筆。
 - 對同一則回答可重複呼叫，以最後一次為準；前端對同一則訊息的請求逐一送出，所以伺服器最後保存的是最後一次點擊。
 
 | HTTP | code                    | 情境                                                                                                                                         |
 | ---- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| 400  | `AI_INPUT_INVALID`      | `requestId` 格式錯誤、`rating` 不是 `UP`／`DOWN`／`null`                                                                                     |
+| 400  | `AI_INPUT_INVALID`      | `traceId` 格式錯誤、`rating` 不是 `UP`／`DOWN`／`null`                                                                                     |
 | 401  | `AI_UNAUTHENTICATED`    | 未登入                                                                                                                                       |
 | 403  | `AI_FORBIDDEN`          | 沒有 `AI_ASSISTANT_USE`                                                                                                                      |
-| 404  | `AI_FEEDBACK_NOT_FOUND` | 找不到自己的、成功的對應回答。別人的 `requestId`、不存在的 `requestId`、失敗的提問、稽核寫入失敗的回答，一律回同樣的 404，不透露紀錄是否存在 |
+| 404  | `AI_FEEDBACK_NOT_FOUND` | 找不到自己的、成功的對應回答。別人的 `traceId`、不存在的 `traceId`、失敗的提問、稽核寫入失敗的回答，一律回同樣的 404，不透露紀錄是否存在 |
 
 ---
 
@@ -765,7 +765,7 @@ Response 201（格式同 3.4）：以已發布的 v2 為底建立的草稿
     {
         "code": "AI_CONFIG_OVERWRITE_PENDING",
         "message": "此設定已有編輯中的版本，套用後它會被標為已捨棄",
-        "requestId": "a1b2c3d4",
+        "traceId": "463ac35c9f6413ad48485a3953bb6124",
         "details": [
             {
                 "status": "SCHEDULED",
@@ -1120,7 +1120,7 @@ Response 200：3.13 的欄位，加上 `configKey` 與 `cases`：
 {
     "code": "AI_CONFIG_CONFLICT",
     "message": "內容已被他人更新，請重新載入後再編輯",
-    "requestId": "a1b2c3d4",
+    "traceId": "463ac35c9f6413ad48485a3953bb6124",
     "details": []
 }
 ```

@@ -2,7 +2,7 @@
 
 - 日期：2026-11-10
 - 版本：v0.2
-- 狀態：待審
+- 狀態：已實作
 - v0.2（2026-11-10）：寫實作計畫時發現平台的 `TraceIdFilter` 目前**沒有被註冊**。`CopilotApplication` 只掃描 `com.example.copilot`，`com.example.filter` 不在範圍內，所以現在的請求沒有 `traceId`，也沒有 `X-Trace-Id` header。新增 2.1「註冊平台 filter」，第 7 節補對應測試，第 9 節第 1 階段補這一步。
 - 起因：比對 [reference.md](../../../reference.md) 第 6 節與現行程式後發現兩個問題。(1) 專案同時有平台的 `traceId` 與自己的 8 碼 `requestId`，所有 log、錯誤回應、稽核都用後者，而平台規定 Kibana 與稽核以 `traceId` 關聯（6-2、6-6）。(2) MDC 沒有帶到工具執行緒、評測與排程，這些地方的 log 沒有任何追蹤碼。
 - 前提：不修改平台檔案（`com.example.filter`、`com.example.aspect`、`com.example.logging` 等）；`ArchitectureRulesTest` 全綠。

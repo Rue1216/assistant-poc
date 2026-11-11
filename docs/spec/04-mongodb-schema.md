@@ -264,7 +264,7 @@ stateDiagram-v2
 | 欄位 | 型別 | 說明 |
 |---|---|---|
 | `_id` | ObjectId | |
-| `requestId` | string | 對應一次提問 |
+| `traceId` | string | 平台追蹤碼，對應一次提問；最長 64 字，超過截斷 |
 | `userId` | string | |
 | `roleKey` | string | 業務角色碼，例如 `RM`；供依角色統計 |
 | `accessLevel` | string | `FULL` 或 `LIMITED` |
@@ -290,7 +290,7 @@ stateDiagram-v2
 | `inputTokens` | int | 各回合輸入 token 合計（選填） |
 | `outputTokens` | int | 各回合輸出 token 合計（選填） |
 | `totalTokens` | int | 各回合總 token 合計，供應商回報的值，可能略大於前兩者相加（選填）；**失敗的提問也記錄**，失敗前已花費的 token 仍算成本 |
-| `promptVersions` | array | `[{ configKey, version }]`，本次組裝 system message **實際載入**的已發布版本（`system.main` 加上路由選出的 0 或 1 個問題分類；路由失敗時為全部），依 `configKey` 排序，與 system message 出自同一份快照；最多 100 筆，超過時截斷並記 WARN log（只含 `requestId` 與筆數）。用陣列是因為 `system.main` 含 `.`，不適合當欄位名稱 |
+| `promptVersions` | array | `[{ configKey, version }]`，本次組裝 system message **實際載入**的已發布版本（`system.main` 加上路由選出的 0 或 1 個問題分類；路由失敗時為全部），依 `configKey` 排序，與 system message 出自同一份快照；最多 100 筆，超過時截斷並記 WARN log（只含 `traceId` 與筆數）。用陣列是因為 `system.main` 含 `.`，不適合當欄位名稱 |
 | `routeSource` | string \| null | 問題分類的決定方式：`ROUTER`（路由）、`CHIP`（快捷按鈕）、`FALLBACK`（路由失敗，載入全部分類）；選填，舊紀錄沒有此欄位，路由前就失敗的提問為 null。回饋統計用它判斷問題分類是否確定被使用（見 02 3.11） |
 | `instructionKey` | string \| null | 實際載入的問題分類 `configKey`；路由為 `none` 與 `FALLBACK` 時為 null；選填，最多 64 字 |
 | `summaryIn` | bool | 本次請求是否帶了摘要（選填；舊紀錄沒有此欄位） |
@@ -298,7 +298,7 @@ stateDiagram-v2
 | `summarizedMessages` | int | 超出保留範圍、交給摘要的訊息則數；沒有觸發時為 0。選填 |
 | `summaryTokens` | int | 摘要呼叫的 total token，已含在 `totalTokens` 內；沒有呼叫時為 0。選填 |
 | `modelName` | string \| null | 回答回合中最後一次由供應商回報的模型名稱（OpenAI 回應的 `model`；有些模型回傳帶日期的版本，`gpt-6-luna` 目前回傳 `gpt-6-luna`，與設定值相同）；沒有回答回合回報時（例如路由前就失敗）改記設定的 `ai-assistant.llm.model-name`。路由與摘要呼叫不列入。選填，舊紀錄沒有此欄位，最多 64 字 |
-| `feedback` | string \| null | `UP`、`DOWN`；使用者回饋（`PUT /chat/{requestId}/feedback`，見 02 2.3）。寫入稽核時為 null |
+| `feedback` | string \| null | `UP`、`DOWN`；使用者回饋（`PUT /chat/{traceId}/feedback`，見 02 2.3）。寫入稽核時為 null |
 | `feedbackAt` | date \| null | 最後一次變更回饋（含取消）的時間；寫入稽核時為 null |
 | `createdAt` | date | |
 
@@ -312,7 +312,7 @@ stateDiagram-v2
 - 稽核**不存顧客編號（`certNo`）**：顧客編號是身分證字號，`question` 與 `answer` 本來就是去識別化後的文字（本顧客的 `certNo` 已換成【本顧客】）。因此稽核紀錄只能追溯「誰在什麼時候問了什麼」，無法反查是哪位顧客；`PiiRedactor` 也會把其他顧客的 `certNo` 換成【其他顧客】。
 - 提問與回答**只寫入這個 collection**，不寫入應用程式 log（見 05 第 5 節）。
 - 使用者在前端按「取消」時，後端照常完成並寫入，`outcome` 依實際結果記錄。
-- 回饋只更新 `{ requestId, userId: 目前使用者, outcome: "ANSWERED" }` 符合的紀錄（`requestId` 只有 8 碼十六進位，所以一定同時比對 `userId`）；同一人有兩筆相同 `requestId` 時更新 `createdAt` 最新的一筆。上述新欄位選填，舊紀錄不補寫仍合法，也仍可被寫入回饋。
+- 回饋只更新 `{ traceId, userId: 目前使用者, outcome: "ANSWERED" }` 符合的紀錄（`traceId` 可能由呼叫端帶入而重複，所以一定同時比對 `userId`）；同一人有兩筆相同 `traceId` 時更新 `createdAt` 最新的一筆。上述新欄位選填，舊紀錄不補寫仍合法，也仍可被寫入回饋。
 - 一般使用者看不到這些欄位，對話 API 的回應不變。
 - POC 不提供查詢稽核紀錄的 API，需要時直接查 MongoDB（回饋的版本統計除外，見 02 3.11）。
 
@@ -320,7 +320,7 @@ stateDiagram-v2
 
 ```json
 {
-  "requestId": "a1b2c3d4",
+  "traceId": "463ac35c9f6413ad48485a3953bb6124",
   "userId": "ICRM00028",
   "roleKey": "RM",
   "accessLevel": "FULL",
@@ -366,7 +366,7 @@ stateDiagram-v2
 |---|---|---|---|
 | `IX_ICRM_AI_AUDIT_TTL` | `{ createdAt: 1 }` | TTL：`expireAfterSeconds: 157680000`（1,825 天，對齊平台 `COLL_COMMON_AUDIT_LOG` 的 5 年） | 自動刪除過期紀錄。既有資料庫的舊 index `IX_ICRM_AI_AUDIT_1` 由啟動初始化刪除後重建；期限由 `createdAt` 計算，既有紀錄也適用新期限 |
 | `IX_ICRM_AI_AUDIT_2` | `{ userId: 1, createdAt: -1 }` | | 依使用者查詢 |
-| `IX_ICRM_AI_AUDIT_4` | `{ requestId: 1 }` | | 回饋更新（以 `requestId` 找紀錄） |
+| `IX_ICRM_AI_AUDIT_4` | `{ traceId: 1 }` | | 回饋更新（以 `traceId` 找紀錄）。既有資料庫若留有同名的舊 index（鍵為 `requestId`），必須先刪除整個集合（`drop`，只刪文件不夠），否則後端啟動失敗 |
 | `IX_ICRM_AI_AUDIT_5` | `{ "promptVersions.configKey": 1, "promptVersions.version": 1 }` | partial：`{ feedback: { $type: "string" } }` | 回饋統計；只收有回饋的紀錄，索引很小 |
 
 ### 3.3 JSON Schema Validation
@@ -376,9 +376,9 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_AUDIT", {
   validator: {
     $jsonSchema: {
       bsonType: "object",
-      required: ["requestId", "userId", "roleKey", "accessLevel", "question", "outcome", "toolCalls", "durationMs", "createdAt"],
+      required: ["traceId", "userId", "roleKey", "accessLevel", "question", "outcome", "toolCalls", "durationMs", "createdAt"],
       properties: {
-        requestId:       { bsonType: "string", maxLength: 64 },
+        traceId:         { bsonType: "string", maxLength: 64 },
         userId:          { bsonType: "string", maxLength: 64 },
         roleKey:         { bsonType: "string", maxLength: 32 },
         accessLevel:     { enum: ["FULL", "LIMITED"] },
@@ -443,7 +443,7 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_AUDIT", {
 
 ### 3.4 寫入失敗
 
-稽核寫入失敗不影響回答，但會以 ERROR 等級記 log（只含 requestId 與錯誤類型）。
+稽核寫入失敗不影響回答，但會以 ERROR 等級記 log（只含 traceId 與錯誤類型）。
 
 ---
 

@@ -214,6 +214,8 @@ docker compose up -d               # 重新建立；後端下次啟動會重新�
 docker compose exec mongo mongosh copilot --quiet --eval "db.COLL_ICRM_AI_ASSISTANT_CONFIG.drop(); db.COLL_ICRM_AI_ASSISTANT_AUDIT.drop(); db.COLL_ICRM_AI_ASSISTANT_EVAL_RUN.drop()"
 ```
 
+從追蹤碼還叫 `requestId` 的舊版本升級時，一定要先刪除稽核集合（上面兩種做法擇一）再啟動後端：舊的 index `IX_ICRM_AI_AUDIT_4` 鍵是 `requestId`，新版要建同名但鍵為 `traceId` 的 index，兩者衝突會讓後端啟動失敗。只刪文件（`deleteMany`）不會移除 index，沒有用。
+
 ### 7.2 查看稽核紀錄
 
 ```powershell

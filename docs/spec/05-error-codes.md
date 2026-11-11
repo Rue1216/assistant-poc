@@ -8,12 +8,12 @@
   - **API 錯誤**：回傳 HTTP 錯誤，前端以 Toast 或對話視窗內的提示顯示。
   - **工具錯誤**：不中斷對話，寫進工具結果交給模型說明，並記在稽核紀錄 `toolCalls` 的狀態欄（對話視窗不顯示工具呼叫，由回答說明與引用清單呈現，見 [01-architecture.md](01-architecture.md) 9.2）。
 - `message` 一律是固定的友善訊息。供應商原始錯誤、stack trace、內部網址、token 只會出現在後端 log（並遮罩），不會回傳給前端或送給模型。
-- 每個錯誤回應都帶 `requestId`，方便對照後端 log。
+- 每個錯誤回應都帶 `traceId`（與 `X-Trace-Id` header 同值），方便對照後端 log。
 
 錯誤回應格式：
 
 ```json
-{ "code": "AI_LLM_TIMEOUT", "message": "小幫手回應逾時，請稍後再試", "requestId": "a1b2c3d4", "details": [] }
+{ "code": "AI_LLM_TIMEOUT", "message": "小幫手回應逾時，請稍後再試", "traceId": "463ac35c9f6413ad48485a3953bb6124", "details": [] }
 ```
 
 `details` 的格式依錯誤碼而定，沒有列在下表的錯誤碼，`details` 為空陣列：
@@ -92,7 +92,7 @@
 
 | code | HTTP | 友善訊息 | 情境 |
 |---|---|---|---|
-| `AI_FEEDBACK_NOT_FOUND` | 404 | 這則回答已無法評分 | 找不到「自己的、成功的」對應回答：別人的 `requestId`、不存在的 `requestId`、失敗的提問、稽核寫入失敗的回答，一律同樣的 404，不透露紀錄是否存在 |
+| `AI_FEEDBACK_NOT_FOUND` | 404 | 這則回答已無法評分 | 找不到「自己的、成功的」對應回答：別人的 `traceId`、不存在的 `traceId`、失敗的提問、稽核寫入失敗的回答，一律同樣的 404，不透露紀錄是否存在 |
 | `AI_EVAL_RUNNING` | 409 | 目前已有評測執行中，請稍後再試 | 任何 key 已有執行中的評測；`details` 為單一物件的陣列：`runId`、`configKey`、`triggeredBy`、`completedCases`、`totalCases`（兩個請求同時搶、對方又恰好結束時可能是空陣列） |
 | `AI_EVAL_NOT_FOUND` | 404 | 找不到指定的評測紀錄 | `runId` 不存在或已過期（紀錄 180 天後自動刪除） |
 
@@ -153,13 +153,13 @@
 
 | 等級 | 內容 |
 |---|---|
-| INFO | requestId、userId、耗時、模型往返次數、tool call 次數、token 數（總數，另分 `inputTokens`、`outputTokens`）、回答區塊數（`blocks`）、有引用的區塊數（`citedBlocks`，不含 heading）、單次回應的最大輸出 token 數（`peakOutputTokens`） |
+| INFO | traceId、userId、耗時、模型往返次數、tool call 次數、token 數（總數，另分 `inputTokens`、`outputTokens`）、回答區塊數（`blocks`）、有引用的區塊數（`citedBlocks`，不含 heading）、單次回應的最大輸出 token 數（`peakOutputTokens`） |
 | WARN | 工具失敗、限流、驗證失敗（只記錯誤碼） |
 | ERROR | GPT 或 TWSE 錯誤類型、未預期例外（stack trace 只在後端 log，敏感字串遮罩） |
 
-**回饋的 log**：每次變更成功記一行 INFO：`feedback set requestId={這次 HTTP 請求} answerRequestId={被評分的回答} userId={使用者} rating={UP|DOWN|NONE}`（`NONE` 為取消），不含提問與回答。`answerRequestId` 可對回該回答的 `chat answered` 那行。回饋失敗只有 WARN 的錯誤碼，不算變更。
+**回饋的 log**：每次變更成功記一行 INFO：`feedback set traceId={這次 HTTP 請求} answerTraceId={被評分的回答} userId={使用者} rating={UP|DOWN|NONE}`（`NONE` 為取消），不含提問與回答。`answerTraceId` 可對回該回答的 `chat answered` 那行。回饋失敗只有 WARN 的錯誤碼，不算變更。
 
-**評測的 log** 同樣只有計數與代碼（INFO 的 `eval run started／finished`、`eval case done`；WARN／ERROR 的 `eval run stopped／rejected／failed`、`eval judge failed`、`eval turn failed`，格式見 [prompt-evaluation-design](../superpowers/specs/2026-10-24-prompt-evaluation-design.md) 4.2）。評測作答時 MDC 的 `requestId` 為 `e` + runId 後 7 碼。評測不寫「chat answered／failed」兩行。稽核寫入的 `promptVersions` 超過 100 筆時截斷並記 WARN（只含 requestId 與筆數）。
+**評測的 log** 同樣只有計數與代碼（INFO 的 `eval run started／finished`、`eval case done`；WARN／ERROR 的 `eval run stopped／rejected／failed`、`eval judge failed`、`eval turn failed`，格式見 [prompt-evaluation-design](../superpowers/specs/2026-10-24-prompt-evaluation-design.md) 4.2）。評測執行期間 MDC 的 `traceId` 為評測紀錄 id（24 碼），可由長度與一般請求（32 碼）區分。評測不寫「chat answered／failed」兩行。稽核寫入的 `promptVersions` 超過 100 筆時截斷並記 WARN（只含 traceId 與筆數）。
 
 **任何等級都不記錄**：使用者提問全文、模型回答全文、模型回傳的原始 JSON、工具參數、工具結果、評測題目與評審評語、API key。
 

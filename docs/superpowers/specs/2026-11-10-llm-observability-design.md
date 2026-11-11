@@ -3,6 +3,7 @@
 - 日期：2026-11-10
 - 版本：v0.3
 - 狀態：已實作，待手動驗證
+- v0.4（2026-11-10）：追蹤碼已統一為 traceId，見 [trace-id-unification-design](2026-11-10-trace-id-unification-design.md)；本文的 requestId、llm.request_id 即現在的 traceId、llm.trace_id，第 7 節「TraceId」已處理。
 - v0.3（2026-11-10）：實作與設計的差異：(1) 測試輔助 `LogCapture` 新增 `of(String)`、`of(String, Level)`，因為測試的預設 log 等級是 ERROR，擷取 INFO 需要指定等級；(2) 以 Mockito 模擬 `ChatModel` 的測試（`ChatCitationFlowTest`、`EvalRunnerTestBase`、`ChatControllerTest`）改為 stub／verify 兩個參數的 `chat(request, options)`，第 6 節第 6 項「不影響既有測試」的說法已更正；(3) 第 6 節第 7 項手動驗證尚未執行，步驟已列入 [demo-checklist.md](../../demo-checklist.md) 步驟 28
 - v0.2（2026-11-10）：執行前複查並以程式實測：失敗時的模型名稱改取自請求（listener 不再依賴設定檔）；補上實測確認的行為（3.2）；用途測試改為各呼叫點各自驗證；架構規則不寫死呼叫點數量；待確認新增平台 JSON layout、內容過濾與評測 log 量。
 - 起因：主管在 [M34](../../questions-for-manager.md) 回覆加分項「可觀測性」要做（[requirements.md](../../../requirements.md) 第 12 項）。現有稽核以「一題」為單位，看不到單次模型呼叫；平台把外部呼叫定義為 Outbound Log（[reference.md](../../../reference.md) 6-4），呼叫 OpenAI 目前沒有任何 Outbound log。

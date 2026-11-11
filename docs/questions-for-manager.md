@@ -83,22 +83,30 @@
     1. ~~`COLL_PROJECT` 前綴的實際值是什麼？~~（SP 計畫已指定 `COLL_ICRM_`）collection 名稱常數寫在哪裡？
     2. 是否使用 Spring Data MongoDB？有沒有既有的 `@Version` 樂觀鎖用法？
     3. Index 和 JSON Schema Validation 由誰建立：程式啟動時建立、migration script，還是 DBA？
-- **為何要問**：規格審查要求事先定義 collection、index 和 sharding。
-- **預設假設**：使用 Spring Data MongoDB，collection 名為 `COLL_ICRM_AI_ASSISTANT_CONFIG`，index 和 validation 用 migration script 建立。
+    4. [db-instructions.md](../db-instructions.md) §2 規定 collection 名稱為 `COLL_<模組>_<描述>`，模組只有 `MANAGEMENT`／`MARKETING`／`MAINTENANCE`／`COMMON`／`SCHEDULER`；小幫手目前沿用 SP 計畫指定的 `COLL_ICRM_AI_ASSISTANT_*`。以哪一個為準？如果改用模組前綴，小幫手屬於哪個模組？新的 collection 要不要登記到 db-instructions §4、§6-2、§11 的表格？
+- **為何要問**：規格審查要求事先定義 collection、index 和 sharding。collection 改名要搬資料，越晚改代價越高。
+- **預設假設**：使用 Spring Data MongoDB，collection 名為 `COLL_ICRM_AI_ASSISTANT_CONFIG`，index 和 validation 用 migration script 建立；collection 前綴維持 `COLL_ICRM_`。
+- **補充**：TTL index 已依 §2 改名為 `IX_ICRM_AI_AUDIT_TTL`、`IX_ICRM_AI_EVAL_TTL`。已有舊 index 的環境要在維護時段先刪舊的再建新的（§11），見 [platform-setup-requests.md](platform-setup-requests.md)。
 - **回覆**：
 
 ### S11. 既有稽核機制
 
-- **問題**：平台有沒有既有的稽核紀錄機制（audit collection、AOP 或稽核服務）？
-- **為何要問**：每次 tool 呼叫都要留下稽核資訊（使用者、工具名稱、問題、LLM 回答、執行結果、耗時與時間）。
-- **預設假設**：有就沿用；沒有就新建 `COLL_ICRM_AI_ASSISTANT_AUDIT`。
+- **問題**：
+    1. 平台有沒有既有的稽核紀錄機制（audit collection、AOP 或稽核服務）？
+    2. [db-instructions.md](../db-instructions.md) §4、§11 顯示平台有 `AuditLogAspect`，寫入 `COLL_COMMON_AUDIT_LOG`（`operatorId`、`operatedAt`，保存 5 年）。要怎麼掛上（annotation 名稱與參數）？會記錄哪些欄位？會不會連 request body 一起保存？
+    3. 小幫手的哪些操作應該走平台稽核：使用者對回答按讚／倒讚、Prompt 管理的存檔／發布／套用／捨棄、開始評測？
+- **為何要問**：每次 tool 呼叫都要留下稽核資訊（使用者、工具名稱、問題、LLM 回答、執行結果、耗時與時間）。回饋目前只覆寫稽核紀錄上的最後一次評分與時間，沒有操作軌跡（是否需要見 M4）；Prompt 管理的每個版本都保留操作者與時間，版本歷程本身可追溯。提問與回答屬敏感內容，如果 Aspect 會保存 request body，就不能直接套在對話 API 上。
+- **預設假設**：對話稽核維持獨立的 `COLL_ICRM_AI_ASSISTANT_AUDIT`，因為欄位多，而且含工具呼叫明細。回饋先只記應用程式 log（`feedback set`，見 S12）。確認 Aspect 不保存敏感內容後，再把回饋掛上平台稽核。
+- **補充**：這個 repo 沒有 `AuditLogAspect` 的程式碼，上面的資訊只來自 db-instructions。
 - **回覆**：
 
 ### S12. Log 規範
 
-- **問題**：logger 怎麼使用？有沒有既有的遮罩工具，或 MDC traceId？
-- **為何要問**：提問與回答要進稽核紀錄，但不應出現在應用程式 log；工具參數等敏感資料兩邊都不記。
-- **預設假設**：沿用既有 logger 和 traceId，並另外撰寫遮罩工具。
+- **問題**：
+    1. logger 怎麼使用？有沒有既有的遮罩工具，或 MDC traceId？
+    2. 應用程式 log 輸出到哪裡（console 由容器收集、寫檔，或集中式 log 平台）？保留多久？開發與維運人員在哪裡查詢？
+- **為何要問**：提問與回答要進稽核紀錄，但不應出現在應用程式 log；工具參數等敏感資料兩邊都不記。小幫手目前沒有自己的 log 設定，沿用 Spring Boot 預設，只輸出到 console。`chat answered`、`feedback set` 等 log 是排查問題的依據；保留期限決定這些 log 能不能拿來追溯操作。
+- **預設假設**：沿用既有 logger、traceId 與平台的 log 收集方式。應用程式 log 只用於排查問題，不當作稽核依據；稽核依據是稽核 collection。
 - **回覆**：
 
 ### S13. 既有依賴與版本
@@ -149,6 +157,19 @@
 - **預設假設**：只有資料量大的 collection 才 shard，由 migration 或 DBA 執行；應用程式透過 mongos 連線，可使用 transaction。
 - **回覆**：
 
+### S19. 呼叫端帶入的 `X-B3-TraceId` ⚠️
+
+- **問題**：
+    1. gateway／ingress 會不會帶入或覆寫 `X-B3-TraceId`？瀏覽器（使用者端）自己帶的值會原樣傳到後端，還是被移除、改寫？
+    2. 帶入時的格式是什麼（長度、大小寫、是否含連字號）？是否每個請求唯一，還是同一個使用者操作的多個請求共用？
+    3. 平台有沒有對這個 header 做格式或長度檢查？其他應用程式怎麼處理？
+- **為何要問**：平台 `TraceIdFilter` 會原樣沿用呼叫端帶入的 `X-B3-TraceId`，不檢查內容，小幫手現在只用這個 `traceId` 當追蹤碼（見 [02-rest-api.md](spec/02-rest-api.md) 2.3 節）。這有三個影響：
+    1. 若使用者端的值能直達後端，登入者可以帶入含空白與 `key=value` 的文字，讓應用程式 log 行看起來多了假欄位，或帶很長的值讓每行 log 變長。回應 JSON、稽核寫入（截到 64 字）與回饋 API（格式不符回 400）不受影響；能否帶入換行字元尚未驗證。
+    2. 回饋 API 只接受 16–32 碼小寫十六進位的 `traceId`。gateway 帶入的若是大寫或含連字號的值，所有回答都無法評分。
+    3. 同一個 `traceId` 用在多次提問時，評分會記到該使用者最新的那一筆，而不是被點的那一則。
+- **預設假設**：gateway 不帶入也不轉傳使用者端的 `X-B3-TraceId`，由平台 filter 產生 32 碼小寫十六進位、每個請求唯一的值；小幫手維持原樣沿用，不另外檢查。預設不成立時，在小幫手這邊加檢查：格式不符（非英數字與連字號，或超過 64 字）就改用自己產生的值，並依實際格式調整回饋 API 的檢查規則。
+- **回覆**：
+
 ---
 
 ## Part 2：主管確認清單
@@ -176,8 +197,8 @@
 
 #### M4. 稽核資料保存
 
-- **問題**：稽核資料（含提問與 LLM 回答全文）要保存多久？需要查詢介面嗎？誰可以查看提問與回答明細？提問或回答含顧客資料時，需要額外遮罩或加密嗎？
-- **預設假設**：保存 5 年（1,825 天，對齊平台稽核日誌 `COLL_COMMON_AUDIT_LOG`，待法遵確認），不做查詢介面，只存資料；**稽核不記錄顧客編號**（顧客編號 `certNo` 是身分證字號，已於 2026-10-28 設計調整為不存入稽核，欄位與依顧客查詢的索引已移除）；提問存去識別化後的版本（本顧客自己的 `certNo` 會換成【本顧客】）並遮罩疑似憑證；以 `requestId`、使用者與時間追溯，無法反查是哪位顧客。
+- **問題**：稽核資料（含提問與 LLM 回答全文）要保存多久？需要查詢介面嗎？誰可以查看提問與回答明細？提問或回答含顧客資料時，需要額外遮罩或加密嗎？使用者對回答按讚／倒讚，需要留下可稽核的操作軌跡（每次變更的時間與內容）嗎？
+- **預設假設**：使用者回饋不需要可稽核的操作軌跡：稽核紀錄只保存最後一次評分與時間（`feedback`、`feedbackAt`），每次變更另記一行應用程式 log（`feedback set`）；需要時改走平台稽核（見 S11）。保存 5 年（1,825 天，對齊平台稽核日誌 `COLL_COMMON_AUDIT_LOG`，待法遵確認），不做查詢介面，只存資料；**稽核不記錄顧客編號**（顧客編號 `certNo` 是身分證字號，已於 2026-10-28 設計調整為不存入稽核，欄位與依顧客查詢的索引已移除）；提問存去識別化後的版本（本顧客自己的 `certNo` 會換成【本顧客】）並遮罩疑似憑證；以 `traceId`、使用者與時間追溯，無法反查是哪位顧客。
 - **補充**：保存期限也決定稽核紀錄要不要 sharding，見 M36。
 - **回覆**：
 
@@ -548,7 +569,7 @@
 | 3-3. 市場資訊調查        | S15, M15, M16, M17, M18                 |
 | 3-4. Tool Registry       | S4, S5, S11, S12, M4, M7                |
 | 3-5. Prompt / Skill 管理 | S9, S10, M19 – M27                      |
-| 3-6. 對話安全與錯誤處理  | S7, S17, M1, M2, M3, M30                |
+| 3-6. 對話安全與錯誤處理  | S7, S17, S19, M1, M2, M3, M30           |
 | 3-7. 文件                | M32                                     |
 | 4. 加分挑戰              | M27, M34, M37, M38                      |
 | 5. 評分標準              | M33, M34                                |

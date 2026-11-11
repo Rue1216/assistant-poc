@@ -467,7 +467,7 @@ backend/
    │  │  └─ repository/  AssistantConfigRepository、AuditRepository、EvalRunRepository（介面）
    │  ├─ application/
    │  │  ├─ port/        CurrentUserPort、CustomerAccessPort、CustomerDataPort（小幫手對平台的唯一依賴）
-   │  │  ├─ support/     ClasspathText、RequestContext（MDC requestId）
+   │  │  ├─ support/     ClasspathText、RequestContext（MDC traceId）
    │  │  ├─ llm/         LlmErrorMapper、LlmRequestParameters、LlmCallPurpose（每次模型呼叫的用途）
    │  │  ├─ chat/        ChatOrchestrator（chat／evaluate）、ChatCommand、CustomerContextFactory（含 forEvaluation，
    │  │  │               只供評測）、InstructionRouter、HistorySummarizer、SuggestionService
@@ -478,7 +478,7 @@ backend/
    │  │  ├─ evaluation/  EvalRunService、EvalRunner、EvalJudge
    │  │  └─ feedback/    FeedbackService（評分）、FeedbackQueryService、FeedbackStatsQueryRepository（介面）、VersionFeedback
    │  ├─ interfaces/rest/
-   │  │  ├─ ApiError、AssistantExceptionHandler（只作用於 aiassistant 套件）、RequestIdFilter、
+   │  │  ├─ ApiError、AssistantExceptionHandler（只作用於 aiassistant 套件）、
    │  │  │  PerUserRateLimiter、RateLimitConfiguration
    │  │  ├─ chat/        ChatController、SuggestionController、dto/
    │  │  ├─ config/      AdminConfigController、dto/
@@ -497,6 +497,7 @@ backend/
    │     ├─ seed/        SeedLoader
    │     └─ scheduler/   ScheduledPublishJob（每 30 秒發布到期的預約版本）
    └─ mockplatform/  SecurityConfig、MockUserDirectory（9 個員工帳號、5 個業務角色碼與 `scope`）、
+                     PlatformFilterConfiguration（註冊平台 TraceIdFilter）、
                      MockCustomerAccessAdapter（依 `scope` 的範圍規則、停止利用個資一律 NONE）、
                      MockCustomerDataAdapter、MockCustomerData／MockCustomer360Data（7 位假顧客與
                      `mock/customer-360.json`）、MockCustomerController（清單、名片、/360、/real-time、/cip）
