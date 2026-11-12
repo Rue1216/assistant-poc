@@ -6,7 +6,6 @@ import com.example.copilot.aiassistant.domain.feedback.FeedbackRating;
 import com.example.copilot.aiassistant.domain.repository.AuditRepository;
 import java.time.Instant;
 import java.util.Date;
-import org.bson.Document;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -14,19 +13,21 @@ import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Repository;
 
-/** MongoDB implementation of {@link AuditRepository}; documents are written raw so the stored shape is exact. */
+/** MongoDB implementation of {@link AuditRepository}. */
 @Repository
 public class AuditRepositoryImpl implements AuditRepository {
 
     private final MongoTemplate mongo;
+    private final AuditRecordDocumentMapper mapper;
 
-    public AuditRepositoryImpl(MongoTemplate mongo) {
+    public AuditRepositoryImpl(MongoTemplate mongo, AuditRecordDocumentMapper mapper) {
+        this.mapper = mapper;
         this.mongo = mongo;
     }
 
     @Override
     public void insert(AuditRecord record) {
-        mongo.insert(AuditRecordMapper.toDocument(record), AiAssistantCollections.AUDIT);
+        mongo.insert(mapper.toDocument(record));
     }
 
     @Override
@@ -35,6 +36,6 @@ public class AuditRepositoryImpl implements AuditRepository {
                 .and("outcome").is("ANSWERED")).with(Sort.by(Sort.Direction.DESC, "createdAt"));
         Update update = new Update().set("feedback", rating == null ? null : rating.name())
                 .set("feedbackAt", Date.from(at));
-        return mongo.findAndModify(query, update, Document.class, AiAssistantCollections.AUDIT) != null;
+        return mongo.findAndModify(query, update, AuditRecordDocument.class) != null;
     }
 }

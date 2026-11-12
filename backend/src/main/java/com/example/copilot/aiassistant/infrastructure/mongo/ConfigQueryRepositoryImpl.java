@@ -5,7 +5,6 @@ import static org.springframework.data.mongodb.core.query.Criteria.where;
 import com.example.copilot.aiassistant.application.config.ConfigQueryRepository;
 import com.example.copilot.aiassistant.application.config.ConfigSummary;
 import com.example.copilot.aiassistant.application.config.VersionHistoryEntry;
-import com.example.copilot.aiassistant.domain.config.AssistantConfig;
 import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.config.ConfigStatus;
 import java.util.ArrayList;
@@ -38,21 +37,20 @@ public class ConfigQueryRepositoryImpl implements ConfigQueryRepository {
     @Override
     public List<ConfigSummary> listSummaries() {
         List<String> keys = mongo.findDistinct(new Query(), "configKey", AssistantConfigDocument.class, String.class);
-        Map<String, List<AssistantConfig>> byKey = mongo.find(activeVersionsQuery(), AssistantConfigDocument.class)
+       Map<String, List<AssistantConfigDocument>> byKey = mongo.find(activeVersionsQuery(), AssistantConfigDocument.class)
                 .stream()
-                .map(AssistantConfigMapper::toDomain)
-                .collect(Collectors.groupingBy(c -> c.configKey().value()));
-        List<List<AssistantConfig>> groups = new ArrayList<>(byKey.values());
+                .collect(Collectors.groupingBy(AssistantConfigDocument::getConfigKey));
+        List<List<AssistantConfigDocument>> groups = new ArrayList<>(byKey.values());
         for (String key : keys) {
             if (!byKey.containsKey(key)) {
                 AssistantConfigDocument latest = mongo.findOne(latestVersionQuery(key), AssistantConfigDocument.class);
                 if (latest != null) {
-                    groups.add(List.of(AssistantConfigMapper.toDomain(latest)));
+                    groups.add(List.of(latest));
                 }
             }
         }
         return groups.stream()
-                .map(ConfigSummary::of)
+                .map(ConfigQueryRepositoryImpl::summary)
                 .sorted(Comparator.comparing(ConfigSummary::configType).thenComparing(ConfigSummary::configKey))
                 .toList();
     }
@@ -60,10 +58,29 @@ public class ConfigQueryRepositoryImpl implements ConfigQueryRepository {
     @Override
     public List<VersionHistoryEntry> versionHistory(ConfigKey configKey) {
         return mongo.find(historyQuery(configKey.value()), AssistantConfigDocument.class).stream()
-                .map(AssistantConfigMapper::toDomain)
-                .map(c -> new VersionHistoryEntry(c.version(), c.status(), c.scheduledAt(), c.changeNote(),
-                        c.basedOnVersion(), c.createdBy(), c.updatedBy(), c.updatedAt()))
+                .map(d -> new VersionHistoryEntry(d.getVersion(), d.getStatus(), d.getScheduledAt(), d.getChangeNote(),
+                        d.getBasedOnVersion(), d.getCreatedBy(), d.getUpdatedBy(), d.getUpdatedAt()))
                 .toList();
+    }
+
+    /** The name is the published one, else the working copy's, else the latest's. */
+    private static ConfigSummary summary(List<AssistantConfigDocument> versions) {
+        AssistantConfigDocument latest = versions.stream()
+                .max(Comparator.comparingInt(AssistantConfigDocument::getVersion)).orElseThrow();
+        AssistantConfigDocument published = versions.stream()
+                .filter(d -> d.getStatus() == ConfigStatus.PUBLISHED).findFirst().orElse(null);
+        AssistantConfigDocument workingCopy = versions.stream()
+                .filter(d -> d.getStatus() == ConfigStatus.DRAFT || d.getStatus() == ConfigStatus.SCHEDULED)
+                .findFirst().orElse(null);
+        String name = published != null ? published.getName()
+                : workingCopy != null ? workingCopy.getName() : latest.getName();
+        return new ConfigSummary(latest.getConfigKey(), latest.getConfigType(), name, versionInfo(published),
+                versionInfo(workingCopy));
+    }
+
+    private static ConfigSummary.VersionInfo versionInfo(AssistantConfigDocument d) {
+        return d == null ? null : new ConfigSummary.VersionInfo(d.getVersion(), d.getStatus(), d.getScheduledAt(),
+                d.getUpdatedBy(), d.getUpdatedAt());
     }
 
     static Query activeVersionsQuery() {

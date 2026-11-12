@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -47,8 +48,8 @@ import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.transaction.TransactionSystemException;
 
 /**
- * Transactions and conflict mapping of the config repository, against the real replica set. Spring Data failures
- * are injected through a delegating {@link AssistantConfigMongoRepository} handed to a hand-built implementation.
+ * Transactions and conflict mapping of the config repository, against the real replica set. Mongo failures
+ * are injected through a delegating {@link MongoTemplate} handed to a hand-built implementation.
  */
 class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
 
@@ -60,7 +61,7 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
     private static final String TOO_LONG_NAME = "名".repeat(51);
 
     @Autowired MongoClient mongoClient;
-    @Autowired AssistantConfigMongoRepository mongoRepository;
+    @Autowired AssistantConfigDocumentMapper mapper;
     @Autowired MongoTemplate mongo;
     @Autowired MongoTransactionManager transactionManager;
     @Autowired SeedLoader seedLoader;
@@ -69,23 +70,23 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
 
     @BeforeEach
     void setUp() {
-        repository = new AssistantConfigRepositoryImpl(mongoRepository, mongo, transactionManager);
+        repository = new AssistantConfigRepositoryImpl(mongo, mapper, transactionManager);
     }
 
     @AfterEach
     void restoreSeed() {
-        mongoRepository.deleteAll();
+        mongo.remove(new Query(), AssistantConfigDocument.class);
         seedLoader.run(new DefaultApplicationArguments());
     }
 
-    private AssistantConfigRepositoryImpl withMongoRepository(AssistantConfigMongoRepository repo) {
-        return new AssistantConfigRepositoryImpl(repo, mongo, transactionManager);
+    private AssistantConfigRepositoryImpl withMongoTemplate(MongoTemplate template) {
+        return new AssistantConfigRepositoryImpl(template, mapper, transactionManager);
     }
 
-    /** Delegates to the real Spring Data repository unless a call is stubbed. */
-    private AssistantConfigMongoRepository delegatingMongoRepository() {
-        return mock(AssistantConfigMongoRepository.class,
-                withSettings().defaultAnswer(AdditionalAnswers.delegatesTo(mongoRepository)));
+    /** Delegates to the real MongoTemplate unless a call is stubbed. */
+    private MongoTemplate delegatingMongoTemplate() {
+        return mock(MongoTemplate.class,
+                withSettings().defaultAnswer(AdditionalAnswers.delegatesTo(mongo)));
     }
 
     private AssistantConfig reload(int version) {
@@ -191,15 +192,16 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
     void publishedVersionChangedBeforeArchiveIsConflictAndRollsBack() {
         AssistantConfig v1Before = reload(1);
         AssistantConfig draft = insertDraft(OTHER);
-        AssistantConfigMongoRepository racing = delegatingMongoRepository();
+        MongoTemplate racing = delegatingMongoTemplate();
         doAnswer(inv -> {
-            Optional<AssistantConfigDocument> read =
-                    mongoRepository.findByConfigKeyAndStatus(inv.getArgument(0), inv.getArgument(1));
-            read.ifPresent(d -> bumpDocVersion(d.getId()));
+            AssistantConfigDocument read = mongo.findOne(inv.getArgument(0), AssistantConfigDocument.class);
+            if (read != null) {
+                bumpDocVersion(read.getId());
+            }
             return read;
-        }).when(racing).findByConfigKeyAndStatus(any(), any());
+        }).when(racing).findOne(any(Query.class), eq(AssistantConfigDocument.class));
 
-        assertConflict(() -> withMongoRepository(racing).publish(
+        assertConflict(() -> withMongoTemplate(racing).publish(
                 draft.withStatus(ConfigStatus.PUBLISHED, null).touched(ACTOR, NOW)));
 
         // The bump ran inside the publishing transaction, so it was rolled back with everything else.
@@ -299,13 +301,13 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
         scheduleDraft(NOW.plus(Duration.ofMinutes(2)));
         Instant due = NOW.plus(Duration.ofMinutes(3));
         AssistantConfig scheduled = repository.findScheduledDue(due).getFirst();
-        AssistantConfigMongoRepository failing = delegatingMongoRepository();
+        MongoTemplate failing = delegatingMongoTemplate();
         doThrow(new DataIntegrityViolationException("x", new MongoException(112, "conflict")))
-                .when(failing).findByConfigKeyAndStatus(any(), any());
+                .when(failing).findOne(any(Query.class), eq(AssistantConfigDocument.class));
 
         List<LogEvent> events;
         try (LogCapture capture = LogCapture.of(AssistantConfigRepositoryImpl.class, Level.DEBUG)) {
-            assertThat(withMongoRepository(failing).publishScheduled(scheduled, due)).isFalse();
+            assertThat(withMongoTemplate(failing).publishScheduled(scheduled, due)).isFalse();
             events = capture.events();
         }
 
@@ -321,12 +323,12 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
         AssistantConfig scheduled = repository.findScheduledDue(due).getFirst();
         TransactionSystemException failure = new TransactionSystemException("secret-detail",
                 labelled(91, MongoException.TRANSIENT_TRANSACTION_ERROR_LABEL));
-        AssistantConfigMongoRepository failing = delegatingMongoRepository();
-        doThrow(failure).when(failing).findByConfigKeyAndStatus(any(), any());
+        MongoTemplate failing = delegatingMongoTemplate();
+        doThrow(failure).when(failing).findOne(any(Query.class), eq(AssistantConfigDocument.class));
 
         List<LogEvent> events;
         try (LogCapture capture = LogCapture.of(AssistantConfigRepositoryImpl.class, Level.DEBUG)) {
-            assertThatThrownBy(() -> withMongoRepository(failing).publishScheduled(scheduled, due)).isSameAs(failure);
+            assertThatThrownBy(() -> withMongoTemplate(failing).publishScheduled(scheduled, due)).isSameAs(failure);
             events = capture.events();
         }
 
@@ -419,11 +421,11 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
     /** Moved from ConfigCommandServiceTest#applyIsAtomic. */
     @Test
     void replaceWorkingCopyFailureRollsBackDiscard() {
-        AssistantConfigMongoRepository failing = delegatingMongoRepository();
+        MongoTemplate failing = delegatingMongoTemplate();
         DataAccessResourceFailureException boom = new DataAccessResourceFailureException("insert failed");
         doThrow(boom).when(failing).insert(any(AssistantConfigDocument.class));
         doThrow(boom).when(failing).save(argThat((AssistantConfigDocument d) -> d != null && d.getId() == null));
-        AssistantConfigRepositoryImpl failingRepository = withMongoRepository(failing);
+        AssistantConfigRepositoryImpl failingRepository = withMongoTemplate(failing);
 
         AssistantConfig draft = insertDraft(OTHER);
         assertThatThrownBy(() -> failingRepository.replaceWorkingCopy(
@@ -444,6 +446,24 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
     }
 
     @Test
+    void readsLegacyDocumentWithClassField() {
+        mongo.getCollection(CONFIG).insertOne(new org.bson.Document("configKey", "instruction.legacy")
+                .append("_class", "com.example.copilot.aiassistant.config.AssistantConfig")
+                .append("configType", "SYSTEM_INSTRUCTION").append("name", "legacy").append("content", "body")
+                .append("status", "ARCHIVED").append("version", 1).append("createdBy", "EEE11111")
+                .append("createdAt", java.util.Date.from(NOW)).append("updatedBy", "EEE11111")
+                .append("updatedAt", java.util.Date.from(NOW)).append("docVersion", 4L));
+
+        AssistantConfig read = repository.findVersion(new ConfigKey("instruction.legacy"), 1).orElseThrow();
+
+        assertThat(read.name()).isEqualTo("legacy");
+        assertThat(read.configType()).isEqualTo(ConfigType.SYSTEM_INSTRUCTION);
+        assertThat(read.status()).isEqualTo(ConfigStatus.ARCHIVED);
+        assertThat(read.createdAt()).isEqualTo(NOW);
+        assertThat(read.docVersion()).isEqualTo(4L);
+    }
+
+    @Test
     void findersMapEveryField() {
         AssistantConfig scheduled = scheduleDraft(NOW.plus(Duration.ofMinutes(2)));
 
@@ -460,7 +480,7 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
         assertThat(repository.findWorkingCopy(new ConfigKey("instruction.nope"))).isEmpty();
     }
 
-    /** The stored document keeps the fields and the pre-refactor {@code _class} class name. */
+    /** The stored document keeps its fields and carries no {@code _class}. */
     @Test
     void storedDocumentShapeIsUnchanged() {
         AssistantConfig draft = insertDraft(OTHER);
@@ -470,9 +490,9 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
 
         assertThat(raw).isNotNull();
         assertThat(raw.keySet()).containsExactly("_id", "configKey", "configType", "name", "content", "status",
-                "version", "createdBy", "createdAt", "updatedBy", "updatedAt", "docVersion", "_class");
+                "version", "createdBy", "createdAt", "updatedBy", "updatedAt", "docVersion");
         assertThat(raw.getObjectId("_id").toHexString()).isEqualTo(draft.id());
-        assertThat(raw.getString("_class")).isEqualTo("com.example.copilot.aiassistant.config.AssistantConfig");
+        assertThat(raw).doesNotContainKey("_class");
         assertThat(raw.getString("status")).isEqualTo("DRAFT");
         assertThat(raw.get("docVersion")).isEqualTo(0L);
     }

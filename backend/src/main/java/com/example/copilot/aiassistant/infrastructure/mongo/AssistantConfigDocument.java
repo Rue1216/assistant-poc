@@ -4,7 +4,6 @@ import com.example.copilot.aiassistant.domain.config.ConfigStatus;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
 import java.time.Instant;
 import org.springframework.data.annotation.Id;
-import org.springframework.data.annotation.TypeAlias;
 import org.springframework.data.annotation.Version;
 import org.springframework.data.mongodb.core.mapping.Document;
 
@@ -12,13 +11,11 @@ import lombok.Getter;
 import lombok.Setter;
 
 /**
- * Stored form of {@code AssistantConfig}. The type alias pins the {@code _class} value to the pre-refactor class name
- * (the class used to live in the config package), so documents look the same whichever version wrote them.
+ * Stored form of {@code AssistantConfig}; no {@code _class} is written.
  */
 @Getter
 @Setter
 @Document(AiAssistantCollections.CONFIG)
-@TypeAlias("com.example.copilot.aiassistant.config.AssistantConfig")
 public class AssistantConfigDocument {
 
     @Id

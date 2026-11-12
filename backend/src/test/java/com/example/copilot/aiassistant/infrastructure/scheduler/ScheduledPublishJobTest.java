@@ -3,6 +3,7 @@ package com.example.copilot.aiassistant.infrastructure.scheduler;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -24,10 +25,11 @@ import com.example.copilot.aiassistant.domain.exception.ErrorCode;
 import com.example.copilot.aiassistant.application.config.PublishedConfigCache;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
 import com.example.copilot.aiassistant.infrastructure.mongo.AssistantConfigDocument;
-import com.example.copilot.aiassistant.infrastructure.mongo.AssistantConfigMongoRepository;
+import com.example.copilot.aiassistant.infrastructure.mongo.AssistantConfigDocumentMapper;
 import com.example.copilot.aiassistant.infrastructure.mongo.AssistantConfigRepositoryImpl;
 import com.example.copilot.aiassistant.infrastructure.seed.SeedLoader;
 import com.example.copilot.testsupport.LogCapture;
+import com.example.copilot.testsupport.ConfigDocumentStore;
 import com.mongodb.MongoException;
 import java.time.Clock;
 import java.time.Duration;
@@ -56,6 +58,7 @@ import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.context.ApplicationContext;
 import org.springframework.data.mongodb.MongoTransactionManager;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Query;
 
 /** The scheduler is disabled in tests; the job is built by hand around a service with a movable clock. */
 class ScheduledPublishJobTest extends IntegrationTestBase {
@@ -65,8 +68,14 @@ class ScheduledPublishJobTest extends IntegrationTestBase {
     private static final String ACTOR = "EEE22222";
 
     @Autowired AssistantConfigRepository repository;
-    @Autowired AssistantConfigMongoRepository mongoRepository;
+    ConfigDocumentStore mongoRepository;
+
+    @Autowired
+    void initMongoRepository(MongoTemplate template) {
+        mongoRepository = new ConfigDocumentStore(template);
+    }
     @Autowired MongoTemplate mongo;
+    @Autowired AssistantConfigDocumentMapper mapper;
     @Autowired ConfigValidator validator;
     @Autowired MongoTransactionManager transactionManager;
     @Autowired AiAssistantProperties properties;
@@ -247,10 +256,10 @@ class ScheduledPublishJobTest extends IntegrationTestBase {
     private List<LogEvent> publishDueWithFindFailure(RuntimeException failure) {
         schedule(NOW.plus(Duration.ofMinutes(2)));
         clock.advance(Duration.ofMinutes(3));
-        AssistantConfigMongoRepository failing = mock(AssistantConfigMongoRepository.class,
-                withSettings().defaultAnswer(AdditionalAnswers.delegatesTo(mongoRepository)));
-        doThrow(failure).when(failing).findByConfigKeyAndStatus(any(), any());
-        ConfigCommandService racing = newService(new AssistantConfigRepositoryImpl(failing, mongo, transactionManager));
+        MongoTemplate failing = mock(MongoTemplate.class,
+                withSettings().defaultAnswer(AdditionalAnswers.delegatesTo(mongo)));
+        doThrow(failure).when(failing).findOne(any(Query.class), eq(AssistantConfigDocument.class));
+        ConfigCommandService racing = newService(new AssistantConfigRepositoryImpl(failing, mapper, transactionManager));
         List<LogEvent> events = new ArrayList<>();
         try (LogCapture serviceLog = LogCapture.of(ConfigCommandService.class, Level.DEBUG);
              LogCapture repositoryLog = LogCapture.of(AssistantConfigRepositoryImpl.class, Level.DEBUG)) {

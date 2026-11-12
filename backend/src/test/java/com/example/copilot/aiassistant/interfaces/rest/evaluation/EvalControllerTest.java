@@ -28,11 +28,11 @@ import com.example.copilot.aiassistant.domain.eval.EvalStatus;
 import com.example.copilot.aiassistant.domain.eval.EvalSummary;
 import com.example.copilot.aiassistant.domain.eval.JudgeVerdict;
 import com.example.copilot.aiassistant.infrastructure.mongo.AiAssistantCollections;
-import com.example.copilot.aiassistant.infrastructure.mongo.AssistantConfigMongoRepository;
 import com.example.copilot.aiassistant.application.config.ConfigCommandService;
 import com.example.copilot.aiassistant.domain.repository.EvalRunRepository;
 import com.example.copilot.aiassistant.infrastructure.seed.SeedLoader;
 import com.example.copilot.aiassistant.domain.config.PromptVersion;
+import com.example.copilot.testsupport.ConfigDocumentStore;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -60,7 +60,12 @@ class EvalControllerTest extends IntegrationTestBase {
 
     @Autowired EvalRunRepository runs;
     @Autowired ConfigCommandService configService;
-    @Autowired AssistantConfigMongoRepository configs;
+    ConfigDocumentStore configs;
+
+    @Autowired
+    void initConfigs(MongoTemplate template) {
+        configs = new ConfigDocumentStore(template);
+    }
     @Autowired SeedLoader seedLoader;
     @Autowired MongoTemplate mongo;
     @Autowired Clock clock;

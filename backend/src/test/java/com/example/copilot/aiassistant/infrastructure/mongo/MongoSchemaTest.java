@@ -8,6 +8,7 @@ import com.example.copilot.aiassistant.domain.config.ConfigStatus;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
 import com.example.copilot.aiassistant.infrastructure.config.EvalConfiguration;
 import com.example.copilot.aiassistant.infrastructure.seed.SeedLoader;
+import com.example.copilot.testsupport.ConfigDocumentStore;
 import com.mongodb.MongoWriteException;
 import java.time.Instant;
 import java.util.Date;
@@ -31,7 +32,12 @@ class MongoSchemaTest extends IntegrationTestBase {
     private static final String AUDIT = AiAssistantCollections.AUDIT;
 
     @Autowired MongoTemplate mongo;
-    @Autowired AssistantConfigMongoRepository repository;
+    ConfigDocumentStore repository;
+
+    @Autowired
+    void initRepository(MongoTemplate template) {
+        repository = new ConfigDocumentStore(template);
+    }
     @Autowired SeedLoader seedLoader;
     @Autowired MongoSchemaInitializer initializer;
 
@@ -85,7 +91,7 @@ class MongoSchemaTest extends IntegrationTestBase {
     @Test
     void validatorAcceptsDiscarded() {
         mongo.getCollection(CONFIG).insertOne(rawDoc("DISCARDED", new Date()));
-        assertThat(repository.findByConfigKeyAndVersion("instruction.raw", 1).orElseThrow().getStatus())
+        assertThat(repository.findTopByConfigKeyOrderByVersionDesc("instruction.raw").orElseThrow().getStatus())
                 .isEqualTo(ConfigStatus.DISCARDED);
     }
 

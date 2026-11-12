@@ -8,19 +8,25 @@ import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
 import com.example.copilot.aiassistant.domain.config.ConfigValidator;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
-import com.example.copilot.aiassistant.infrastructure.mongo.AssistantConfigMongoRepository;
+import com.example.copilot.testsupport.ConfigDocumentStore;
 import java.util.Comparator;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.DefaultApplicationArguments;
 
 class SeedLoaderTest extends IntegrationTestBase {
 
     @Autowired AssistantConfigRepository repository;
-    @Autowired AssistantConfigMongoRepository documents;
+    ConfigDocumentStore documents;
+
+    @Autowired
+    void initDocuments(MongoTemplate template) {
+        documents = new ConfigDocumentStore(template);
+    }
     @Autowired SeedLoader seedLoader;
     @Autowired ConfigValidator validator;
 

@@ -27,7 +27,6 @@ import com.example.copilot.aiassistant.domain.exception.RunningEvalDetail;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
 import com.example.copilot.aiassistant.infrastructure.mongo.AiAssistantCollections;
-import com.example.copilot.aiassistant.infrastructure.mongo.AssistantConfigMongoRepository;
 import com.example.copilot.aiassistant.application.config.ConfigCommandService;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
 import com.example.copilot.aiassistant.domain.config.PublishedConfigs;
@@ -42,6 +41,7 @@ import com.example.copilot.aiassistant.domain.prompt.PromptAssembler;
 import com.example.copilot.aiassistant.domain.config.PromptVersion;
 import com.example.copilot.aiassistant.application.config.PublishedConfigCache;
 import com.example.copilot.testsupport.LogCapture;
+import com.example.copilot.testsupport.ConfigDocumentStore;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -73,7 +73,12 @@ class EvalRunServiceTest extends IntegrationTestBase {
     @Autowired EvalRunRepository runs;
     @Autowired ConfigCommandService configService;
     @Autowired AssistantConfigRepository configs;
-    @Autowired AssistantConfigMongoRepository configDocuments;
+    ConfigDocumentStore configDocuments;
+
+    @Autowired
+    void initConfigDocuments(MongoTemplate template) {
+        configDocuments = new ConfigDocumentStore(template);
+    }
     @Autowired SeedLoader seedLoader;
     @Autowired EvalDataset dataset;
     @Autowired MongoTemplate mongo;

@@ -18,13 +18,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.example.copilot.IntegrationTestBase;
 import com.example.copilot.TestUsers;
-import com.example.copilot.aiassistant.infrastructure.mongo.AssistantConfigMongoRepository;
 import com.example.copilot.aiassistant.infrastructure.seed.SeedLoader;
+import com.example.copilot.testsupport.ConfigDocumentStore;
 import com.jayway.jsonpath.JsonPath;
 import java.time.Clock;
 import java.time.Duration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.http.MediaType;
@@ -43,7 +44,12 @@ class AdminConfigControllerTest extends IntegrationTestBase {
     private static final String ADMIN = "EEE22222";
     private static final String WORKING_COPY_PATH = "$[?(@.configKey=='" + KEY + "')].workingCopy";
 
-    @Autowired AssistantConfigMongoRepository repository;
+    ConfigDocumentStore repository;
+
+    @Autowired
+    void initRepository(MongoTemplate template) {
+        repository = new ConfigDocumentStore(template);
+    }
     @Autowired SeedLoader seedLoader;
     @Autowired Clock clock;
 

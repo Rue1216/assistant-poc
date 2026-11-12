@@ -18,6 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.MongoTransactionManager;
 import org.springframework.data.mongodb.TransientClientSessionException;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -41,71 +42,74 @@ public class AssistantConfigRepositoryImpl implements AssistantConfigRepository 
     private static final int WRITE_CONFLICT = 112;
     private static final int DUPLICATE_KEY = 11000;
 
-    private final AssistantConfigMongoRepository mongoRepository;
     private final MongoTemplate mongo;
+    private final AssistantConfigDocumentMapper mapper;
     private final TransactionTemplate tx;
 
-    public AssistantConfigRepositoryImpl(AssistantConfigMongoRepository mongoRepository, MongoTemplate mongo,
+    public AssistantConfigRepositoryImpl(MongoTemplate mongo, AssistantConfigDocumentMapper mapper,
                                          MongoTransactionManager transactionManager) {
-        this.mongoRepository = mongoRepository;
         this.mongo = mongo;
+        this.mapper = mapper;
         this.tx = new TransactionTemplate(transactionManager);
     }
 
     @Override
     public Optional<AssistantConfig> findPublished(ConfigKey configKey) {
-        return mongoRepository.findByConfigKeyAndStatus(configKey.value(), ConfigStatus.PUBLISHED)
-                .map(AssistantConfigMapper::toDomain);
+        return Optional.ofNullable(mongo.findOne(byKeyAndStatus(configKey, ConfigStatus.PUBLISHED),
+                AssistantConfigDocument.class)).map(mapper::toDomain);
     }
 
     @Override
     public Optional<AssistantConfig> findWorkingCopy(ConfigKey configKey) {
-        return mongoRepository.findByConfigKeyAndStatusIn(configKey.value(), WORKING_COPY).stream().findFirst()
-                .map(AssistantConfigMapper::toDomain);
+        Query query = Query.query(where("configKey").is(configKey.value()).and("status").in(WORKING_COPY));
+        return mongo.find(query, AssistantConfigDocument.class).stream().findFirst().map(mapper::toDomain);
     }
 
     @Override
     public Optional<AssistantConfig> findLatest(ConfigKey configKey) {
-        return mongoRepository.findTopByConfigKeyOrderByVersionDesc(configKey.value()).map(AssistantConfigMapper::toDomain);
+        Query query = Query.query(where("configKey").is(configKey.value()))
+                .with(Sort.by(Sort.Direction.DESC, "version")).limit(1);
+        return Optional.ofNullable(mongo.findOne(query, AssistantConfigDocument.class)).map(mapper::toDomain);
     }
 
     @Override
     public Optional<AssistantConfig> findVersion(ConfigKey configKey, int version) {
-        return mongoRepository.findByConfigKeyAndVersion(configKey.value(), version).map(AssistantConfigMapper::toDomain);
+        Query query = Query.query(where("configKey").is(configKey.value()).and("version").is(version));
+        return Optional.ofNullable(mongo.findOne(query, AssistantConfigDocument.class)).map(mapper::toDomain);
     }
 
     @Override
     public List<AssistantConfig> findPublished() {
-        return toDomain(mongoRepository.findByStatus(ConfigStatus.PUBLISHED));
+        return toDomain(mongo.find(Query.query(where("status").is(ConfigStatus.PUBLISHED)),
+                AssistantConfigDocument.class));
     }
 
     @Override
     public List<AssistantConfig> findScheduledDue(Instant now) {
-        return toDomain(mongoRepository.findByStatusAndScheduledAtLessThanEqual(ConfigStatus.SCHEDULED, now));
+        Query query = Query.query(where("status").is(ConfigStatus.SCHEDULED).and("scheduledAt").lte(now));
+        return toDomain(mongo.find(query, AssistantConfigDocument.class));
     }
 
     @Override
     public long count() {
-        return mongoRepository.count();
+        return mongo.count(new Query(), AssistantConfigDocument.class);
     }
 
     @Override
     public AssistantConfig insert(AssistantConfig config) {
-        return write(() -> AssistantConfigMapper.toDomain(
-                mongoRepository.insert(AssistantConfigMapper.toDocument(config))));
+        return write(() -> mapper.toDomain(mongo.insert(mapper.toDocument(config))));
     }
 
     @Override
     public AssistantConfig save(AssistantConfig config) {
-        return write(() -> AssistantConfigMapper.toDomain(
-                mongoRepository.save(AssistantConfigMapper.toDocument(config))));
+        return write(() -> mapper.toDomain(mongo.save(mapper.toDocument(config))));
     }
 
     @Override
     public AssistantConfig publish(AssistantConfig workingCopy) {
         return write(() -> tx.execute(status -> {
             archivePublished(workingCopy.configKey());
-            return AssistantConfigMapper.toDomain(mongoRepository.save(AssistantConfigMapper.toDocument(workingCopy)));
+            return mapper.toDomain(mongo.save(mapper.toDocument(workingCopy)));
         }));
     }
 
@@ -113,9 +117,9 @@ public class AssistantConfigRepositoryImpl implements AssistantConfigRepository 
     public AssistantConfig replaceWorkingCopy(AssistantConfig discarded, AssistantConfig draft) {
         return write(() -> tx.execute(status -> {
             if (discarded != null) {
-                mongoRepository.save(AssistantConfigMapper.toDocument(discarded));
+                mongo.save(mapper.toDocument(discarded));
             }
-            return AssistantConfigMapper.toDomain(mongoRepository.insert(AssistantConfigMapper.toDocument(draft)));
+            return mapper.toDomain(mongo.insert(mapper.toDocument(draft)));
         }));
     }
 
@@ -173,7 +177,7 @@ public class AssistantConfigRepositoryImpl implements AssistantConfigRepository 
      * went live). Must run inside the publishing transaction.
      */
     private void archivePublished(ConfigKey configKey) {
-        mongoRepository.findByConfigKeyAndStatus(configKey.value(), ConfigStatus.PUBLISHED).ifPresent(old -> {
+        Optional.ofNullable(mongo.findOne(byKeyAndStatus(configKey, ConfigStatus.PUBLISHED), AssistantConfigDocument.class)).ifPresent(old -> {
             Query current = Query.query(where("id").is(old.getId())
                     .and("status").is(ConfigStatus.PUBLISHED)
                     .and("docVersion").is(old.getDocVersion()));
@@ -184,8 +188,12 @@ public class AssistantConfigRepositoryImpl implements AssistantConfigRepository 
         });
     }
 
-    private static List<AssistantConfig> toDomain(List<AssistantConfigDocument> docs) {
-        return docs.stream().map(AssistantConfigMapper::toDomain).toList();
+    private static Query byKeyAndStatus(ConfigKey configKey, ConfigStatus status) {
+        return Query.query(where("configKey").is(configKey.value()).and("status").is(status));
+    }
+
+    private List<AssistantConfig> toDomain(List<AssistantConfigDocument> docs) {
+        return docs.stream().map(mapper::toDomain).toList();
     }
 
     /**

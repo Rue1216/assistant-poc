@@ -10,6 +10,7 @@ import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.config.ConfigStatus;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
 import com.example.copilot.aiassistant.infrastructure.seed.SeedLoader;
+import com.example.copilot.testsupport.ConfigDocumentStore;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
@@ -25,8 +26,14 @@ class ConfigQueryRepositoryImplTest extends IntegrationTestBase {
     private static final Instant NOW = Instant.parse("2026-10-20T02:00:00Z");
     private static final String KEY = "instruction.contact-prep";
 
-    @Autowired AssistantConfigMongoRepository mongoRepository;
+    ConfigDocumentStore mongoRepository;
+
+    @Autowired
+    void initMongoRepository(MongoTemplate template) {
+        mongoRepository = new ConfigDocumentStore(template);
+    }
     @Autowired MongoTemplate mongo;
+    @Autowired AssistantConfigDocumentMapper mapper;
     @Autowired SeedLoader seedLoader;
 
     private ConfigQueryRepositoryImpl queries;
@@ -44,10 +51,10 @@ class ConfigQueryRepositoryImplTest extends IntegrationTestBase {
 
     private AssistantConfig insertDraft(String name) {
         AssistantConfig published = mongoRepository.findByConfigKeyAndStatus(KEY, ConfigStatus.PUBLISHED)
-                .map(AssistantConfigMapper::toDomain).orElseThrow();
+                .map(mapper::toDomain).orElseThrow();
         AssistantConfig draft = AssistantConfig.newDraft(new ConfigKey(KEY), ConfigType.SYSTEM_INSTRUCTION, name,
                 published.content(), 2, "EEE11111", NOW);
-        return AssistantConfigMapper.toDomain(mongoRepository.insert(AssistantConfigMapper.toDocument(draft)));
+        return mapper.toDomain(mongoRepository.insert(mapper.toDocument(draft)));
     }
 
     @Test
@@ -75,7 +82,7 @@ class ConfigQueryRepositoryImplTest extends IntegrationTestBase {
     void listSummariesCarriesScheduledAtOfWorkingCopy() {
         Instant at = NOW.plusSeconds(3600);
         AssistantConfig draft = insertDraft("Scheduled draft");
-        mongoRepository.save(AssistantConfigMapper.toDocument(draft.withStatus(ConfigStatus.SCHEDULED, at)));
+        mongoRepository.save(mapper.toDocument(draft.withStatus(ConfigStatus.SCHEDULED, at)));
 
         ConfigSummary contactPrep = queries.listSummaries().stream()
                 .filter(s -> s.configKey().equals(KEY)).findFirst().orElseThrow();
@@ -86,7 +93,7 @@ class ConfigQueryRepositoryImplTest extends IntegrationTestBase {
 
     @Test
     void listSummariesShowsKeyWithoutPublishedVersion() {
-        mongoRepository.insert(AssistantConfigMapper.toDocument(AssistantConfig.newDraft(new ConfigKey("instruction.new-topic"),
+        mongoRepository.insert(mapper.toDocument(AssistantConfig.newDraft(new ConfigKey("instruction.new-topic"),
                 ConfigType.SYSTEM_INSTRUCTION, "New topic", "body", 1, "EEE11111", NOW)));
 
         assertThat(queries.listSummaries()).anySatisfy(s -> {
@@ -101,7 +108,7 @@ class ConfigQueryRepositoryImplTest extends IntegrationTestBase {
     void listSummariesShowsKeyWhoseOnlyVersionIsDiscarded() {
         AssistantConfig dropped = AssistantConfig.newDraft(new ConfigKey("instruction.dropped"),
                 ConfigType.SYSTEM_INSTRUCTION, "Dropped", "body", 1, "EEE11111", NOW);
-        mongoRepository.insert(AssistantConfigMapper.toDocument(dropped.withStatus(ConfigStatus.DISCARDED, null)));
+        mongoRepository.insert(mapper.toDocument(dropped.withStatus(ConfigStatus.DISCARDED, null)));
 
         assertThat(queries.listSummaries()).anySatisfy(s -> {
             assertThat(s.configKey()).isEqualTo("instruction.dropped");
