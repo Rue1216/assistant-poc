@@ -3,6 +3,7 @@ package com.example.copilot.aiassistant.infrastructure.mongo;
 import static org.springframework.data.mongodb.core.query.Criteria.where;
 
 import com.example.copilot.aiassistant.domain.chat.EvaluationReport;
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.config.PromptVersion;
 import com.example.copilot.aiassistant.domain.eval.CaseResult;
 import com.example.copilot.aiassistant.domain.eval.EvalCaseRecord;
@@ -48,7 +49,7 @@ public class EvalRunRepositoryImpl implements EvalRunRepository {
     public String insert(EvalRun run) {
         Document doc = toDocument(run);
         try {
-            mongo.insert(doc, EvalRun.COLLECTION);
+            mongo.insert(doc, AiAssistantCollections.EVAL_RUN);
         } catch (DuplicateKeyException e) {
             throw new AssistantException(ErrorCode.AI_EVAL_RUNNING);
         }
@@ -60,22 +61,22 @@ public class EvalRunRepositoryImpl implements EvalRunRepository {
         if (!ObjectId.isValid(id)) {
             return Optional.empty();
         }
-        Document doc = mongo.getCollection(EvalRun.COLLECTION).find(new Document("_id", new ObjectId(id))).first();
+        Document doc = mongo.getCollection(AiAssistantCollections.EVAL_RUN).find(new Document("_id", new ObjectId(id))).first();
         return Optional.ofNullable(doc).map(EvalRunRepositoryImpl::fromDocument);
     }
 
     @Override
     public Optional<EvalRun> findRunning() {
-        Document doc = mongo.getCollection(EvalRun.COLLECTION).find(new Document("status", RUNNING)).first();
+        Document doc = mongo.getCollection(AiAssistantCollections.EVAL_RUN).find(new Document("status", RUNNING)).first();
         return Optional.ofNullable(doc).map(EvalRunRepositoryImpl::fromDocument);
     }
 
     @Override
-    public List<EvalRun> recent(String configKey, int limit) {
-        Query query = Query.query(where("configKey").is(configKey)).with(Sort.by(Sort.Direction.DESC, "startedAt"))
+    public List<EvalRun> recent(ConfigKey configKey, int limit) {
+        Query query = Query.query(where("configKey").is(configKey.value())).with(Sort.by(Sort.Direction.DESC, "startedAt"))
                 .limit(limit);
         query.fields().exclude("cases");
-        return mongo.find(query, Document.class, EvalRun.COLLECTION).stream()
+        return mongo.find(query, Document.class, AiAssistantCollections.EVAL_RUN).stream()
                 .map(EvalRunRepositoryImpl::fromDocument).toList();
     }
 
@@ -112,14 +113,14 @@ public class EvalRunRepositoryImpl implements EvalRunRepository {
         Query query = Query.query(where("_id").is(new ObjectId(id)).and("docVersion").is(docVersion)
                 .and("status").is(RUNNING));
         update.inc("docVersion", 1L);
-        return mongo.updateFirst(query, update, EvalRun.COLLECTION).getModifiedCount() == 1;
+        return mongo.updateFirst(query, update, AiAssistantCollections.EVAL_RUN).getModifiedCount() == 1;
     }
 
     // ---- Document mapping: run -> document ----
 
     static Document toDocument(EvalRun r) {
         return new Document()
-                .append("configKey", r.configKey())
+                .append("configKey", r.configKey().value())
                 .append("candidateVersion", r.candidateVersion())
                 .append("candidateDocVersion", r.candidateDocVersion())
                 .append("candidateUpdatedAt", Date.from(r.candidateUpdatedAt()))
@@ -190,7 +191,7 @@ public class EvalRunRepositoryImpl implements EvalRunRepository {
             cases.add(caseRecord(c));
         }
         Document summary = d.get("summary", Document.class);
-        return new EvalRun(d.getObjectId("_id").toHexString(), d.getString("configKey"),
+        return new EvalRun(d.getObjectId("_id").toHexString(), new ConfigKey(d.getString("configKey")),
                 num(d, "candidateVersion").intValue(), num(d, "candidateDocVersion").longValue(),
                 d.getDate("candidateUpdatedAt").toInstant(),
                 docs(d, "baselineVersions").stream()

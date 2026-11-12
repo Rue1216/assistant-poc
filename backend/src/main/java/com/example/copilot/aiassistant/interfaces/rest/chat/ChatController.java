@@ -4,6 +4,7 @@ import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.application.chat.ChatCommand.HistoryMessage;
 import com.example.copilot.aiassistant.application.chat.ChatCommand;
 import com.example.copilot.aiassistant.application.chat.ChatOrchestrator;
+import com.example.copilot.aiassistant.domain.customer.CertNo;
 import com.example.copilot.aiassistant.interfaces.rest.chat.dto.ChatRequestBody;
 import com.example.copilot.aiassistant.interfaces.rest.chat.dto.ChatResponseBody;
 import com.example.copilot.aiassistant.domain.exception.AssistantException;
@@ -44,7 +45,7 @@ public class ChatController {
 
     @PostMapping("/api/ai-assistant/customers/{certNo}/chat")
     @PreAuthorize("hasAuthority('AI_ASSISTANT_USE')")
-    public ChatResponseBody chat(@PathVariable @Pattern(regexp = "^[A-Z0-9&]{8,12}$") String certNo,
+    public ChatResponseBody chat(@PathVariable @Pattern(regexp = CertNo.PATTERN) String certNo,
             @Valid @RequestBody ChatRequestBody body) {
         String message = body.message().strip();
         if (message.isEmpty() || message.codePointCount(0, message.length()) > limits.messageMaxChars()) {
@@ -65,7 +66,7 @@ public class ChatController {
         if (!rateLimiter.tryAcquire(user.userId())) {
             throw new AssistantException(ErrorCode.AI_RATE_LIMITED);
         }
-        CustomerContext customer = contexts.create(user, certNo)
+        CustomerContext customer = contexts.create(user, new CertNo(certNo))
                 .orElseThrow(() -> new AssistantException(ErrorCode.AI_CUSTOMER_NOT_FOUND));
         List<HistoryMessage> history = body.history() == null ? List.of()
                 : body.history().stream().map(h -> new HistoryMessage(h.role(), h.content())).toList();

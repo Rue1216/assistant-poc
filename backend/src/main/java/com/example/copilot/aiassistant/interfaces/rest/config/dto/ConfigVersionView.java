@@ -14,7 +14,7 @@ public record ConfigVersionView(String configKey, ConfigType configType, String 
                                 OffsetDateTime scheduledAt, Long docVersion) {
 
     public static ConfigVersionView of(AssistantConfig c, List<String> exampleQuestions) {
-        return new ConfigVersionView(c.configKey(), c.configType(), c.name(), c.content(),
+        return new ConfigVersionView(c.configKey().value(), c.configType(), c.name(), c.content(),
                 exampleQuestions, c.status(), c.version(), c.basedOnVersion(), c.changeNote(),
                 c.createdBy(), AdminTime.at(c.createdAt()), c.updatedBy(),
                 AdminTime.at(c.updatedAt()), AdminTime.at(c.scheduledAt()), c.docVersion());

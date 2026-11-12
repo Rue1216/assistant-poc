@@ -1,5 +1,9 @@
 package com.example.copilot.aiassistant.infrastructure.mongo;
 
+import static com.example.copilot.aiassistant.infrastructure.mongo.AiAssistantCollections.AUDIT;
+import static com.example.copilot.aiassistant.infrastructure.mongo.AiAssistantCollections.CONFIG;
+import static com.example.copilot.aiassistant.infrastructure.mongo.AiAssistantCollections.EVAL_RUN;
+
 import com.example.copilot.aiassistant.application.support.ClasspathText;
 import org.bson.Document;
 import org.springframework.boot.ApplicationArguments;
@@ -19,9 +23,6 @@ import org.springframework.stereotype.Component;
 @Order(1)
 public class MongoSchemaInitializer implements ApplicationRunner {
 
-    static final String CONFIG = "COLL_ICRM_AI_ASSISTANT_CONFIG";
-    static final String AUDIT = "COLL_ICRM_AI_ASSISTANT_AUDIT";
-    static final String EVAL_RUN = "COLL_ICRM_AI_ASSISTANT_EVAL_RUN";
     /** 1,825 days, aligned with the platform audit log. */
     private static final long AUDIT_TTL_SECONDS = 157_680_000L;
     /** 180 days. */

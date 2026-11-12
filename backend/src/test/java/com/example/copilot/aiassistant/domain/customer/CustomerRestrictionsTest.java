@@ -3,6 +3,7 @@ package com.example.copilot.aiassistant.domain.customer;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.copilot.aiassistant.application.port.CustomerDataPort;
+import com.example.copilot.aiassistant.domain.customer.CertNo;
 import com.example.copilot.aiassistant.domain.customer.c360.CustomFlagging;
 import com.example.copilot.aiassistant.domain.customer.c360.FlagType;
 import com.example.copilot.aiassistant.domain.customer.c360.RealTimeStatusRecord;
@@ -21,7 +22,7 @@ class CustomerRestrictionsTest {
     private static final String UNAVAILABLE_NOTICE = "無法取得註記，商品與行銷資料暫不提供，請先參考平台畫面上的註記。";
 
     private static CustomerContext full() {
-        return new CustomerContext(CERT, AccessLevel.FULL, Set.of(), Set.of());
+        return new CustomerContext(new CertNo(CERT), AccessLevel.FULL, Set.of(), Set.of());
     }
 
     private static TurnCustomerData turnData(CustomerDataPort port) {
@@ -123,7 +124,7 @@ class CustomerRestrictionsTest {
         CustomerDataPort port = Mockito.mock(CustomerDataPort.class);
 
         CustomerRestrictions r = CustomerRestrictions.of(
-                new CustomerContext(CERT, AccessLevel.LIMITED, Set.of(), Set.of()), turnData(port));
+                new CustomerContext(new CertNo(CERT), AccessLevel.LIMITED, Set.of(), Set.of()), turnData(port));
 
         assertThat(r.notices()).isEmpty();
         assertThat(r.notesUnavailable()).isFalse();

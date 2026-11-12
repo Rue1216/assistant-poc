@@ -52,7 +52,7 @@ public class PublishedConfigCache {
                 .findFirst().orElse(null);
         List<AssistantConfig> instructions = published.stream()
                 .filter(c -> c.configType() == ConfigType.SYSTEM_INSTRUCTION)
-                .sorted(Comparator.comparing(AssistantConfig::configKey))
+                .sorted(Comparator.comparing(c -> c.configKey().value()))
                 .toList();
         return new PublishedConfigs(systemPrompt, instructions);
     }

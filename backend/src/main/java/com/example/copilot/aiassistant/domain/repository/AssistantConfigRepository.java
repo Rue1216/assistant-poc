@@ -1,6 +1,7 @@
 package com.example.copilot.aiassistant.domain.repository;
 
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -11,15 +12,15 @@ import java.util.Optional;
  */
 public interface AssistantConfigRepository {
 
-    Optional<AssistantConfig> findPublished(String configKey);
+    Optional<AssistantConfig> findPublished(ConfigKey configKey);
 
     /** The DRAFT or SCHEDULED version of the key, if any. */
-    Optional<AssistantConfig> findWorkingCopy(String configKey);
+    Optional<AssistantConfig> findWorkingCopy(ConfigKey configKey);
 
     /** The highest version of the key. */
-    Optional<AssistantConfig> findLatest(String configKey);
+    Optional<AssistantConfig> findLatest(ConfigKey configKey);
 
-    Optional<AssistantConfig> findVersion(String configKey, int version);
+    Optional<AssistantConfig> findVersion(ConfigKey configKey, int version);
 
     /** Every PUBLISHED version, for the prompt cache. */
     List<AssistantConfig> findPublished();

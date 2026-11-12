@@ -7,6 +7,7 @@ import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.application.llm.LlmCallPurpose;
 import com.example.copilot.aiassistant.application.llm.LlmErrorMapper;
 import com.example.copilot.aiassistant.domain.customer.AccessLevel;
+import com.example.copilot.aiassistant.domain.customer.CertNo;
 import com.example.copilot.aiassistant.domain.privacy.CustomerContext;
 import com.example.copilot.aiassistant.domain.privacy.PiiRedactor;
 import com.example.copilot.aiassistant.domain.prompt.SummaryPrompt;
@@ -37,7 +38,7 @@ class HistorySummarizerTest {
     private final AiAssistantProperties props = new AiAssistantProperties(null,
             new AiAssistantProperties.Limits(1000, 10, 8000, 5, 3, Duration.ofSeconds(60), 16000,
                     Duration.ofSeconds(5), 4096, 10, 1000), null, null, null, null);
-    private static final CustomerContext CUSTOMER = new CustomerContext(TestCustomers.RETIREE, AccessLevel.FULL,
+    private static final CustomerContext CUSTOMER = new CustomerContext(new CertNo(TestCustomers.RETIREE), AccessLevel.FULL,
             Set.of(TestCustomers.RETIREE, "王小明"),
             Set.of("0912-000-111", "xiaoming.wang@example.com", "0123456789012"));
 

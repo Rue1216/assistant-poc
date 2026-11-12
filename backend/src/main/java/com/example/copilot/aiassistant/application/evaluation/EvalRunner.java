@@ -3,6 +3,7 @@ package com.example.copilot.aiassistant.application.evaluation;
 import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.application.chat.ChatOrchestrator;
 import com.example.copilot.aiassistant.domain.chat.EvaluationReport;
+import com.example.copilot.aiassistant.domain.customer.CertNo;
 import com.example.copilot.aiassistant.domain.eval.CaseChecker;
 import com.example.copilot.aiassistant.domain.eval.CaseResult;
 import com.example.copilot.aiassistant.domain.eval.EvalCase;
@@ -164,7 +165,7 @@ public class EvalRunner {
         if (accessPort.checkAccess(trigger, c.certNo()) == AccessLevel.NONE) {
             return Optional.empty();
         }
-        return customerFactory.forEvaluation(c.certNo(), c.accessLevel());
+        return customerFactory.forEvaluation(new CertNo(c.certNo()), c.accessLevel());
     }
 
     /** One side's stored result and the report it was built from. */

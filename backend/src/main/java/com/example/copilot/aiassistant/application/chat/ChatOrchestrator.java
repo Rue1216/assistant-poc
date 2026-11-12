@@ -242,8 +242,8 @@ public class ChatOrchestrator {
             this.user = user;
             this.customer = customer;
             this.audited = audited;
-            this.data = new TurnCustomerData(() -> port.findCustomer360(customer.certNo()),
-                    () -> port.findRealTimeStatus(customer.certNo()));
+            this.data = new TurnCustomerData(() -> port.findCustomer360(customer.certNo().value()),
+                    () -> port.findRealTimeStatus(customer.certNo().value()));
             this.toolContext = new ToolContext(user, customer, data);
         }
 
@@ -303,7 +303,7 @@ public class ChatOrchestrator {
         private InstructionSelection route(String categoryKey, List<ChatMessage> redactedHistory) {
             RouteDecision decision;
             if (categoryKey != null && configs.instructions().stream()
-                    .map(AssistantConfig::configKey).anyMatch(categoryKey::equals)) {
+                    .map(c -> c.configKey().value()).anyMatch(categoryKey::equals)) {
                 decision = new RouteDecision(categoryKey, RouteSource.CHIP, false, 0, 0, 0);
             } else {
                 checkDeadline();
@@ -373,7 +373,7 @@ public class ChatOrchestrator {
                 return List.of();
             }
             return configs.instructions().stream()
-                    .filter(instruction -> instruction.configKey().equals(selection.configKey()))
+                    .filter(instruction -> instruction.configKey().value().equals(selection.configKey()))
                     .findFirst()
                     .map(instruction -> WorkflowParser.steps(instruction.content()))
                     .orElse(List.of());

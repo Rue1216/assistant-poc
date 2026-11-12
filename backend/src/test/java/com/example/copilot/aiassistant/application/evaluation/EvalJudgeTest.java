@@ -7,6 +7,7 @@ import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.application.chat.ScriptedChatModel;
 import com.example.copilot.aiassistant.application.llm.LlmCallPurpose;
 import com.example.copilot.aiassistant.domain.customer.AccessLevel;
+import com.example.copilot.aiassistant.domain.customer.CertNo;
 import com.example.copilot.aiassistant.domain.eval.EvalJudgePrompt;
 import com.example.copilot.aiassistant.domain.eval.JudgeVerdict;
 import com.example.copilot.aiassistant.domain.privacy.CustomerContext;
@@ -36,7 +37,7 @@ class EvalJudgeTest {
 
     private final JsonMapper mapper = JsonMapper.builder().build();
     private final CustomerContext customer =
-            new CustomerContext(TestCustomers.RETIREE, AccessLevel.FULL, Set.of("王小明"), Set.of());
+            new CustomerContext(new CertNo(TestCustomers.RETIREE), AccessLevel.FULL, Set.of("王小明"), Set.of());
 
     private EvalJudge judge(ScriptedChatModel model) {
         return judge(model, null);

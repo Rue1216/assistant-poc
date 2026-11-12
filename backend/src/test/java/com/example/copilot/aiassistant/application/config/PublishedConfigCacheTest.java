@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
 import com.example.copilot.aiassistant.domain.config.PublishedConfigs;
@@ -21,7 +22,7 @@ import org.junit.jupiter.api.Test;
 class PublishedConfigCacheTest {
 
     private static AssistantConfig cfg(String key, ConfigType type) {
-        return new AssistantConfig(null, key, type, null, null, null, 0, null, null, null, null, null, null, null,
+        return new AssistantConfig(null, new ConfigKey(key), type, null, null, null, 0, null, null, null, null, null, null, null,
                 null);
     }
 
@@ -36,8 +37,8 @@ class PublishedConfigCacheTest {
         PublishedConfigCache cache = new PublishedConfigCache(repo, clock);
 
         PublishedConfigs configs = cache.current();
-        assertThat(configs.systemPrompt().configKey()).isEqualTo("system.main");
-        assertThat(configs.instructions()).extracting(AssistantConfig::configKey)
+        assertThat(configs.systemPrompt().configKey()).isEqualTo(new ConfigKey("system.main"));
+        assertThat(configs.instructions()).extracting(c -> c.configKey().value())
                 .containsExactly("instruction.a", "instruction.b");
 
         clock.advance(Duration.ofSeconds(59));

@@ -19,6 +19,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.example.copilot.IntegrationTestBase;
 import com.example.copilot.TestCustomers;
 import com.example.copilot.TestUsers;
+import com.example.copilot.aiassistant.infrastructure.mongo.AiAssistantCollections;
 import com.jayway.jsonpath.JsonPath;
 import dev.langchain4j.model.chat.ChatRequestOptions;
 import dev.langchain4j.model.chat.request.ChatRequest;
@@ -33,7 +34,7 @@ import org.springframework.http.MediaType;
 class ChatCitationFlowTest extends IntegrationTestBase {
 
     private static final String URL = "/api/ai-assistant/customers/{id}/chat";
-    private static final String AUDIT = "COLL_ICRM_AI_ASSISTANT_AUDIT";
+    private static final String AUDIT = AiAssistantCollections.AUDIT;
 
     @Autowired
     MongoTemplate mongo;

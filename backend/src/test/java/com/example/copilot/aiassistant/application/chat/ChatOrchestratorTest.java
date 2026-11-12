@@ -25,6 +25,8 @@ import com.example.copilot.aiassistant.domain.chat.ChatResult.CitationView;
 import com.example.copilot.aiassistant.domain.chat.ChatResult.ToolCallSummary;
 import com.example.copilot.aiassistant.domain.chat.ChatResult;
 import com.example.copilot.aiassistant.domain.chat.EvaluationReport;
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
+import com.example.copilot.aiassistant.domain.customer.CertNo;
 import com.example.copilot.aiassistant.domain.exception.AssistantException;
 import com.example.copilot.aiassistant.domain.exception.ErrorCode;
 import com.example.copilot.aiassistant.application.support.RequestContext;
@@ -144,7 +146,7 @@ class ChatOrchestratorTest {
     }
 
     private static CustomerContext retiree(AccessLevel level) {
-        return new CustomerContext(TestCustomers.RETIREE, level, Set.of(TestCustomers.RETIREE, "王小明"),
+        return new CustomerContext(new CertNo(TestCustomers.RETIREE), level, Set.of(TestCustomers.RETIREE, "王小明"),
                 Set.of("0912-000-111", "xiaoming.wang@example.com", "0123456789012"));
     }
 
@@ -771,7 +773,7 @@ class ChatOrchestratorTest {
     @Test
     void registeredToolNameIsEchoedUnchangedWhenItContainsANameForm() {
         // "Tom" gives the name form "om", which sits inside the real tool name "getCustomer".
-        CustomerContext tom = new CustomerContext(TestCustomers.RETIREE, AccessLevel.FULL,
+        CustomerContext tom = new CustomerContext(new CertNo(TestCustomers.RETIREE), AccessLevel.FULL,
                 Set.of(TestCustomers.RETIREE, "Tom", "om"), Set.of());
         model.reply(toolCalls(100, call("c1", "getCustomer", "{\"sections\":[\"profile\"]}")))
                 .reply(answer(100, "本顧客為穩健型。"));
@@ -790,7 +792,7 @@ class ChatOrchestratorTest {
 
     @Test
     void unregisteredToolNameIsStillRedactedWhenEchoed() {
-        CustomerContext tom = new CustomerContext(TestCustomers.RETIREE, AccessLevel.FULL,
+        CustomerContext tom = new CustomerContext(new CertNo(TestCustomers.RETIREE), AccessLevel.FULL,
                 Set.of(TestCustomers.RETIREE, "Tom"), Set.of());
         model.reply(toolCalls(100, call("c1", "lookupTomRecords", "{}")))
                 .reply(answer(100, "無法查詢。"));
@@ -813,7 +815,7 @@ class ChatOrchestratorTest {
     }
 
     private static CustomerContext noMarketingFull() {
-        return new CustomerContext(TestCustomers.NO_MARKETING, AccessLevel.FULL, Set.of(), Set.of());
+        return new CustomerContext(new CertNo(TestCustomers.NO_MARKETING), AccessLevel.FULL, Set.of(), Set.of());
     }
 
     @Test
@@ -900,7 +902,7 @@ class ChatOrchestratorTest {
         model.reply(answer(100, "好的。"));
 
         orchestrator.chat(new ChatCommand("概況？", List.of(), null), USER,
-                new CustomerContext(TestCustomers.NO_MARKETING, AccessLevel.LIMITED, Set.of(), Set.of()));
+                new CustomerContext(new CertNo(TestCustomers.NO_MARKETING), AccessLevel.LIMITED, Set.of(), Set.of()));
 
         assertThat(systemText(model.requests().get(0))).doesNotContain("本顧客註記");
     }
@@ -951,7 +953,7 @@ class ChatOrchestratorTest {
                 .reply(answer(100, "整理如下。"));
 
         ChatResult result = target.chat(new ChatCommand("概況？", List.of(), null), USER,
-                new CustomerContext(TestCustomers.COMPLAINT, AccessLevel.FULL, Set.of(), Set.of()));
+                new CustomerContext(new CertNo(TestCustomers.COMPLAINT), AccessLevel.FULL, Set.of(), Set.of()));
 
         assertThat(result.answer()).startsWith("注意事項：本顧客有客訴註記（到期日 2026/12/31），請依規定程序處理。\n\n");
     }
@@ -991,7 +993,7 @@ class ChatOrchestratorTest {
                 .reply(answer(100, "基本輪廓。"));
 
         ChatResult result = orchestrator.chat(new ChatCommand("概況？", List.of(), null), USER,
-                new CustomerContext(TestCustomers.NO_MARKETING, AccessLevel.LIMITED, Set.of(), Set.of()));
+                new CustomerContext(new CertNo(TestCustomers.NO_MARKETING), AccessLevel.LIMITED, Set.of(), Set.of()));
 
         assertThat(result.answer()).isEqualTo("基本輪廓。");
     }
@@ -1444,7 +1446,7 @@ class ChatOrchestratorTest {
     }
 
     private static AssistantConfig config(String key, int version, String name, String content) {
-        return new AssistantConfig(null, key, null, name, content, null, version, null, null, null, null, null,
+        return new AssistantConfig(null, new ConfigKey(key), null, name, content, null, version, null, null, null, null, null,
                 null, null, null);
     }
 
@@ -2065,7 +2067,7 @@ class ChatOrchestratorTest {
     void customerNameInsideAToolNameLeavesTheStepIntact() {
         ChatOrchestrator target = flowOrchestrator("{{getRealTimeCustomer}}");
         model.reply(answer(100, "依現有資料整理。"));
-        CustomerContext latinName = new CustomerContext(TestCustomers.NO_MARKETING, AccessLevel.FULL, Set.of("Tim"),
+        CustomerContext latinName = new CustomerContext(new CertNo(TestCustomers.NO_MARKETING), AccessLevel.FULL, Set.of("Tim"),
                 Set.of());
 
         ChatResult result = askChip(target, "聯繫準備", latinName);
@@ -2086,7 +2088,7 @@ class ChatOrchestratorTest {
     void customerNameInsideAFixedOptionFailsOnlyThatStep() {
         ChatOrchestrator target = flowOrchestrator("{{getCustomer: management}} {{getMarketIndex}}");
         model.reply(answer(100, "依現有資料整理。"));
-        CustomerContext latinName = new CustomerContext(TestCustomers.RETIREE, AccessLevel.FULL, Set.of("Man"),
+        CustomerContext latinName = new CustomerContext(new CertNo(TestCustomers.RETIREE), AccessLevel.FULL, Set.of("Man"),
                 Set.of());
 
         ChatResult result = askChip(target, "聯繫準備", latinName);

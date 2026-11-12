@@ -1,5 +1,6 @@
 package com.example.copilot.aiassistant.domain.repository;
 
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.eval.EvalCaseRecord;
 import com.example.copilot.aiassistant.domain.eval.EvalRun;
 import com.example.copilot.aiassistant.domain.eval.EvalSummary;
@@ -21,7 +22,7 @@ public interface EvalRunRepository {
     Optional<EvalRun> findRunning();
 
     /** Newest first, without the {@code cases} array. */
-    List<EvalRun> recent(String configKey, int limit);
+    List<EvalRun> recent(ConfigKey configKey, int limit);
 
     /** Pushes one case result, counts it and refreshes the heartbeat. */
     boolean appendCase(String id, long docVersion, EvalCaseRecord c, Instant now);

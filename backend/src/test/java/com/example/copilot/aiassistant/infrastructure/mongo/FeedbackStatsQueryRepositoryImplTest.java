@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.copilot.IntegrationTestBase;
 import com.example.copilot.aiassistant.application.feedback.VersionFeedback;
-import com.example.copilot.aiassistant.domain.audit.AuditRecord;
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import java.util.Date;
 import java.util.List;
 import org.bson.Document;
@@ -24,7 +24,7 @@ class FeedbackStatsQueryRepositoryImplTest extends IntegrationTestBase {
 
     @AfterEach
     void cleanUp() {
-        mongo.remove(new Query(Criteria.where("question").is(MARKER)), AuditRecord.COLLECTION);
+        mongo.remove(new Query(Criteria.where("question").is(MARKER)), AiAssistantCollections.AUDIT);
     }
 
     private void insert(String traceId, String routeSource, String feedback) {
@@ -36,7 +36,7 @@ class FeedbackStatsQueryRepositoryImplTest extends IntegrationTestBase {
         if (routeSource != null) {
             d.append("routeSource", routeSource);
         }
-        mongo.getCollection(AuditRecord.COLLECTION).insertOne(d);
+        mongo.getCollection(AiAssistantCollections.AUDIT).insertOne(d);
     }
 
     @Test
@@ -47,7 +47,7 @@ class FeedbackStatsQueryRepositoryImplTest extends IntegrationTestBase {
         insert("e0000003", null, "UP");
         FeedbackStatsQueryRepositoryImpl repository = new FeedbackStatsQueryRepositoryImpl(mongo);
 
-        assertThat(repository.versionStats(KEY, false)).containsExactly(new VersionFeedback(7, 3, 1));
-        assertThat(repository.versionStats(KEY, true)).containsExactly(new VersionFeedback(7, 1, 1));
+        assertThat(repository.versionStats(new ConfigKey(KEY), false)).containsExactly(new VersionFeedback(7, 3, 1));
+        assertThat(repository.versionStats(new ConfigKey(KEY), true)).containsExactly(new VersionFeedback(7, 1, 1));
     }
 }

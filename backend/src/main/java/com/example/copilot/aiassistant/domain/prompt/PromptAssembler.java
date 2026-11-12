@@ -44,7 +44,7 @@ public class PromptAssembler {
         AssistantConfig main = configs.systemPrompt();
         if (main != null) {
             sb.append(main.content().strip()).append("\n\n");
-            versions.add(new PromptVersion(main.configKey(), main.version()));
+            versions.add(new PromptVersion(main.configKey().value(), main.version()));
         } else if (warnedMissingMain.compareAndSet(false, true)) {
             log.warn("No published system.main found; continuing with instructions, safety rules and "
                     + "answer-format rules only");
@@ -54,9 +54,9 @@ public class PromptAssembler {
                 .filter(i -> switch (selection.kind()) {
                     case ALL -> true;
                     case NONE -> false;
-                    case ONLY -> i.configKey().equals(selection.configKey());
+                    case ONLY -> i.configKey().value().equals(selection.configKey());
                 })
-                .sorted(Comparator.comparing(AssistantConfig::configKey)).toList();
+                .sorted(Comparator.comparing(i -> i.configKey().value())).toList();
         if (selection.kind() == InstructionSelection.Kind.NONE) {
             sb.append(NO_INSTRUCTION).append("\n\n");
         }
@@ -64,7 +64,7 @@ public class PromptAssembler {
         for (AssistantConfig instruction : instructions) {
             sb.append("## ").append(instruction.name()).append('\n')
                     .append(WorkflowParser.render(instruction.content().strip(), queried)).append("\n\n");
-            versions.add(new PromptVersion(instruction.configKey(), instruction.version()));
+            versions.add(new PromptVersion(instruction.configKey().value(), instruction.version()));
         }
         if (customerNotes != null) {
             sb.append(customerNotes).append("\n\n");

@@ -12,6 +12,7 @@ import static org.springframework.data.mongodb.core.query.Criteria.where;
 
 import com.example.copilot.IntegrationTestBase;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.config.ConfigStatus;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
 import com.example.copilot.aiassistant.domain.exception.AssistantException;
@@ -52,10 +53,10 @@ import org.springframework.transaction.TransactionSystemException;
 class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
 
     private static final Instant NOW = Instant.parse("2026-10-20T02:00:00Z");
-    private static final String KEY = "instruction.contact-prep";
+    private static final ConfigKey KEY = new ConfigKey("instruction.contact-prep");
     private static final String ACTOR = "EEE22222";
     private static final String OTHER = "EEE11111";
-    private static final String CONFIG = "COLL_ICRM_AI_ASSISTANT_CONFIG";
+    private static final String CONFIG = AiAssistantCollections.CONFIG;
     private static final String TOO_LONG_NAME = "名".repeat(51);
 
     @Autowired MongoClient mongoClient;
@@ -92,11 +93,11 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
     }
 
     private long countOf(ConfigStatus status) {
-        return mongo.count(Query.query(where("configKey").is(KEY).and("status").is(status)), CONFIG);
+        return mongo.count(Query.query(where("configKey").is(KEY.value()).and("status").is(status)), CONFIG);
     }
 
     private long versionCount() {
-        return mongo.count(Query.query(where("configKey").is(KEY)), CONFIG);
+        return mongo.count(Query.query(where("configKey").is(KEY.value())), CONFIG);
     }
 
     private void bumpDocVersion(String id) {
@@ -215,7 +216,7 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
         try (ClientSession other = mongoClient.startSession()) {
             other.startTransaction();
             mongo.getCollection(CONFIG).updateOne(other,
-                    Filters.and(Filters.eq("configKey", KEY), Filters.eq("version", 1)),
+                    Filters.and(Filters.eq("configKey", KEY.value()), Filters.eq("version", 1)),
                     Updates.set("changeNote", "uncommitted change by another transaction"));
             try {
                 assertConflict(() -> repository.publish(draft.withStatus(ConfigStatus.PUBLISHED, null)));
@@ -357,7 +358,7 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
 
         // Outside a transaction (insert, save) ...
         assertValidationFailure(() -> repository.insert(
-                AssistantConfig.newDraft("instruction.too-long", ConfigType.SYSTEM_INSTRUCTION, TOO_LONG_NAME,
+                AssistantConfig.newDraft(new ConfigKey("instruction.too-long"), ConfigType.SYSTEM_INSTRUCTION, TOO_LONG_NAME,
                         "x", 1, ACTOR, NOW)));
         assertValidationFailure(() -> repository.save(draft.withContent(TOO_LONG_NAME, "x", null)));
         // ... and inside the publishing and applying transactions.
@@ -367,7 +368,7 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
                 draft.withStatus(ConfigStatus.DISCARDED, null),
                 AssistantConfig.newDraft(KEY, ConfigType.SYSTEM_INSTRUCTION, TOO_LONG_NAME, "x", 3, ACTOR, NOW)));
 
-        assertThat(repository.findLatest("instruction.too-long")).isEmpty();
+        assertThat(repository.findLatest(new ConfigKey("instruction.too-long"))).isEmpty();
         assertThat(reload(1).status()).isEqualTo(ConfigStatus.PUBLISHED);
         assertThat(reload(2).status()).isEqualTo(ConfigStatus.DRAFT);
         assertThat(reload(2).docVersion()).isEqualTo(draft.docVersion());
@@ -456,7 +457,7 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
         assertThat(repository.findPublished()).hasSize(8)
                 .allSatisfy(c -> assertThat(c.status()).isEqualTo(ConfigStatus.PUBLISHED));
         assertThat(repository.count()).isEqualTo(9);
-        assertThat(repository.findWorkingCopy("instruction.nope")).isEmpty();
+        assertThat(repository.findWorkingCopy(new ConfigKey("instruction.nope"))).isEmpty();
     }
 
     /** The stored document keeps the fields and the pre-refactor {@code _class} class name. */
@@ -464,7 +465,7 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
     void storedDocumentShapeIsUnchanged() {
         AssistantConfig draft = insertDraft(OTHER);
 
-        Document raw = mongo.getCollection(CONFIG).find(Filters.and(Filters.eq("configKey", KEY),
+        Document raw = mongo.getCollection(CONFIG).find(Filters.and(Filters.eq("configKey", KEY.value()),
                 Filters.eq("version", 2))).first();
 
         assertThat(raw).isNotNull();

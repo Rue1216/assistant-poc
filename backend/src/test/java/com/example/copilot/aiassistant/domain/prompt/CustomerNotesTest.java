@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.example.copilot.TestCustomers;
 import com.example.copilot.aiassistant.domain.customer.AccessLevel;
 import com.example.copilot.aiassistant.application.port.CustomerDataPort;
+import com.example.copilot.aiassistant.domain.customer.CertNo;
 import com.example.copilot.aiassistant.domain.user.UserContext;
 import com.example.copilot.aiassistant.domain.customer.c360.CustomFlagging;
 import com.example.copilot.aiassistant.domain.customer.c360.FlagType;
@@ -42,7 +43,7 @@ class CustomerNotesTest {
     }
 
     private static CustomerContext full(String certNo) {
-        return new CustomerContext(certNo, AccessLevel.FULL, Set.of(), Set.of());
+        return new CustomerContext(new CertNo(certNo), AccessLevel.FULL, Set.of(), Set.of());
     }
 
     @Test
@@ -78,7 +79,7 @@ class CustomerNotesTest {
 
     @Test
     void limitedHasNoSection() {
-        assertThat(notes.section(new CustomerContext(TestCustomers.NO_MARKETING, AccessLevel.LIMITED, Set.of(),
+        assertThat(notes.section(new CustomerContext(new CertNo(TestCustomers.NO_MARKETING), AccessLevel.LIMITED, Set.of(),
                 Set.of()), data(TestCustomers.NO_MARKETING))).isNull();
     }
 

@@ -8,6 +8,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import com.example.copilot.TestCustomers;
 import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.domain.customer.AccessLevel;
+import com.example.copilot.aiassistant.domain.customer.CertNo;
 import com.example.copilot.aiassistant.domain.user.UserContext;
 import com.example.copilot.aiassistant.domain.privacy.CustomerContext;
 import com.example.copilot.aiassistant.domain.tool.CitationDetail;
@@ -42,7 +43,7 @@ class MarketToolsTest {
 
     private static final String BASE = "https://openapi.twse.com.tw/v1";
     private static final ToolContext CONTEXT = new ToolContext(new UserContext("u1", "User", "ROLE", Set.of()),
-            new CustomerContext(TestCustomers.RETIREE, AccessLevel.LIMITED, Set.of(), Set.of()));
+            new CustomerContext(new CertNo(TestCustomers.RETIREE), AccessLevel.LIMITED, Set.of(), Set.of()));
 
     private final Clock clock = Clock.fixed(Instant.parse("2026-10-20T04:00:00Z"), ZoneOffset.UTC);
 

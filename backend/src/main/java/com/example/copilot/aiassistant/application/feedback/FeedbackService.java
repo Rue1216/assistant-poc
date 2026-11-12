@@ -1,5 +1,6 @@
 package com.example.copilot.aiassistant.application.feedback;
 
+import com.example.copilot.aiassistant.domain.audit.TraceId;
 import com.example.copilot.aiassistant.domain.exception.AssistantException;
 import com.example.copilot.aiassistant.domain.exception.ErrorCode;
 import com.example.copilot.aiassistant.domain.feedback.FeedbackRating;
@@ -26,7 +27,7 @@ public class FeedbackService {
      * Sets or (null rating) clears the user's rating. Another user's answer, a failed answer and an unknown
      * trace id are indistinguishable. When a trace id repeats, the newest document is updated.
      */
-    public void rate(String traceId, String userId, FeedbackRating rating) {
+    public void rate(TraceId traceId, String userId, FeedbackRating rating) {
         if (!audits.setFeedback(traceId, userId, rating, clock.instant())) {
             throw new AssistantException(ErrorCode.AI_FEEDBACK_NOT_FOUND);
         }

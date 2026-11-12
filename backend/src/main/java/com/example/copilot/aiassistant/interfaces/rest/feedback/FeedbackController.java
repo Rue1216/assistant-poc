@@ -3,7 +3,8 @@ package com.example.copilot.aiassistant.interfaces.rest.feedback;
 import com.example.copilot.aiassistant.application.feedback.FeedbackQueryService;
 import com.example.copilot.aiassistant.application.feedback.FeedbackService;
 import com.example.copilot.aiassistant.application.feedback.VersionFeedback;
-import com.example.copilot.aiassistant.interfaces.rest.config.dto.ConfigKeys;
+import com.example.copilot.aiassistant.domain.audit.TraceId;
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.application.port.CurrentUserPort;
 import com.example.copilot.aiassistant.interfaces.rest.feedback.dto.FeedbackRequest;
 import jakarta.validation.Valid;
@@ -36,14 +37,14 @@ public class FeedbackController {
     @PutMapping("/api/ai-assistant/chat/{traceId}/feedback")
     @PreAuthorize("hasAuthority('AI_ASSISTANT_USE')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void rate(@PathVariable @Pattern(regexp = "^[0-9a-f]{16,32}$") String traceId,
+    public void rate(@PathVariable @Pattern(regexp = TraceId.PATTERN) String traceId,
             @Valid @RequestBody FeedbackRequest body) {
-        service.rate(traceId, currentUser.currentUser().userId(), body.rating());
+        service.rate(new TraceId(traceId), currentUser.currentUser().userId(), body.rating());
     }
 
     @GetMapping("/api/ai-assistant/admin/configs/{configKey}/feedback-stats")
     @PreAuthorize("hasAuthority('AI_CONFIG_READ')")
-    public List<VersionFeedback> stats(@PathVariable @Pattern(regexp = ConfigKeys.PATTERN) String configKey) {
-        return queries.stats(configKey);
+    public List<VersionFeedback> stats(@PathVariable @Pattern(regexp = ConfigKey.PATTERN) String configKey) {
+        return queries.stats(new ConfigKey(configKey));
     }
 }

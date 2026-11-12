@@ -16,6 +16,7 @@ import static org.springframework.data.mongodb.core.query.Criteria.where;
 import com.example.copilot.IntegrationTestBase;
 import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.config.ConfigStatus;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
 import com.example.copilot.aiassistant.domain.config.ConfigValidator;
@@ -31,6 +32,7 @@ import com.example.copilot.aiassistant.domain.tool.AssistantTool;
 import com.example.copilot.aiassistant.domain.tool.customer.GetCustomerTool;
 import com.example.copilot.aiassistant.domain.tool.customer.GetRealTimeCustomerTool;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
+import com.example.copilot.aiassistant.infrastructure.mongo.AiAssistantCollections;
 import com.example.copilot.aiassistant.infrastructure.seed.SeedLoader;
 import com.example.copilot.testsupport.LogCapture;
 import com.mongodb.MongoException;
@@ -65,11 +67,11 @@ import org.springframework.data.mongodb.core.query.Update;
 class ConfigCommandServiceTest extends IntegrationTestBase {
 
     private static final Instant NOW = Instant.parse("2026-10-20T02:00:00Z");
-    private static final String KEY = "instruction.contact-prep";
+    private static final ConfigKey KEY = new ConfigKey("instruction.contact-prep");
     private static final String ACTOR = "EEE22222";
     private static final String OTHER = "EEE11111";
     private static final String INVALID_CONTENT = "## 其他\n只有一個章節";
-    private static final String CONFIG = "COLL_ICRM_AI_ASSISTANT_CONFIG";
+    private static final String CONFIG = AiAssistantCollections.CONFIG;
 
     @Autowired MongoClient mongoClient;
     @Autowired AssistantConfigRepository repository;
@@ -104,7 +106,7 @@ class ConfigCommandServiceTest extends IntegrationTestBase {
     }
 
     private long versionCount() {
-        return mongo.count(Query.query(where("configKey").is(KEY)), CONFIG);
+        return mongo.count(Query.query(where("configKey").is(KEY.value())), CONFIG);
     }
 
     private static AssistantException assertError(ThrowingCallable call, ErrorCode code) {
@@ -186,7 +188,7 @@ class ConfigCommandServiceTest extends IntegrationTestBase {
 
     @Test
     void createDraftWithoutPublishedUsesLatestAsSource() {
-        String key = "instruction.new-topic";
+        ConfigKey key = new ConfigKey("instruction.new-topic");
         AssistantConfig v1 = service.createKey(key, ConfigType.SYSTEM_INSTRUCTION, "新分類", ACTOR);
         service.discardDraft(key, v1.docVersion(), ACTOR);
 
@@ -198,7 +200,7 @@ class ConfigCommandServiceTest extends IntegrationTestBase {
 
     @Test
     void createDraftForUnknownKeyIsNotFound() {
-        assertError(() -> service.createDraft("instruction.nope", ACTOR), ErrorCode.AI_CONFIG_NOT_FOUND);
+        assertError(() -> service.createDraft(new ConfigKey("instruction.nope"), ACTOR), ErrorCode.AI_CONFIG_NOT_FOUND);
     }
 
     @Test
@@ -369,7 +371,7 @@ class ConfigCommandServiceTest extends IntegrationTestBase {
         try (ClientSession other = mongoClient.startSession()) {
             other.startTransaction();
             mongo.getCollection(CONFIG).updateOne(other,
-                    Filters.and(Filters.eq("configKey", KEY), Filters.eq("version", 1)),
+                    Filters.and(Filters.eq("configKey", KEY.value()), Filters.eq("version", 1)),
                     Updates.set("changeNote", "uncommitted change by another transaction"));
             try {
                 assertError(() -> publishNow(draft, OTHER), ErrorCode.AI_CONFIG_CONFLICT);
@@ -438,7 +440,7 @@ class ConfigCommandServiceTest extends IntegrationTestBase {
 
     @Test
     void operationsOnUnknownKeyAreNotFound() {
-        String unknown = "instruction.nope";
+        ConfigKey unknown = new ConfigKey("instruction.nope");
         assertError(() -> service.saveWorkingCopy(unknown,
                 new SaveCommand("n", "c", null, SaveMode.KEEP_STATUS, 0), ACTOR), ErrorCode.AI_CONFIG_NOT_FOUND);
         assertError(() -> service.publish(unknown, new PublishCommand(PublishMode.IMMEDIATE, null, 0), ACTOR),
@@ -467,7 +469,7 @@ class ConfigCommandServiceTest extends IntegrationTestBase {
         assertThat(v1.updatedAt()).isEqualTo(v1Before.updatedAt());
         assertThat(v1.content()).isEqualTo(v1Before.content());
 
-        assertThat(mongo.count(Query.query(where("configKey").is(KEY).and("status").is(ConfigStatus.PUBLISHED)),
+        assertThat(mongo.count(Query.query(where("configKey").is(KEY.value()).and("status").is(ConfigStatus.PUBLISHED)),
                 CONFIG)).isEqualTo(1);
         verify(cache).invalidate();
     }
@@ -652,7 +654,7 @@ class ConfigCommandServiceTest extends IntegrationTestBase {
 
     @Test
     void publishDuePublishesValidOnesInTheSameRun() {
-        String otherKey = "instruction.market-brief";
+        ConfigKey otherKey = new ConfigKey("instruction.market-brief");
         // The invalid KEY version is due one minute earlier, so the revert is hit before the valid one.
         AssistantConfig scheduled = schedule(service.createDraft(KEY, ACTOR), NOW.plus(Duration.ofMinutes(1)), OTHER);
         repository.save(scheduled.withContent(scheduled.name(), INVALID_CONTENT, "note"));
@@ -685,7 +687,7 @@ class ConfigCommandServiceTest extends IntegrationTestBase {
         assertThat(events).hasSize(1).allSatisfy(e -> {
             assertThat(e.getLevel()).isEqualTo(Level.WARN);
             String message = e.getMessage().getFormattedMessage();
-            assertThat(message).contains(KEY, "version=2", "FORBIDDEN_CONTENT")
+            assertThat(message).contains(KEY.value(), "version=2", "FORBIDDEN_CONTENT")
                     .doesNotContain("疑似包含", "0912-345-678");
         });
     }
@@ -901,30 +903,30 @@ class ConfigCommandServiceTest extends IntegrationTestBase {
     void applyUnknownVersionIsNotFound() {
         assertError(() -> service.applyVersion(KEY, new ApplyCommand(99, null, false), ACTOR),
                 ErrorCode.AI_CONFIG_NOT_FOUND);
-        assertError(() -> service.applyVersion("instruction.nope", new ApplyCommand(1, null, false), ACTOR),
+        assertError(() -> service.applyVersion(new ConfigKey("instruction.nope"), new ApplyCommand(1, null, false), ACTOR),
                 ErrorCode.AI_CONFIG_NOT_FOUND);
     }
 
     @Test
     void createKeySystemPromptMustBeSystemMain() {
         AssistantException e = assertError(
-                () -> service.createKey("system.second", ConfigType.SYSTEM_PROMPT, "第二份", ACTOR),
+                () -> service.createKey(new ConfigKey("system.second"), ConfigType.SYSTEM_PROMPT, "第二份", ACTOR),
                 ErrorCode.AI_INPUT_INVALID);
         assertThat(e.details()).containsExactly(new FieldDetail("configKey"));
-        assertThat(repository.findLatest("system.second")).isEmpty();
+        assertThat(repository.findLatest(new ConfigKey("system.second"))).isEmpty();
     }
 
     @Test
     void createKeyInstructionMustHaveInstructionPrefix() {
         AssistantException e = assertError(
-                () -> service.createKey("system.x", ConfigType.SYSTEM_INSTRUCTION, "x", ACTOR),
+                () -> service.createKey(new ConfigKey("system.x"), ConfigType.SYSTEM_INSTRUCTION, "x", ACTOR),
                 ErrorCode.AI_INPUT_INVALID);
         assertThat(e.details()).containsExactly(new FieldDetail("configKey"));
     }
 
     @Test
     void createKeyExistingKeyIsInvalidState() {
-        assertError(() -> service.createKey("system.main", ConfigType.SYSTEM_PROMPT, "重複", ACTOR),
+        assertError(() -> service.createKey(new ConfigKey("system.main"), ConfigType.SYSTEM_PROMPT, "重複", ACTOR),
                 ErrorCode.AI_CONFIG_INVALID_STATE);
         assertError(() -> service.createKey(KEY, ConfigType.SYSTEM_INSTRUCTION, "重複", ACTOR),
                 ErrorCode.AI_CONFIG_INVALID_STATE);
@@ -933,16 +935,16 @@ class ConfigCommandServiceTest extends IntegrationTestBase {
     @Test
     void createKeyLosingTheInsertRaceIsInvalidState() {
         AssistantConfigRepository racing = mock(AssistantConfigRepository.class);
-        when(racing.findLatest("instruction.race")).thenReturn(Optional.empty());
+        when(racing.findLatest(new ConfigKey("instruction.race"))).thenReturn(Optional.empty());
         when(racing.insert(any())).thenThrow(new AssistantException(ErrorCode.AI_CONFIG_CONFLICT));
 
-        assertError(() -> newService(racing).createKey("instruction.race", ConfigType.SYSTEM_INSTRUCTION, "x", ACTOR),
+        assertError(() -> newService(racing).createKey(new ConfigKey("instruction.race"), ConfigType.SYSTEM_INSTRUCTION, "x", ACTOR),
                 ErrorCode.AI_CONFIG_INVALID_STATE);
     }
 
     @Test
     void createKeyPrefillsInstructionTemplate() {
-        AssistantConfig created = service.createKey("instruction.new-topic", ConfigType.SYSTEM_INSTRUCTION,
+        AssistantConfig created = service.createKey(new ConfigKey("instruction.new-topic"), ConfigType.SYSTEM_INSTRUCTION,
                 "新分類", ACTOR);
 
         assertThat(created.version()).isEqualTo(1);
@@ -952,8 +954,8 @@ class ConfigCommandServiceTest extends IntegrationTestBase {
         assertThat(created.createdBy()).isEqualTo(ACTOR);
         assertThat(created.updatedBy()).isEqualTo(ACTOR);
         assertThat(created.createdAt()).isEqualTo(NOW);
-        assertThat(repository.findPublished("instruction.new-topic")).isEmpty();
-        assertThat(repository.findWorkingCopy("instruction.new-topic")).hasValueSatisfying(
+        assertThat(repository.findPublished(new ConfigKey("instruction.new-topic"))).isEmpty();
+        assertThat(repository.findWorkingCopy(new ConfigKey("instruction.new-topic"))).hasValueSatisfying(
                 wc -> assertThat(wc.status()).isEqualTo(ConfigStatus.DRAFT));
     }
 

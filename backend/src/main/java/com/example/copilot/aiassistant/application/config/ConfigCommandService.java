@@ -3,6 +3,7 @@ package com.example.copilot.aiassistant.application.config;
 import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.application.support.ClasspathText;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.config.ConfigStatus;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
 import com.example.copilot.aiassistant.domain.config.ConfigValidator;
@@ -52,10 +53,10 @@ public class ConfigCommandService {
     }
 
     /** Creates a new key with a v1 DRAFT; instructions are prefilled with the 07 section 4.1 template. */
-    public AssistantConfig createKey(String configKey, ConfigType type, String name, String actor) {
+    public AssistantConfig createKey(ConfigKey configKey, ConfigType type, String name, String actor) {
         boolean keyMatchesType = type == ConfigType.SYSTEM_PROMPT
-                ? AssistantConfig.SYSTEM_PROMPT_KEY.equals(configKey)
-                : configKey.startsWith(AssistantConfig.INSTRUCTION_KEY_PREFIX);
+                ? configKey.isSystemPrompt()
+                : configKey.isInstruction();
         if (!keyMatchesType) {
             throw invalidInput("configKey");
         }
@@ -76,7 +77,7 @@ public class ConfigCommandService {
     }
 
     /** Copies the published version (or, if none, the latest one) into a new DRAFT. */
-    public AssistantConfig createDraft(String configKey, String actor) {
+    public AssistantConfig createDraft(ConfigKey configKey, String actor) {
         if (workingCopy(configKey).isPresent()) {
             throw new AssistantException(ErrorCode.AI_CONFIG_INVALID_STATE);
         }
@@ -87,7 +88,7 @@ public class ConfigCommandService {
                 nextVersion(configKey), actor, clock.instant()).withBasedOnVersion(base.version()));
     }
 
-    public AssistantConfig saveWorkingCopy(String configKey, SaveCommand cmd, String actor) {
+    public AssistantConfig saveWorkingCopy(ConfigKey configKey, SaveCommand cmd, String actor) {
         AssistantConfig wc = requireWorkingCopy(configKey, cmd.docVersion());
         if (wc.status() == ConfigStatus.SCHEDULED && cmd.saveMode() == SaveMode.KEEP_STATUS) {
             // The schedule stays, so the new content must still be publishable when it falls due.
@@ -103,7 +104,7 @@ public class ConfigCommandService {
     }
 
     /** Soft delete: the DRAFT becomes DISCARDED and stays in the history. */
-    public void discardDraft(String configKey, long docVersion, String actor) {
+    public void discardDraft(ConfigKey configKey, long docVersion, String actor) {
         AssistantConfig wc = existingWorkingCopy(configKey);
         if (wc.status() != ConfigStatus.DRAFT) {
             throw new AssistantException(ErrorCode.AI_CONFIG_INVALID_STATE);
@@ -112,7 +113,7 @@ public class ConfigCommandService {
         repository.save(wc.withStatus(ConfigStatus.DISCARDED, wc.scheduledAt()).touched(actor, clock.instant()));
     }
 
-    public AssistantConfig publish(String configKey, PublishCommand cmd, String actor) {
+    public AssistantConfig publish(ConfigKey configKey, PublishCommand cmd, String actor) {
         Instant now = clock.instant();
         if (cmd.mode() == PublishMode.SCHEDULED) {
             requireScheduleWindow(cmd.scheduledAt(), now);
@@ -133,7 +134,7 @@ public class ConfigCommandService {
      * marked DISCARDED first, in the same transaction, so there is never more than one DRAFT per key.
      * Nothing is published, so the prompt cache is left alone.
      */
-    public AssistantConfig applyVersion(String configKey, ApplyCommand cmd, String actor) {
+    public AssistantConfig applyVersion(ConfigKey configKey, ApplyCommand cmd, String actor) {
         AssistantConfig source = repository.findVersion(configKey, cmd.sourceVersion())
                 .orElseThrow(ConfigCommandService::notFound);
         if (!APPLICABLE.contains(source.status())) {
@@ -192,21 +193,21 @@ public class ConfigCommandService {
         return published;
     }
 
-    public List<ValidationError> validateWorkingCopy(String configKey) {
+    public List<ValidationError> validateWorkingCopy(ConfigKey configKey) {
         AssistantConfig wc = existingWorkingCopy(configKey);
         return validator.validate(wc.configType(), wc.name(), wc.changeNote(), wc.content());
     }
 
     /** The DRAFT or SCHEDULED version of the key, if any. */
-    public Optional<AssistantConfig> findWorkingCopy(String configKey) {
+    public Optional<AssistantConfig> findWorkingCopy(ConfigKey configKey) {
         return workingCopy(configKey);
     }
 
-    private Optional<AssistantConfig> workingCopy(String configKey) {
+    private Optional<AssistantConfig> workingCopy(ConfigKey configKey) {
         return repository.findWorkingCopy(configKey);
     }
 
-    private AssistantConfig requireWorkingCopy(String configKey, long docVersion) {
+    private AssistantConfig requireWorkingCopy(ConfigKey configKey, long docVersion) {
         AssistantConfig wc = existingWorkingCopy(configKey);
         requireDocVersion(wc, docVersion);
         return wc;
@@ -216,7 +217,7 @@ public class ConfigCommandService {
      * An unknown key is NOT_FOUND; a known key without a DRAFT/SCHEDULED copy means the copy the caller saw
      * was published, discarded or applied over by someone else in the meantime, which is a CONFLICT.
      */
-    private AssistantConfig existingWorkingCopy(String configKey) {
+    private AssistantConfig existingWorkingCopy(ConfigKey configKey) {
         Optional<AssistantConfig> wc = workingCopy(configKey);
         if (wc.isPresent()) {
             return wc.get();
@@ -255,7 +256,7 @@ public class ConfigCommandService {
         }
     }
 
-    private int nextVersion(String configKey) {
+    private int nextVersion(ConfigKey configKey) {
         return repository.findLatest(configKey).map(c -> c.version() + 1).orElse(1);
     }
 

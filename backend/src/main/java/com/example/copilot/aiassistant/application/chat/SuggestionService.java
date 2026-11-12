@@ -23,7 +23,7 @@ public class SuggestionService {
      *  Categories without example questions are not listed. */
     public List<SuggestionCategory> suggestions() {
         return cache.current().instructions().stream()
-                .map(c -> new SuggestionCategory(c.configKey(), c.name(), parser.parse(c.content())))
+                .map(c -> new SuggestionCategory(c.configKey().value(), c.name(), parser.parse(c.content())))
                 .filter(c -> !c.questions().isEmpty())
                 .toList();
     }

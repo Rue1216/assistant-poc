@@ -18,7 +18,6 @@ public record AuditRecord(String id, String traceId, String userId, String roleK
                           String instructionKey, boolean summaryIn, String summaryStatus,
                           int summarizedMessages, int summaryTokens, String modelName) {
 
-    public static final String COLLECTION = "COLL_ICRM_AI_ASSISTANT_AUDIT";
 
     public record ToolCall(String toolName, String status, String errorCode, int durationMs, Integer citationId,
                            String target, String dataTime, Integer resultCount, String resultHash,

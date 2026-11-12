@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.example.copilot.TestCustomers;
 import com.example.copilot.aiassistant.application.chat.CustomerContextFactory;
 import com.example.copilot.aiassistant.domain.customer.AccessLevel;
+import com.example.copilot.aiassistant.domain.customer.CertNo;
 import com.example.copilot.aiassistant.domain.customer.CustomerRecord;
 import java.util.List;
 import java.util.Set;
@@ -15,7 +16,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 class PiiRedactorTest {
 
     private final PiiRedactor redactor = new PiiRedactor();
-    private final CustomerContext retiree = new CustomerContext(TestCustomers.RETIREE, AccessLevel.FULL,
+    private final CustomerContext retiree = new CustomerContext(new CertNo(TestCustomers.RETIREE), AccessLevel.FULL,
             Set.of(TestCustomers.RETIREE, "王小明"),
             Set.of("0912-000-111", "xiaoming.wang@example.com", "0123456789012"));
 
@@ -90,7 +91,7 @@ class PiiRedactorTest {
 
     @Test
     void skipsDegenerateKnownValues() {
-        CustomerContext odd = new CustomerContext(TestCustomers.RETIREE, AccessLevel.FULL, Set.of("王小明"), Set.of("-", " "));
+        CustomerContext odd = new CustomerContext(new CertNo(TestCustomers.RETIREE), AccessLevel.FULL, Set.of("王小明"), Set.of("-", " "));
         assertThat(redactor.redact("2330 收盤價 12-34", odd)).isEqualTo("2330 收盤價 12-34");
     }
 

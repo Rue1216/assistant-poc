@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.copilot.IntegrationTestBase;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
 import com.example.copilot.aiassistant.domain.config.ConfigValidator;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
@@ -43,7 +44,7 @@ class SeedLoaderTest extends IntegrationTestBase {
     @Test
     void seededContentHasNoCarriageReturns() {
         assertThat(repository.findPublished()).isNotEmpty()
-                .allSatisfy(c -> assertThat(c.content()).as(c.configKey()).doesNotContain("\r"));
+                .allSatisfy(c -> assertThat(c.content()).as(c.configKey().value()).doesNotContain("\r"));
     }
 
     @Test
@@ -56,11 +57,11 @@ class SeedLoaderTest extends IntegrationTestBase {
             assertThat(c.createdBy()).isEqualTo("system");
             assertThat(c.content()).isNotBlank();
         });
-        assertThat(published).extracting(AssistantConfig::configKey).containsExactlyInAnyOrder(
+        assertThat(published).extracting(c -> c.configKey().value()).containsExactlyInAnyOrder(
                 "system.main", "instruction.customer-overview", "instruction.asset-liability",
                 "instruction.member-rank", "instruction.opportunity", "instruction.engagement",
                 "instruction.contact-prep", "instruction.market-brief");
-        assertThat(repository.findPublished("instruction.contact-topic"))
+        assertThat(repository.findPublished(new ConfigKey("instruction.contact-topic")))
                 .isEmpty();
     }
 
@@ -70,7 +71,7 @@ class SeedLoaderTest extends IntegrationTestBase {
                 .filter(c -> c.configType() == ConfigType.SYSTEM_INSTRUCTION)
                 .sorted(Comparator.comparing(AssistantConfig::id))
                 .toList();
-        assertThat(instructions).extracting(AssistantConfig::configKey).containsExactlyElementsOf(MANIFEST_ORDER);
+        assertThat(instructions).extracting(c -> c.configKey().value()).containsExactlyElementsOf(MANIFEST_ORDER);
         assertThat(instructions).extracting(c -> c.configKey() + "=" + c.name()).containsExactly(
                 "instruction.customer-overview=顧客概況", "instruction.asset-liability=資產負債",
                 "instruction.member-rank=會員等級", "instruction.opportunity=商品機會",
@@ -82,7 +83,7 @@ class SeedLoaderTest extends IntegrationTestBase {
     void everySeedPassesTheValidator() {
         assertThat(repository.findPublished()).allSatisfy(c ->
                 assertThat(validator.validate(c.configType(), c.name(), c.changeNote(), c.content()))
-                        .as(c.configKey()).isEmpty());
+                        .as(c.configKey().value()).isEmpty());
     }
 
     @Test
@@ -100,7 +101,7 @@ class SeedLoaderTest extends IntegrationTestBase {
     }
 
     private String content(String key) {
-        return repository.findPublished(key).orElseThrow().content();
+        return repository.findPublished(new ConfigKey(key)).orElseThrow().content();
     }
 
     @Test

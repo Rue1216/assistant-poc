@@ -7,13 +7,13 @@ import com.example.copilot.aiassistant.application.config.PublishCommand;
 import com.example.copilot.aiassistant.application.config.PublishMode;
 import com.example.copilot.aiassistant.application.config.SaveCommand;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
 import com.example.copilot.aiassistant.domain.config.ConfigValidator;
 import com.example.copilot.aiassistant.domain.exception.AssistantException;
 import com.example.copilot.aiassistant.domain.exception.ErrorCode;
 import com.example.copilot.aiassistant.domain.exception.FieldDetail;
 import com.example.copilot.aiassistant.interfaces.rest.config.dto.ApplyRequest;
-import com.example.copilot.aiassistant.interfaces.rest.config.dto.ConfigKeys;
 import com.example.copilot.aiassistant.interfaces.rest.config.dto.ConfigSummaryView;
 import com.example.copilot.aiassistant.interfaces.rest.config.dto.ConfigVersionView;
 import com.example.copilot.aiassistant.interfaces.rest.config.dto.CreateConfigRequest;
@@ -75,75 +75,75 @@ public class AdminConfigController {
     @PreAuthorize(EDIT)
     @ResponseStatus(HttpStatus.CREATED)
     public ConfigVersionView create(@Valid @RequestBody CreateConfigRequest request) {
-        return view(service.createKey(request.configKey(), request.configType(), request.name(), actor()));
+        return view(service.createKey(new ConfigKey(request.configKey()), request.configType(), request.name(), actor()));
     }
 
     @GetMapping("/{configKey}/versions")
     @PreAuthorize(READ)
-    public List<VersionHistoryItem> versions(@PathVariable @Pattern(regexp = ConfigKeys.PATTERN) String configKey) {
-        return queries.versions(configKey).stream().map(VersionHistoryItem::of).toList();
+    public List<VersionHistoryItem> versions(@PathVariable @Pattern(regexp = ConfigKey.PATTERN) String configKey) {
+        return queries.versions(new ConfigKey(configKey)).stream().map(VersionHistoryItem::of).toList();
     }
 
     @GetMapping("/{configKey}/versions/{version}")
     @PreAuthorize(READ)
-    public ConfigVersionView version(@PathVariable @Pattern(regexp = ConfigKeys.PATTERN) String configKey,
+    public ConfigVersionView version(@PathVariable @Pattern(regexp = ConfigKey.PATTERN) String configKey,
                                      @PathVariable int version) {
-        return view(queries.version(configKey, version));
+        return view(queries.version(new ConfigKey(configKey), version));
     }
 
     @PostMapping("/{configKey}/draft")
     @PreAuthorize(EDIT)
     @ResponseStatus(HttpStatus.CREATED)
-    public ConfigVersionView createDraft(@PathVariable @Pattern(regexp = ConfigKeys.PATTERN) String configKey) {
-        return view(service.createDraft(configKey, actor()));
+    public ConfigVersionView createDraft(@PathVariable @Pattern(regexp = ConfigKey.PATTERN) String configKey) {
+        return view(service.createDraft(new ConfigKey(configKey), actor()));
     }
 
     @PutMapping("/{configKey}/draft")
     @PreAuthorize(EDIT)
-    public ConfigVersionView save(@PathVariable @Pattern(regexp = ConfigKeys.PATTERN) String configKey,
+    public ConfigVersionView save(@PathVariable @Pattern(regexp = ConfigKey.PATTERN) String configKey,
                                   @Valid @RequestBody SaveDraftRequest request) {
         if (request.content().getBytes(StandardCharsets.UTF_8).length > ConfigValidator.MAX_BYTES) {
             throw invalidInput("content");
         }
         SaveCommand command = new SaveCommand(request.name(), request.content(), request.changeNote(),
                 request.saveMode(), request.docVersion());
-        return view(service.saveWorkingCopy(configKey, command, actor()));
+        return view(service.saveWorkingCopy(new ConfigKey(configKey), command, actor()));
     }
 
     @DeleteMapping("/{configKey}/draft")
     @PreAuthorize(EDIT)
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void discard(@PathVariable @Pattern(regexp = ConfigKeys.PATTERN) String configKey,
+    public void discard(@PathVariable @Pattern(regexp = ConfigKey.PATTERN) String configKey,
                         @RequestParam long docVersion) {
-        service.discardDraft(configKey, docVersion, actor());
+        service.discardDraft(new ConfigKey(configKey), docVersion, actor());
     }
 
     @PostMapping("/{configKey}/draft/validate")
     @PreAuthorize(EDIT)
-    public ValidationReportView validate(@PathVariable @Pattern(regexp = ConfigKeys.PATTERN) String configKey) {
-        return ValidationReportView.of(service.validateWorkingCopy(configKey));
+    public ValidationReportView validate(@PathVariable @Pattern(regexp = ConfigKey.PATTERN) String configKey) {
+        return ValidationReportView.of(service.validateWorkingCopy(new ConfigKey(configKey)));
     }
 
     @PostMapping("/{configKey}/publish")
     @PreAuthorize(PUBLISH)
-    public ConfigVersionView publish(@PathVariable @Pattern(regexp = ConfigKeys.PATTERN) String configKey,
+    public ConfigVersionView publish(@PathVariable @Pattern(regexp = ConfigKey.PATTERN) String configKey,
                                      @Valid @RequestBody PublishRequest request) {
         Instant scheduledAt = null;
         if (request.publishMode() == PublishMode.SCHEDULED) {
             scheduledAt = parseScheduledAt(request.scheduledAt());
         }
         PublishCommand command = new PublishCommand(request.publishMode(), scheduledAt, request.docVersion());
-        return view(service.publish(configKey, command, actor()));
+        return view(service.publish(new ConfigKey(configKey), command, actor()));
     }
 
     @PostMapping("/{configKey}/versions/{version}/apply")
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize(EDIT)
-    public ConfigVersionView apply(@PathVariable @Pattern(regexp = ConfigKeys.PATTERN) String configKey,
+    public ConfigVersionView apply(@PathVariable @Pattern(regexp = ConfigKey.PATTERN) String configKey,
                                    @PathVariable int version,
                                    @RequestBody(required = false) ApplyRequest request) {
         ApplyRequest body = request != null ? request : new ApplyRequest(null, null);
-        return view(service.applyVersion(configKey,
+        return view(service.applyVersion(new ConfigKey(configKey),
                 new ApplyCommand(version, body.workingCopyDocVersion(), body.confirmed()), actor()));
     }
 

@@ -3,6 +3,7 @@ package com.example.copilot.aiassistant.application.chat;
 import com.example.copilot.aiassistant.domain.customer.AccessLevel;
 import com.example.copilot.aiassistant.application.port.CustomerAccessPort;
 import com.example.copilot.aiassistant.application.port.CustomerDataPort;
+import com.example.copilot.aiassistant.domain.customer.CertNo;
 import com.example.copilot.aiassistant.domain.customer.CustomerRecord;
 import com.example.copilot.aiassistant.domain.privacy.CustomerContext;
 import com.example.copilot.aiassistant.domain.user.UserContext;
@@ -26,20 +27,20 @@ public class CustomerContextFactory {
     }
 
     /** Empty when the user has no access or the customer does not exist (the two are indistinguishable). */
-    public Optional<CustomerContext> create(UserContext user, String certNo) {
-        AccessLevel level = accessPort.checkAccess(user, certNo);
+    public Optional<CustomerContext> create(UserContext user, CertNo certNo) {
+        AccessLevel level = accessPort.checkAccess(user, certNo.value());
         if (level == AccessLevel.NONE) {
             return Optional.empty();
         }
-        return dataPort.findCustomer(certNo).map(record -> build(record, level));
+        return dataPort.findCustomer(certNo.value()).map(record -> build(record, level));
     }
 
     /**
      * Builds the context for a dataset case at the level the case declares. Only for {@code EvalRunner}: it does not
      * check the user's access to the customer. Empty when the customer does not exist.
      */
-    public Optional<CustomerContext> forEvaluation(String certNo, AccessLevel level) {
-        return dataPort.findCustomer(certNo).map(record -> build(record, level));
+    public Optional<CustomerContext> forEvaluation(CertNo certNo, AccessLevel level) {
+        return dataPort.findCustomer(certNo.value()).map(record -> build(record, level));
     }
 
     public static CustomerContext build(CustomerRecord record, AccessLevel level) {
@@ -53,7 +54,7 @@ public class CustomerContextFactory {
         if (record.accountNumbers() != null) {
             record.accountNumbers().forEach(a -> add(sensitive, a));
         }
-        return new CustomerContext(record.certNo(), level, self, sensitive);
+        return new CustomerContext(new CertNo(record.certNo()), level, self, sensitive);
     }
 
     /**

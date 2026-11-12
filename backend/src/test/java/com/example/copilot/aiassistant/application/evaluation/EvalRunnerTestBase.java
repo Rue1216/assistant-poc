@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import com.example.copilot.IntegrationTestBase;
 import com.example.copilot.aiassistant.application.chat.ScriptedChatModel;
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.customer.AccessLevel;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
 import com.example.copilot.aiassistant.domain.config.PromptVersion;
@@ -15,6 +16,7 @@ import com.example.copilot.aiassistant.domain.eval.EvalCase;
 import com.example.copilot.aiassistant.domain.eval.EvalRun;
 import com.example.copilot.aiassistant.domain.eval.EvalStatus;
 import com.example.copilot.aiassistant.domain.repository.EvalRunRepository;
+import com.example.copilot.aiassistant.infrastructure.mongo.AiAssistantCollections;
 import dev.langchain4j.model.chat.ChatRequestOptions;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import java.time.Clock;
@@ -42,14 +44,14 @@ abstract class EvalRunnerTestBase extends IntegrationTestBase {
 
     @BeforeEach
     void wireModel() {
-        mongo.remove(new Query(), EvalRun.COLLECTION);
+        mongo.remove(new Query(), AiAssistantCollections.EVAL_RUN);
         when(chatModel.chat(any(ChatRequest.class), any(ChatRequestOptions.class)))
                 .thenAnswer(inv -> scripted.chat(inv.<ChatRequest>getArgument(0), inv.<ChatRequestOptions>getArgument(1)));
     }
 
     @AfterEach
     void cleanRuns() {
-        mongo.remove(new Query(), EvalRun.COLLECTION);
+        mongo.remove(new Query(), AiAssistantCollections.EVAL_RUN);
     }
 
     static EvalCase evalCase(String id, String certNo, AccessLevel level, boolean refusal) {
@@ -60,14 +62,14 @@ abstract class EvalRunnerTestBase extends IntegrationTestBase {
     /** Inserts a RUNNING run started (and last beating) {@code age} ago and returns it as stored. */
     EvalRun insertRun(int totalCases, Duration age) {
         Instant started = clock.instant().minus(age);
-        EvalRun draft = new EvalRun(null, "instruction.contact-prep", 2, 0L, started,
+        EvalRun draft = new EvalRun(null, new ConfigKey("instruction.contact-prep"), 2, 0L, started,
                 List.of(new PromptVersion("system-prompt", 1)), "h".repeat(64), EvalStatus.RUNNING, null, "EEE22222",
                 started, started, null, totalCases, 0, null, List.of(), 0L);
         return runs.findById(runs.insert(draft)).orElseThrow();
     }
 
     static AssistantConfig config(String key, int version, String content) {
-        return new AssistantConfig(null, key, null, key, content, null, version, null, null, null, null, null, null,
+        return new AssistantConfig(null, new ConfigKey(key), null, key, content, null, version, null, null, null, null, null, null,
                 null, null);
     }
 

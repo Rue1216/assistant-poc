@@ -12,6 +12,7 @@ import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.domain.audit.AuditEntry;
 import com.example.copilot.aiassistant.domain.audit.AuditRecord;
 import com.example.copilot.aiassistant.domain.audit.CredentialMasker;
+import com.example.copilot.aiassistant.domain.customer.CertNo;
 import com.example.copilot.aiassistant.domain.repository.AuditRepository;
 import com.example.copilot.aiassistant.domain.customer.AccessLevel;
 import com.example.copilot.aiassistant.domain.user.UserContext;
@@ -23,6 +24,7 @@ import com.example.copilot.aiassistant.domain.tool.Source;
 import com.example.copilot.aiassistant.domain.tool.ToolOutcome;
 import com.example.copilot.aiassistant.domain.tool.ToolResult;
 import com.example.copilot.aiassistant.domain.tool.ToolStatus;
+import com.example.copilot.aiassistant.infrastructure.mongo.AiAssistantCollections;
 import com.example.copilot.testsupport.LogCapture;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -41,7 +43,7 @@ import org.springframework.data.mongodb.core.query.Query;
 
 class AuditLoggerTest extends IntegrationTestBase {
 
-    private static final String COLL = "COLL_ICRM_AI_ASSISTANT_AUDIT";
+    private static final String COLL = AiAssistantCollections.AUDIT;
     private static final Set<String> DOC_KEYS = Set.of("_id", "traceId", "userId", "roleKey",
             "accessLevel", "question", "answer", "answerTruncated", "outcome", "errorCode", "toolCalls",
             "durationMs", "createdAt", "unverifiedNumbers", "modelCalls", "inputTokens", "outputTokens",
@@ -54,7 +56,7 @@ class AuditLoggerTest extends IntegrationTestBase {
 
     private static final UserContext USER = new UserContext("ICRM00028", "Officer", "RM", Set.of());
     private static final CustomerContext CUSTOMER =
-            new CustomerContext(TestCustomers.RETIREE, AccessLevel.FULL, Set.of("王小明", TestCustomers.RETIREE), Set.of());
+            new CustomerContext(new CertNo(TestCustomers.RETIREE), AccessLevel.FULL, Set.of("王小明", TestCustomers.RETIREE), Set.of());
 
     private static ToolOutcome tool(String name, ToolStatus status, String code, long ms) {
         ToolResult result = status == ToolStatus.SUCCESS
@@ -319,7 +321,7 @@ class AuditLoggerTest extends IntegrationTestBase {
     @Test
     void overlongUserAndRoleAreClipped() {
         UserContext user = new UserContext("u".repeat(100), "Officer", "R".repeat(50), Set.of());
-        CustomerContext customer = new CustomerContext(TestCustomers.RETIREE, AccessLevel.LIMITED, Set.of(), Set.of());
+        CustomerContext customer = new CustomerContext(new CertNo(TestCustomers.RETIREE), AccessLevel.LIMITED, Set.of(), Set.of());
         auditLogger.record(new AuditEntry("req-clip-1", user, customer, "q", "a", false, "ANSWERED", null,
                 List.of(), java.util.Map.of(), List.of(), 1, 1, 0, 0, 0, List.of(), null, null, false, null, 0, 0, null));
         Document doc = find("req-clip-1");

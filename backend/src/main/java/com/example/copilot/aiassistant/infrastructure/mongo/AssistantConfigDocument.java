@@ -17,7 +17,7 @@ import lombok.Setter;
  */
 @Getter
 @Setter
-@Document("COLL_ICRM_AI_ASSISTANT_CONFIG")
+@Document(AiAssistantCollections.CONFIG)
 @TypeAlias("com.example.copilot.aiassistant.config.AssistantConfig")
 public class AssistantConfigDocument {
 

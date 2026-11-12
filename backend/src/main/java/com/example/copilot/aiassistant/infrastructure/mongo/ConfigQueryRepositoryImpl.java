@@ -6,6 +6,7 @@ import com.example.copilot.aiassistant.application.config.ConfigQueryRepository;
 import com.example.copilot.aiassistant.application.config.ConfigSummary;
 import com.example.copilot.aiassistant.application.config.VersionHistoryEntry;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.config.ConfigStatus;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -40,7 +41,7 @@ public class ConfigQueryRepositoryImpl implements ConfigQueryRepository {
         Map<String, List<AssistantConfig>> byKey = mongo.find(activeVersionsQuery(), AssistantConfigDocument.class)
                 .stream()
                 .map(AssistantConfigMapper::toDomain)
-                .collect(Collectors.groupingBy(AssistantConfig::configKey));
+                .collect(Collectors.groupingBy(c -> c.configKey().value()));
         List<List<AssistantConfig>> groups = new ArrayList<>(byKey.values());
         for (String key : keys) {
             if (!byKey.containsKey(key)) {
@@ -57,8 +58,8 @@ public class ConfigQueryRepositoryImpl implements ConfigQueryRepository {
     }
 
     @Override
-    public List<VersionHistoryEntry> versionHistory(String configKey) {
-        return mongo.find(historyQuery(configKey), AssistantConfigDocument.class).stream()
+    public List<VersionHistoryEntry> versionHistory(ConfigKey configKey) {
+        return mongo.find(historyQuery(configKey.value()), AssistantConfigDocument.class).stream()
                 .map(AssistantConfigMapper::toDomain)
                 .map(c -> new VersionHistoryEntry(c.version(), c.status(), c.scheduledAt(), c.changeNote(),
                         c.basedOnVersion(), c.createdBy(), c.updatedBy(), c.updatedAt()))

@@ -1,6 +1,7 @@
 package com.example.copilot.aiassistant.application.evaluation;
 
 import com.example.copilot.aiassistant.AiAssistantProperties;
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.eval.EvalDataset;
 import com.example.copilot.aiassistant.domain.eval.EvalErrors;
 import com.example.copilot.aiassistant.domain.eval.EvalRun;
@@ -72,7 +73,7 @@ public class EvalRunService {
         this.properties = properties.eval();
     }
 
-    public EvalRun start(String configKey, long docVersion, String actor) {
+    public EvalRun start(ConfigKey configKey, long docVersion, String actor) {
         Instant now = clock.instant();
         markStaleInterrupted(now);
         if (configRepository.findLatest(configKey).isEmpty()) {
@@ -131,7 +132,7 @@ public class EvalRunService {
     }
 
     /** The latest runs of the key, newest first, without their cases. */
-    public List<EvalRun> recent(String configKey) {
+    public List<EvalRun> recent(ConfigKey configKey) {
         return repository.recent(configKey, RECENT_LIMIT);
     }
 
@@ -159,6 +160,6 @@ public class EvalRunService {
         }
         EvalRun r = running.get();
         return new AssistantException(ErrorCode.AI_EVAL_RUNNING, List.of(new RunningEvalDetail(
-                r.id(), r.configKey(), r.triggeredBy(), r.completedCases(), r.totalCases())));
+                r.id(), r.configKey().value(), r.triggeredBy(), r.completedCases(), r.totalCases())));
     }
 }

@@ -1,6 +1,7 @@
 package com.example.copilot.aiassistant.domain.repository;
 
 import com.example.copilot.aiassistant.domain.audit.AuditRecord;
+import com.example.copilot.aiassistant.domain.audit.TraceId;
 import com.example.copilot.aiassistant.domain.feedback.FeedbackRating;
 import java.time.Instant;
 
@@ -13,5 +14,5 @@ public interface AuditRepository {
      * Sets, or clears when {@code rating} is null, the rating of the user's ANSWERED record with this trace id
      * (the newest one when the id repeats), stamping {@code at}. Returns false when no record matched.
      */
-    boolean setFeedback(String traceId, String userId, FeedbackRating rating, Instant at);
+    boolean setFeedback(TraceId traceId, String userId, FeedbackRating rating, Instant at);
 }

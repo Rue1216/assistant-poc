@@ -1,6 +1,7 @@
 package com.example.copilot.aiassistant.application.config;
 
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.exception.AssistantException;
 import com.example.copilot.aiassistant.domain.exception.ErrorCode;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
@@ -24,7 +25,7 @@ public class ConfigQueryService {
     }
 
     /** All versions of a key, newest first, without their content (the history view does not show it). */
-    public List<VersionHistoryEntry> versions(String configKey) {
+    public List<VersionHistoryEntry> versions(ConfigKey configKey) {
         List<VersionHistoryEntry> history = queries.versionHistory(configKey);
         if (history.isEmpty()) {
             throw notFound();
@@ -32,7 +33,7 @@ public class ConfigQueryService {
         return history;
     }
 
-    public AssistantConfig version(String configKey, int version) {
+    public AssistantConfig version(ConfigKey configKey, int version) {
         return repository.findVersion(configKey, version).orElseThrow(ConfigQueryService::notFound);
     }
 

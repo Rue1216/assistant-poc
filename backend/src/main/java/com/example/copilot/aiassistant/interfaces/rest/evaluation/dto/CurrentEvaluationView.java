@@ -9,7 +9,7 @@ public record CurrentEvaluationView(String runId, String configKey, String trigg
                                     int totalCases, int completedCases) {
 
     public static CurrentEvaluationView of(EvalRun r) {
-        return new CurrentEvaluationView(r.id(), r.configKey(), r.triggeredBy(), AdminTime.at(r.startedAt()),
+        return new CurrentEvaluationView(r.id(), r.configKey().value(), r.triggeredBy(), AdminTime.at(r.startedAt()),
                 r.totalCases(), r.completedCases());
     }
 }

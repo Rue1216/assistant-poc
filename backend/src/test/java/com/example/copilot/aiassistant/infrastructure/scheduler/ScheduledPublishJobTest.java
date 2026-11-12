@@ -16,6 +16,7 @@ import com.example.copilot.aiassistant.application.config.PublishMode;
 import com.example.copilot.aiassistant.application.config.SaveCommand;
 import com.example.copilot.aiassistant.application.config.SaveMode;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.config.ConfigStatus;
 import com.example.copilot.aiassistant.domain.config.ConfigValidator;
 import com.example.copilot.aiassistant.domain.exception.AssistantException;
@@ -60,7 +61,7 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 class ScheduledPublishJobTest extends IntegrationTestBase {
 
     private static final Instant NOW = Instant.parse("2026-10-20T02:00:00Z");
-    private static final String KEY = "instruction.contact-prep";
+    private static final ConfigKey KEY = new ConfigKey("instruction.contact-prep");
     private static final String ACTOR = "EEE22222";
 
     @Autowired AssistantConfigRepository repository;
@@ -173,7 +174,7 @@ class ScheduledPublishJobTest extends IntegrationTestBase {
             pool.shutdownNow();
         }
 
-        assertThat(mongoRepository.findByConfigKeyOrderByVersionDesc(KEY))
+        assertThat(mongoRepository.findByConfigKeyOrderByVersionDesc(KEY.value()))
                 .filteredOn(c -> c.getStatus() == ConfigStatus.PUBLISHED)
                 .extracting(AssistantConfigDocument::getVersion).containsExactly(2);
         assertThat(reload(1).status()).isEqualTo(ConfigStatus.ARCHIVED);
@@ -281,7 +282,7 @@ class ScheduledPublishJobTest extends IntegrationTestBase {
                 labelled(91, MongoException.TRANSIENT_TRANSACTION_ERROR_LABEL)));
 
         assertThat(events).extracting(LogEvent::getLevel).containsExactly(Level.WARN);
-        assertThat(events.get(0).getMessage().getFormattedMessage()).contains(KEY, "TransactionSystemException")
+        assertThat(events.get(0).getMessage().getFormattedMessage()).contains(KEY.value(), "TransactionSystemException")
                 .doesNotContain("secret-detail");
     }
 

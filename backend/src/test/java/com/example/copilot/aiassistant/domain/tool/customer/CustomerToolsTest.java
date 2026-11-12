@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.example.copilot.TestCustomers;
 import com.example.copilot.aiassistant.domain.customer.AccessLevel;
 import com.example.copilot.aiassistant.application.port.CustomerDataPort;
+import com.example.copilot.aiassistant.domain.customer.CertNo;
 import com.example.copilot.aiassistant.domain.customer.CustomerRecord;
 import com.example.copilot.aiassistant.domain.user.UserContext;
 import com.example.copilot.aiassistant.domain.customer.c360.AlertType;
@@ -58,7 +59,7 @@ class CustomerToolsTest {
 
     private static ToolContext context(CustomerDataPort p, String certNo, AccessLevel level) {
         return new ToolContext(new UserContext("u1", "User", "ROLE", Set.of()),
-                new CustomerContext(certNo, level, Set.of(certNo, "王小明"),
+                new CustomerContext(new CertNo(certNo), level, Set.of(certNo, "王小明"),
                         Set.of("0912-000-111", "xiaoming.wang@example.com", "0123456789012")),
                 turnData(p, certNo));
     }
@@ -472,7 +473,7 @@ class CustomerToolsTest {
     @Test
     void contextWithoutDataYieldsUnavailable() {
         ToolContext ctx = new ToolContext(new UserContext("u1", "User", "ROLE", Set.of()),
-                new CustomerContext(TestCustomers.RETIREE, AccessLevel.FULL, Set.of(), Set.of()));
+                new CustomerContext(new CertNo(TestCustomers.RETIREE), AccessLevel.FULL, Set.of(), Set.of()));
 
         assertUnavailable(get(ctx, "profile"));
         assertUnavailable(realTimeTool.execute(new NoArgs(), ctx));
@@ -571,7 +572,7 @@ class CustomerToolsTest {
                     throw new IllegalStateException("boom");
                 });
         ToolContext ctx = new ToolContext(new UserContext("u1", "User", "ROLE", Set.of()),
-                new CustomerContext(TestCustomers.RETIREE, AccessLevel.FULL, Set.of(TestCustomers.RETIREE),
+                new CustomerContext(new CertNo(TestCustomers.RETIREE), AccessLevel.FULL, Set.of(TestCustomers.RETIREE),
                         Set.of()), noNotes);
 
         Map<String, Object> data = data(get(ctx, "management", "assetLiability"));

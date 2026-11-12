@@ -18,6 +18,7 @@ import com.example.copilot.IntegrationTestBase;
 import com.example.copilot.TestCustomers;
 import com.example.copilot.TestUsers;
 import com.example.copilot.aiassistant.application.chat.ScriptedChatModel;
+import com.example.copilot.aiassistant.infrastructure.mongo.AiAssistantCollections;
 import com.jayway.jsonpath.JsonPath;
 import dev.langchain4j.exception.InternalServerException;
 import dev.langchain4j.model.chat.ChatRequestOptions;
@@ -101,7 +102,7 @@ class ChatControllerTest extends IntegrationTestBase {
                 .andReturn();
         assertThat(JsonPath.<String>read(r.getResponse().getContentAsString(), "$.traceId")).isEqualTo(caller);
         assertThat(r.getResponse().getHeader("X-Trace-Id")).isEqualTo(caller);
-        Document audit = mongo.getCollection("COLL_ICRM_AI_ASSISTANT_AUDIT")
+        Document audit = mongo.getCollection(AiAssistantCollections.AUDIT)
                 .find(new Document("traceId", caller.substring(0, 64))).first();
         assertThat(audit).isNotNull();
     }
@@ -113,7 +114,7 @@ class ChatControllerTest extends IntegrationTestBase {
         mockMvc.perform(put("/api/ai-assistant/chat/{id}/feedback", traceId).with(TestUsers.as("ICRM00024")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"rating\":\"UP\"}"))
                 .andExpect(status().isNoContent());
-        Document audit = mongo.getCollection("COLL_ICRM_AI_ASSISTANT_AUDIT").find(new Document("traceId", traceId)).first();
+        Document audit = mongo.getCollection(AiAssistantCollections.AUDIT).find(new Document("traceId", traceId)).first();
         assertThat(audit).isNotNull();
         assertThat(audit.getString("feedback")).isEqualTo("UP");
     }

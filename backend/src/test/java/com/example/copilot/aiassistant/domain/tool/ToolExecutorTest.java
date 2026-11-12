@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.example.copilot.TestCustomers;
 import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.domain.customer.AccessLevel;
+import com.example.copilot.aiassistant.domain.customer.CertNo;
 import com.example.copilot.aiassistant.domain.user.UserContext;
 import com.example.copilot.aiassistant.domain.privacy.CustomerContext;
 import com.example.copilot.aiassistant.domain.privacy.PiiRedactor;
@@ -35,7 +36,7 @@ class ToolExecutorTest {
     private final JsonMapper mapper = JsonMapper.builder().build();
     private final ToolContext context = new ToolContext(
             new UserContext("u1", "User", "ROLE", Set.of()),
-            new CustomerContext(TestCustomers.RETIREE, AccessLevel.FULL, Set.of(TestCustomers.RETIREE, "王小明"), Set.of()));
+            new CustomerContext(new CertNo(TestCustomers.RETIREE), AccessLevel.FULL, Set.of(TestCustomers.RETIREE, "王小明"), Set.of()));
 
     private ToolExecutor executorFor(AssistantTool<?> tool, Duration ceiling) {
         AiAssistantProperties props = new AiAssistantProperties(null,

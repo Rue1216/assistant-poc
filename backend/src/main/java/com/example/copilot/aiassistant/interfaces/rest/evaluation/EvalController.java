@@ -1,8 +1,8 @@
 package com.example.copilot.aiassistant.interfaces.rest.evaluation;
 
 import com.example.copilot.aiassistant.application.evaluation.EvalRunService;
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.eval.EvalDataset;
-import com.example.copilot.aiassistant.interfaces.rest.config.dto.ConfigKeys;
 import com.example.copilot.aiassistant.interfaces.rest.evaluation.dto.CurrentEvaluationView;
 import com.example.copilot.aiassistant.interfaces.rest.evaluation.dto.EvalCasesView;
 import com.example.copilot.aiassistant.interfaces.rest.evaluation.dto.EvalRunSummaryView;
@@ -45,16 +45,16 @@ public class EvalController {
     @PostMapping("/configs/{configKey}/evaluations")
     @PreAuthorize(EDIT)
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public StartEvaluationResponse start(@PathVariable @Pattern(regexp = ConfigKeys.PATTERN) String configKey,
+    public StartEvaluationResponse start(@PathVariable @Pattern(regexp = ConfigKey.PATTERN) String configKey,
                                          @Valid @RequestBody StartEvaluationRequest request) {
         return StartEvaluationResponse.of(
-                service.start(configKey, request.docVersion(), currentUser.currentUser().userId()));
+                service.start(new ConfigKey(configKey), request.docVersion(), currentUser.currentUser().userId()));
     }
 
     @GetMapping("/configs/{configKey}/evaluations")
     @PreAuthorize(READ)
-    public List<EvalRunSummaryView> recent(@PathVariable @Pattern(regexp = ConfigKeys.PATTERN) String configKey) {
-        return service.recent(configKey).stream().map(r -> EvalRunSummaryView.of(r, dataset.hash())).toList();
+    public List<EvalRunSummaryView> recent(@PathVariable @Pattern(regexp = ConfigKey.PATTERN) String configKey) {
+        return service.recent(new ConfigKey(configKey)).stream().map(r -> EvalRunSummaryView.of(r, dataset.hash())).toList();
     }
 
     @GetMapping("/evaluations/current")

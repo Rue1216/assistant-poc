@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import com.example.copilot.IntegrationTestBase;
 import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.domain.chat.EvaluationReport;
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.eval.CaseResult;
 import com.example.copilot.aiassistant.domain.eval.EvalCaseRecord;
 import com.example.copilot.aiassistant.domain.eval.EvalDataset;
@@ -25,6 +26,7 @@ import com.example.copilot.aiassistant.domain.exception.ErrorCode;
 import com.example.copilot.aiassistant.domain.exception.RunningEvalDetail;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
+import com.example.copilot.aiassistant.infrastructure.mongo.AiAssistantCollections;
 import com.example.copilot.aiassistant.infrastructure.mongo.AssistantConfigMongoRepository;
 import com.example.copilot.aiassistant.application.config.ConfigCommandService;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
@@ -62,7 +64,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 class EvalRunServiceTest extends IntegrationTestBase {
 
-    private static final String KEY = "instruction.contact-prep";
+    private static final ConfigKey KEY = new ConfigKey("instruction.contact-prep");
     private static final String ACTOR = "EEE22222";
 
     @MockitoBean EvalRunner runner;
@@ -83,18 +85,18 @@ class EvalRunServiceTest extends IntegrationTestBase {
 
     @BeforeEach
     void setUp() {
-        mongo.remove(new org.springframework.data.mongodb.core.query.Query(), EvalRun.COLLECTION);
+        mongo.remove(new org.springframework.data.mongodb.core.query.Query(), AiAssistantCollections.EVAL_RUN);
         reset(runner);
     }
 
     @AfterEach
     void tearDown() {
-        mongo.remove(new org.springframework.data.mongodb.core.query.Query(), EvalRun.COLLECTION);
+        mongo.remove(new org.springframework.data.mongodb.core.query.Query(), AiAssistantCollections.EVAL_RUN);
         configDocuments.deleteAll();
         seedLoader.run(new DefaultApplicationArguments());
     }
 
-    private AssistantConfig draftWithMarker(String key, String marker) {
+    private AssistantConfig draftWithMarker(ConfigKey key, String marker) {
         AssistantConfig draft = configService.createDraft(key, ACTOR);
         return configService.saveWorkingCopy(key, new SaveCommand(draft.name(),
                 draft.content() + "\n- " + marker + "\n", "note", SaveMode.KEEP_STATUS, draft.docVersion()),
@@ -118,7 +120,7 @@ class EvalRunServiceTest extends IntegrationTestBase {
 
     private EvalRun running(Instant heartbeat) {
         Instant now = clock.instant();
-        return new EvalRun(null, KEY, 2, 0L, now, List.of(new PromptVersion(KEY, 1)), "h".repeat(64),
+        return new EvalRun(null, KEY, 2, 0L, now, List.of(new PromptVersion(KEY.value(), 1)), "h".repeat(64),
                 EvalStatus.RUNNING, null, "someone", now.minus(Duration.ofMinutes(30)), heartbeat, null, 16, 3, null,
                 List.of(), 0L);
     }
@@ -170,7 +172,7 @@ class EvalRunServiceTest extends IntegrationTestBase {
 
     @Test
     void newKeyIsAddedToCandidate() {
-        String key = "instruction.eval-new";
+        ConfigKey key = new ConfigKey("instruction.eval-new");
         AssistantConfig base = configs.findPublished(KEY).orElseThrow();
         AssistantConfig created = configService.createKey(key, ConfigType.SYSTEM_INSTRUCTION, "新分類", ACTOR);
         AssistantConfig saved = configService.saveWorkingCopy(key, new SaveCommand("新分類", base.content(),
@@ -179,15 +181,15 @@ class EvalRunServiceTest extends IntegrationTestBase {
         EvalRun run = service.start(key, saved.docVersion(), ACTOR);
 
         EvalRunService.EvalSnapshot snapshot = capturedSnapshot();
-        assertThat(versionsOf(snapshot.baseline())).hasSize(8).noneMatch(v -> v.configKey().equals(key));
-        assertThat(versionsOf(snapshot.candidate())).hasSize(9).anyMatch(v -> v.configKey().equals(key));
+        assertThat(versionsOf(snapshot.baseline())).hasSize(8).noneMatch(v -> v.configKey().equals(key.value()));
+        assertThat(versionsOf(snapshot.candidate())).hasSize(9).anyMatch(v -> v.configKey().equals(key.value()));
         assertThat(run.baselineVersions()).hasSize(8);
     }
 
     @Test
     void systemMainWorkingCopyReplacesSystemPrompt() {
-        AssistantConfig draft = draftWithMarker("system.main", "marker-main-draft");
-        service.start("system.main", draft.docVersion(), ACTOR);
+        AssistantConfig draft = draftWithMarker(new ConfigKey("system.main"), "marker-main-draft");
+        service.start(new ConfigKey("system.main"), draft.docVersion(), ACTOR);
 
         EvalRunService.EvalSnapshot snapshot = capturedSnapshot();
         assertThat(textOf(snapshot.candidate())).contains("marker-main-draft");
@@ -199,7 +201,7 @@ class EvalRunServiceTest extends IntegrationTestBase {
 
     @Test
     void unknownKeyIsNotFound() {
-        assertThat(thrown(() -> service.start("instruction.nope", 0L, ACTOR)).code())
+        assertThat(thrown(() -> service.start(new ConfigKey("instruction.nope"), 0L, ACTOR)).code())
                 .isEqualTo(ErrorCode.AI_CONFIG_NOT_FOUND);
     }
 
@@ -246,7 +248,7 @@ class EvalRunServiceTest extends IntegrationTestBase {
 
         assertThat(e.code()).isEqualTo(ErrorCode.AI_EVAL_RUNNING);
         assertThat(e.details()).isEqualTo(
-                List.of(new RunningEvalDetail(first.id(), KEY, ACTOR, 0, dataset.cases().size())));
+                List.of(new RunningEvalDetail(first.id(), KEY.value(), ACTOR, 0, dataset.cases().size())));
     }
 
     @Test
@@ -278,7 +280,7 @@ class EvalRunServiceTest extends IntegrationTestBase {
             assertThat(results.stream().filter(EvalRun.class::isInstance)).hasSize(1);
             assertThat(results.stream().filter(AssistantException.class::isInstance)
                     .map(o -> ((AssistantException) o).code())).containsExactly(ErrorCode.AI_EVAL_RUNNING);
-            assertThat(mongo.getCollection(EvalRun.COLLECTION)
+            assertThat(mongo.getCollection(AiAssistantCollections.EVAL_RUN)
                     .countDocuments(new org.bson.Document("status", "RUNNING"))).isEqualTo(1);
         } finally {
             pool.shutdownNow();
@@ -396,6 +398,6 @@ class EvalRunServiceTest extends IntegrationTestBase {
         assertThat(recent).extracting(EvalRun::id).containsExactly(newerId, older);
         assertThat(recent).allSatisfy(r -> assertThat(r.cases()).isEmpty());
         assertThat(recent.get(0).completedCases()).isEqualTo(1);
-        assertThat(service.recent("instruction.other")).isEmpty();
+        assertThat(service.recent(new ConfigKey("instruction.other"))).isEmpty();
     }
 }

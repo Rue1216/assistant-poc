@@ -69,7 +69,7 @@ public class InstructionRouter {
             return new RouteDecision(null, RouteSource.ROUTER, false, 0, 0, 0);
         }
         List<AssistantConfig> sorted = instructions.stream()
-                .sorted(Comparator.comparing(AssistantConfig::configKey)).toList();
+                .sorted(Comparator.comparing(i -> i.configKey().value())).toList();
         try {
             ChatResponse response = chatModel.chat(
                     request(redactedQuestion, redactedHistory, summary, sorted), LlmCallPurpose.ROUTE.options());
@@ -91,7 +91,7 @@ public class InstructionRouter {
                 if (NONE.equals(value)) {
                     return new RouteDecision(null, RouteSource.ROUTER, true, in, out, total);
                 }
-                if (instructions.stream().anyMatch(i -> i.configKey().equals(value))) {
+                if (instructions.stream().anyMatch(i -> i.configKey().value().equals(value))) {
                     return new RouteDecision(value, RouteSource.ROUTER, true, in, out, total);
                 }
             }
@@ -113,7 +113,7 @@ public class InstructionRouter {
         ArrayNode categories = user.putArray("categories");
         for (AssistantConfig instruction : instructions) {
             ObjectNode category = categories.addObject();
-            category.put("key", instruction.configKey());
+            category.put("key", instruction.configKey().value());
             category.put("name", instruction.name());
             category.put("scope", scope(instruction));
         }
@@ -152,7 +152,7 @@ public class InstructionRouter {
     }
 
     private static ResponseFormat responseFormat(List<AssistantConfig> instructions) {
-        List<String> values = new ArrayList<>(instructions.stream().map(AssistantConfig::configKey).toList());
+        List<String> values = new ArrayList<>(instructions.stream().map(c -> c.configKey().value()).toList());
         values.add(NONE);
         JsonObjectSchema root = JsonObjectSchema.builder()
                 .addProperty("category", JsonEnumSchema.builder().enumValues(values).build())

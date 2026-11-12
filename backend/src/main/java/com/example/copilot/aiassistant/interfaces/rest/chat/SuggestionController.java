@@ -1,5 +1,6 @@
 package com.example.copilot.aiassistant.interfaces.rest.chat;
 
+import com.example.copilot.aiassistant.domain.customer.CertNo;
 import com.example.copilot.aiassistant.domain.exception.AssistantException;
 import com.example.copilot.aiassistant.domain.exception.ErrorCode;
 import com.example.copilot.aiassistant.application.port.CurrentUserPort;
@@ -32,8 +33,8 @@ public class SuggestionController {
 
     @GetMapping("/api/ai-assistant/customers/{certNo}/suggestions")
     @PreAuthorize("hasAuthority('AI_ASSISTANT_USE')")
-    public SuggestionsResponse suggestions(@PathVariable @Pattern(regexp = "^[A-Z0-9&]{8,12}$") String certNo) {
-        contexts.create(currentUser.currentUser(), certNo)
+    public SuggestionsResponse suggestions(@PathVariable @Pattern(regexp = CertNo.PATTERN) String certNo) {
+        contexts.create(currentUser.currentUser(), new CertNo(certNo))
                 .orElseThrow(() -> new AssistantException(ErrorCode.AI_CUSTOMER_NOT_FOUND));
         return new SuggestionsResponse(suggestions.suggestions());
     }

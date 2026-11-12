@@ -6,6 +6,7 @@ import com.example.copilot.IntegrationTestBase;
 import com.example.copilot.aiassistant.application.config.ConfigSummary;
 import com.example.copilot.aiassistant.application.config.VersionHistoryEntry;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.config.ConfigStatus;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
 import com.example.copilot.aiassistant.infrastructure.seed.SeedLoader;
@@ -44,7 +45,7 @@ class ConfigQueryRepositoryImplTest extends IntegrationTestBase {
     private AssistantConfig insertDraft(String name) {
         AssistantConfig published = mongoRepository.findByConfigKeyAndStatus(KEY, ConfigStatus.PUBLISHED)
                 .map(AssistantConfigMapper::toDomain).orElseThrow();
-        AssistantConfig draft = AssistantConfig.newDraft(KEY, ConfigType.SYSTEM_INSTRUCTION, name,
+        AssistantConfig draft = AssistantConfig.newDraft(new ConfigKey(KEY), ConfigType.SYSTEM_INSTRUCTION, name,
                 published.content(), 2, "EEE11111", NOW);
         return AssistantConfigMapper.toDomain(mongoRepository.insert(AssistantConfigMapper.toDocument(draft)));
     }
@@ -85,7 +86,7 @@ class ConfigQueryRepositoryImplTest extends IntegrationTestBase {
 
     @Test
     void listSummariesShowsKeyWithoutPublishedVersion() {
-        mongoRepository.insert(AssistantConfigMapper.toDocument(AssistantConfig.newDraft("instruction.new-topic",
+        mongoRepository.insert(AssistantConfigMapper.toDocument(AssistantConfig.newDraft(new ConfigKey("instruction.new-topic"),
                 ConfigType.SYSTEM_INSTRUCTION, "New topic", "body", 1, "EEE11111", NOW)));
 
         assertThat(queries.listSummaries()).anySatisfy(s -> {
@@ -98,7 +99,7 @@ class ConfigQueryRepositoryImplTest extends IntegrationTestBase {
 
     @Test
     void listSummariesShowsKeyWhoseOnlyVersionIsDiscarded() {
-        AssistantConfig dropped = AssistantConfig.newDraft("instruction.dropped",
+        AssistantConfig dropped = AssistantConfig.newDraft(new ConfigKey("instruction.dropped"),
                 ConfigType.SYSTEM_INSTRUCTION, "Dropped", "body", 1, "EEE11111", NOW);
         mongoRepository.insert(AssistantConfigMapper.toDocument(dropped.withStatus(ConfigStatus.DISCARDED, null)));
 
@@ -123,7 +124,7 @@ class ConfigQueryRepositoryImplTest extends IntegrationTestBase {
     void versionHistoryNewestFirst() {
         insertDraft("Draft");
 
-        List<VersionHistoryEntry> history = queries.versionHistory(KEY);
+        List<VersionHistoryEntry> history = queries.versionHistory(new ConfigKey(KEY));
 
         assertThat(history).extracting(VersionHistoryEntry::version).containsExactly(2, 1);
         assertThat(history.get(0).status()).isEqualTo(ConfigStatus.DRAFT);
@@ -133,6 +134,6 @@ class ConfigQueryRepositoryImplTest extends IntegrationTestBase {
 
     @Test
     void versionHistoryUnknownKeyIsEmpty() {
-        assertThat(queries.versionHistory("instruction.nope")).isEmpty();
+        assertThat(queries.versionHistory(new ConfigKey("instruction.nope"))).isEmpty();
     }
 }

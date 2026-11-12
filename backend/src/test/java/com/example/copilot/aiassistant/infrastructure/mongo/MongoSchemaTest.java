@@ -27,8 +27,8 @@ import org.springframework.data.mongodb.core.index.IndexInfo;
 
 class MongoSchemaTest extends IntegrationTestBase {
 
-    private static final String CONFIG = "COLL_ICRM_AI_ASSISTANT_CONFIG";
-    private static final String AUDIT = "COLL_ICRM_AI_ASSISTANT_AUDIT";
+    private static final String CONFIG = AiAssistantCollections.CONFIG;
+    private static final String AUDIT = AiAssistantCollections.AUDIT;
 
     @Autowired MongoTemplate mongo;
     @Autowired AssistantConfigMongoRepository repository;
@@ -242,7 +242,7 @@ class MongoSchemaTest extends IntegrationTestBase {
     }
 
 
-    private static final String EVAL_RUN = "COLL_ICRM_AI_ASSISTANT_EVAL_RUN";
+    private static final String EVAL_RUN = AiAssistantCollections.EVAL_RUN;
 
     private Document evalSide(int toolCalls) {
         java.util.List<Document> calls = new java.util.ArrayList<>();

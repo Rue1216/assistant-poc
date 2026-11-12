@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 
 import com.example.copilot.aiassistant.application.config.PublishedConfigCache;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
 import com.example.copilot.aiassistant.domain.config.PublishedConfigs;
 import com.example.copilot.aiassistant.domain.prompt.ExampleQuestionParser;
@@ -15,7 +16,7 @@ import org.junit.jupiter.api.Test;
 class SuggestionServiceTest {
 
     private static AssistantConfig instruction(String key, String content) {
-        return new AssistantConfig(null, key, ConfigType.SYSTEM_INSTRUCTION, key, content, null, 0, null, null, null,
+        return new AssistantConfig(null, new ConfigKey(key), ConfigType.SYSTEM_INSTRUCTION, key, content, null, 0, null, null, null,
                 null, null, null, null, null);
     }
 

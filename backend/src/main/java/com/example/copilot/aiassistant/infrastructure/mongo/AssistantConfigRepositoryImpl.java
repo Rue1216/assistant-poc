@@ -3,6 +3,7 @@ package com.example.copilot.aiassistant.infrastructure.mongo;
 import static org.springframework.data.mongodb.core.query.Criteria.where;
 
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.config.ConfigStatus;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
 import com.example.copilot.aiassistant.domain.exception.AssistantException;
@@ -52,25 +53,25 @@ public class AssistantConfigRepositoryImpl implements AssistantConfigRepository 
     }
 
     @Override
-    public Optional<AssistantConfig> findPublished(String configKey) {
-        return mongoRepository.findByConfigKeyAndStatus(configKey, ConfigStatus.PUBLISHED)
+    public Optional<AssistantConfig> findPublished(ConfigKey configKey) {
+        return mongoRepository.findByConfigKeyAndStatus(configKey.value(), ConfigStatus.PUBLISHED)
                 .map(AssistantConfigMapper::toDomain);
     }
 
     @Override
-    public Optional<AssistantConfig> findWorkingCopy(String configKey) {
-        return mongoRepository.findByConfigKeyAndStatusIn(configKey, WORKING_COPY).stream().findFirst()
+    public Optional<AssistantConfig> findWorkingCopy(ConfigKey configKey) {
+        return mongoRepository.findByConfigKeyAndStatusIn(configKey.value(), WORKING_COPY).stream().findFirst()
                 .map(AssistantConfigMapper::toDomain);
     }
 
     @Override
-    public Optional<AssistantConfig> findLatest(String configKey) {
-        return mongoRepository.findTopByConfigKeyOrderByVersionDesc(configKey).map(AssistantConfigMapper::toDomain);
+    public Optional<AssistantConfig> findLatest(ConfigKey configKey) {
+        return mongoRepository.findTopByConfigKeyOrderByVersionDesc(configKey.value()).map(AssistantConfigMapper::toDomain);
     }
 
     @Override
-    public Optional<AssistantConfig> findVersion(String configKey, int version) {
-        return mongoRepository.findByConfigKeyAndVersion(configKey, version).map(AssistantConfigMapper::toDomain);
+    public Optional<AssistantConfig> findVersion(ConfigKey configKey, int version) {
+        return mongoRepository.findByConfigKeyAndVersion(configKey.value(), version).map(AssistantConfigMapper::toDomain);
     }
 
     @Override
@@ -171,8 +172,8 @@ public class AssistantConfigRepositoryImpl implements AssistantConfigRepository 
      * Targeted update of the status only: the archived version keeps its updatedBy / updatedAt (= when it
      * went live). Must run inside the publishing transaction.
      */
-    private void archivePublished(String configKey) {
-        mongoRepository.findByConfigKeyAndStatus(configKey, ConfigStatus.PUBLISHED).ifPresent(old -> {
+    private void archivePublished(ConfigKey configKey) {
+        mongoRepository.findByConfigKeyAndStatus(configKey.value(), ConfigStatus.PUBLISHED).ifPresent(old -> {
             Query current = Query.query(where("id").is(old.getId())
                     .and("status").is(ConfigStatus.PUBLISHED)
                     .and("docVersion").is(old.getDocVersion()));

@@ -1,5 +1,6 @@
 package com.example.copilot.aiassistant.application.config;
 
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import java.util.List;
 
 /** Read models of the admin config screens; none of them reads {@code content}. */
@@ -9,5 +10,5 @@ public interface ConfigQueryRepository {
     List<ConfigSummary> listSummaries();
 
     /** Versions of the key, highest version first; empty when the key is unknown. */
-    List<VersionHistoryEntry> versionHistory(String configKey);
+    List<VersionHistoryEntry> versionHistory(ConfigKey configKey);
 }

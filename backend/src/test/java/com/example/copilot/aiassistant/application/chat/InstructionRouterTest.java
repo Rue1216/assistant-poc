@@ -6,6 +6,7 @@ import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
 import com.example.copilot.aiassistant.application.llm.LlmCallPurpose;
 import com.example.copilot.aiassistant.application.llm.LlmErrorMapper;
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.prompt.InstructionSelection;
 import com.example.copilot.aiassistant.domain.prompt.RouteDecision;
 import com.example.copilot.aiassistant.domain.prompt.RouteSource;
@@ -38,7 +39,7 @@ class InstructionRouterTest {
             config("instruction.market-brief", "市場快訊", "## 回答方式\n只列重點"));
 
     private static AssistantConfig config(String key, String name, String content) {
-        return new AssistantConfig(null, key, null, name, content, null, 0, null, null, null, null, null, null, null,
+        return new AssistantConfig(null, new ConfigKey(key), null, name, content, null, 0, null, null, null, null, null, null, null,
                 null);
     }
 

@@ -14,7 +14,7 @@ public record EvalRunView(String runId, String configKey, String status, String 
                           int totalCases, int completedCases, EvalSummary summary, List<EvalCaseRecord> cases) {
 
     public static EvalRunView of(EvalRun r, String currentDatasetHash) {
-        return new EvalRunView(r.id(), r.configKey(), r.status().name(), r.errorCode(), r.triggeredBy(),
+        return new EvalRunView(r.id(), r.configKey().value(), r.status().name(), r.errorCode(), r.triggeredBy(),
                 AdminTime.at(r.startedAt()), AdminTime.at(r.finishedAt()), r.candidateVersion(),
                 AdminTime.at(r.candidateUpdatedAt()), r.candidateDocVersion(),
                 !r.datasetHash().equals(currentDatasetHash), r.totalCases(), r.completedCases(), r.summary(),

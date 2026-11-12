@@ -10,7 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.example.copilot.IntegrationTestBase;
 import com.example.copilot.TestUsers;
 import com.example.copilot.aiassistant.application.feedback.FeedbackService;
-import com.example.copilot.aiassistant.domain.audit.AuditRecord;
+import com.example.copilot.aiassistant.infrastructure.mongo.AiAssistantCollections;
 import com.example.copilot.testsupport.LogCapture;
 import java.util.ArrayList;
 import java.util.Date;
@@ -42,7 +42,7 @@ class FeedbackControllerTest extends IntegrationTestBase {
     /** Every document this class inserts carries the marker question, so cleanup never touches other tests. */
     @AfterEach
     void cleanUp() {
-        mongo.remove(new Query(Criteria.where("question").is(MARKER)), AuditRecord.COLLECTION);
+        mongo.remove(new Query(Criteria.where("question").is(MARKER)), AiAssistantCollections.AUDIT);
     }
 
     /** A 32-character answer trace id built from a short readable prefix. */
@@ -63,11 +63,11 @@ class FeedbackControllerTest extends IntegrationTestBase {
     }
 
     private void insert(Document d) {
-        mongo.getCollection(AuditRecord.COLLECTION).insertOne(d);
+        mongo.getCollection(AiAssistantCollections.AUDIT).insertOne(d);
     }
 
     private List<Document> find(String traceId) {
-        return mongo.getCollection(AuditRecord.COLLECTION).find(new Document("traceId", traceId))
+        return mongo.getCollection(AiAssistantCollections.AUDIT).find(new Document("traceId", traceId))
                 .sort(new Document("createdAt", 1)).into(new ArrayList<>());
     }
 

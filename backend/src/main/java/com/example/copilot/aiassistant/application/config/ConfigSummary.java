@@ -20,7 +20,7 @@ public record ConfigSummary(String configKey, ConfigType configType, String name
         AssistantConfig wc = versions.stream()
                 .filter(AssistantConfig::isWorkingCopy).findFirst().orElse(null);
         String name = published != null ? published.name() : wc != null ? wc.name() : latest.name();
-        return new ConfigSummary(latest.configKey(), latest.configType(), name,
+        return new ConfigSummary(latest.configKey().value(), latest.configType(), name,
                 VersionInfo.of(published), VersionInfo.of(wc));
     }
 

@@ -6,6 +6,7 @@ import com.example.copilot.IntegrationTestBase;
 import com.example.copilot.TestCustomers;
 import com.example.copilot.aiassistant.domain.customer.AccessLevel;
 import com.example.copilot.aiassistant.application.port.CustomerDataPort;
+import com.example.copilot.aiassistant.domain.customer.CertNo;
 import com.example.copilot.aiassistant.domain.privacy.CustomerContext;
 import com.example.copilot.aiassistant.domain.user.UserContext;
 import java.util.Set;
@@ -25,30 +26,30 @@ class CustomerContextFactoryTest extends IntegrationTestBase {
 
     @Test
     void noneAccessYieldsEmpty() {
-        assertThat(factory.create(AO, TestCustomers.COMPLAINT)).isEmpty();
+        assertThat(factory.create(AO, new CertNo(TestCustomers.COMPLAINT))).isEmpty();
     }
 
     @Test
     void unknownCustomerYieldsEmpty() {
-        assertThat(factory.create(ADMIN, TestCustomers.UNKNOWN)).isEmpty();
+        assertThat(factory.create(ADMIN, new CertNo(TestCustomers.UNKNOWN))).isEmpty();
     }
 
     @Test
     void forEvaluationSkipsAccessCheck() {
         CustomerContextFactory denyAll = new CustomerContextFactory((user, certNo) -> AccessLevel.NONE, dataPort);
 
-        CustomerContext ctx = denyAll.forEvaluation(TestCustomers.RETIREE, AccessLevel.FULL).orElseThrow();
+        CustomerContext ctx = denyAll.forEvaluation(new CertNo(TestCustomers.RETIREE), AccessLevel.FULL).orElseThrow();
 
         assertThat(ctx.accessLevel()).isEqualTo(AccessLevel.FULL);
         assertThat(ctx.selfReferences()).contains("王小明", TestCustomers.RETIREE);
-        assertThat(denyAll.forEvaluation(TestCustomers.UNKNOWN, AccessLevel.FULL)).isEmpty();
+        assertThat(denyAll.forEvaluation(new CertNo(TestCustomers.UNKNOWN), AccessLevel.FULL)).isEmpty();
     }
 
     @Test
     void limitedAccessCarriesLevel() {
         CustomerContextFactory limited = new CustomerContextFactory((user, certNo) -> AccessLevel.LIMITED, dataPort);
 
-        CustomerContext ctx = limited.create(ADMIN, TestCustomers.RETIREE).orElseThrow();
+        CustomerContext ctx = limited.create(ADMIN, new CertNo(TestCustomers.RETIREE)).orElseThrow();
         assertThat(ctx.accessLevel()).isEqualTo(AccessLevel.LIMITED);
         assertThat(ctx.selfReferences()).contains("王小明", TestCustomers.RETIREE);
         assertThat(ctx.sensitiveValues()).contains("0912-000-111",

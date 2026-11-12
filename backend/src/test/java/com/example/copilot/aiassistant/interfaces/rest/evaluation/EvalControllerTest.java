@@ -17,6 +17,7 @@ import com.example.copilot.TestUsers;
 import com.example.copilot.aiassistant.application.evaluation.EvalRunner;
 import com.example.copilot.aiassistant.domain.chat.EvaluationReport;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.eval.CaseResult;
 import com.example.copilot.aiassistant.domain.eval.EvalCaseRecord;
 import com.example.copilot.aiassistant.domain.eval.EvalDataset;
@@ -26,6 +27,7 @@ import com.example.copilot.aiassistant.domain.eval.EvalRun;
 import com.example.copilot.aiassistant.domain.eval.EvalStatus;
 import com.example.copilot.aiassistant.domain.eval.EvalSummary;
 import com.example.copilot.aiassistant.domain.eval.JudgeVerdict;
+import com.example.copilot.aiassistant.infrastructure.mongo.AiAssistantCollections;
 import com.example.copilot.aiassistant.infrastructure.mongo.AssistantConfigMongoRepository;
 import com.example.copilot.aiassistant.application.config.ConfigCommandService;
 import com.example.copilot.aiassistant.domain.repository.EvalRunRepository;
@@ -66,12 +68,12 @@ class EvalControllerTest extends IntegrationTestBase {
 
     @BeforeEach
     void setUp() {
-        mongo.remove(new Query(), EvalRun.COLLECTION);
+        mongo.remove(new Query(), AiAssistantCollections.EVAL_RUN);
     }
 
     @AfterEach
     void tearDown() {
-        mongo.remove(new Query(), EvalRun.COLLECTION);
+        mongo.remove(new Query(), AiAssistantCollections.EVAL_RUN);
         configs.deleteAll();
         seedLoader.run(new DefaultApplicationArguments());
     }
@@ -89,7 +91,7 @@ class EvalControllerTest extends IntegrationTestBase {
     }
 
     private long draftDocVersion() {
-        return configService.createDraft(KEY, ADMIN).docVersion();
+        return configService.createDraft(new ConfigKey(KEY), ADMIN).docVersion();
     }
 
     private static EvalCaseRecord caseRecord(String id) {
@@ -104,7 +106,7 @@ class EvalControllerTest extends IntegrationTestBase {
         EvalMetrics m = new EvalMetrics(1, 1, 1, 0, 0, 0, 1, 1, 1, 150, 100, 50, 1200);
         EvalSummary summary = status == EvalStatus.COMPLETED ? new EvalSummary(m, m, 80) : null;
         Instant finished = status == EvalStatus.RUNNING ? null : startedAt.plusSeconds(30);
-        return runs.insert(new EvalRun(null, KEY, 2, 7L, startedAt, List.of(new PromptVersion(KEY, 1)), hash, status,
+        return runs.insert(new EvalRun(null, new ConfigKey(KEY), 2, 7L, startedAt, List.of(new PromptVersion(KEY, 1)), hash, status,
                 null, "someone", startedAt, clock.instant(), finished, 16, cases.size(), summary, cases, 0L));
     }
 

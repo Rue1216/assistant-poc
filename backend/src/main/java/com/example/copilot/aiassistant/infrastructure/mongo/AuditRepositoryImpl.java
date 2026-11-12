@@ -1,6 +1,7 @@
 package com.example.copilot.aiassistant.infrastructure.mongo;
 
 import com.example.copilot.aiassistant.domain.audit.AuditRecord;
+import com.example.copilot.aiassistant.domain.audit.TraceId;
 import com.example.copilot.aiassistant.domain.feedback.FeedbackRating;
 import com.example.copilot.aiassistant.domain.repository.AuditRepository;
 import java.time.Instant;
@@ -25,15 +26,15 @@ public class AuditRepositoryImpl implements AuditRepository {
 
     @Override
     public void insert(AuditRecord record) {
-        mongo.insert(AuditRecordMapper.toDocument(record), AuditRecord.COLLECTION);
+        mongo.insert(AuditRecordMapper.toDocument(record), AiAssistantCollections.AUDIT);
     }
 
     @Override
-    public boolean setFeedback(String traceId, String userId, FeedbackRating rating, Instant at) {
-        Query query = new Query(Criteria.where("traceId").is(traceId).and("userId").is(userId)
+    public boolean setFeedback(TraceId traceId, String userId, FeedbackRating rating, Instant at) {
+        Query query = new Query(Criteria.where("traceId").is(traceId.value()).and("userId").is(userId)
                 .and("outcome").is("ANSWERED")).with(Sort.by(Sort.Direction.DESC, "createdAt"));
         Update update = new Update().set("feedback", rating == null ? null : rating.name())
                 .set("feedbackAt", Date.from(at));
-        return mongo.findAndModify(query, update, Document.class, AuditRecord.COLLECTION) != null;
+        return mongo.findAndModify(query, update, Document.class, AiAssistantCollections.AUDIT) != null;
     }
 }

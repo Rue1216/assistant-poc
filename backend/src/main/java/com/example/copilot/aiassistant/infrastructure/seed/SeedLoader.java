@@ -2,6 +2,7 @@ package com.example.copilot.aiassistant.infrastructure.seed;
 
 import com.example.copilot.aiassistant.application.support.ClasspathText;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.config.ConfigStatus;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
@@ -45,7 +46,7 @@ public class SeedLoader implements ApplicationRunner {
         List<ManifestEntry> entries = objectMapper.readValue(ClasspathText.read("seed/manifest.json"),
                 new TypeReference<List<ManifestEntry>>() { });
         for (ManifestEntry entry : entries) {
-            repository.insert(AssistantConfig.newDraft(entry.configKey(), entry.configType(), entry.name(),
+            repository.insert(AssistantConfig.newDraft(new ConfigKey(entry.configKey()), entry.configType(), entry.name(),
                     ClasspathText.read("seed/" + entry.file()), 1, AssistantConfig.SYSTEM_ACTOR, now)
                     .withStatus(ConfigStatus.PUBLISHED, null));
         }

@@ -9,6 +9,7 @@ import com.example.copilot.aiassistant.application.chat.WorkflowRunner.Prepared;
 import com.example.copilot.aiassistant.application.chat.WorkflowRunner.StepExecution;
 import com.example.copilot.aiassistant.application.llm.LlmErrorMapper;
 import com.example.copilot.aiassistant.domain.customer.AccessLevel;
+import com.example.copilot.aiassistant.domain.customer.CertNo;
 import com.example.copilot.aiassistant.domain.privacy.CustomerContext;
 import com.example.copilot.aiassistant.domain.privacy.PiiRedactor;
 import com.example.copilot.aiassistant.domain.prompt.WorkflowStep;
@@ -55,7 +56,7 @@ class WorkflowRunnerTest {
     private static final String DROPPED_NOTICE = "未能完成「未知工具」，以下回答可能不完整。";
     private static final ToolContext CONTEXT = new ToolContext(
             new UserContext("ICRM00028", "理專", "FC", Set.of("AI_ASSISTANT_USE")),
-            new CustomerContext(TestCustomers.RETIREE, AccessLevel.FULL, Set.of(), Set.of()));
+            new CustomerContext(new CertNo(TestCustomers.RETIREE), AccessLevel.FULL, Set.of(), Set.of()));
 
     private final JsonMapper mapper = JsonMapper.builder().build();
     private final PiiRedactor redactor = new PiiRedactor();

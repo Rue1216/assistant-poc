@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
+import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.config.ConfigStatus;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
 import com.example.copilot.aiassistant.domain.exception.AssistantException;
@@ -24,29 +25,29 @@ class ConfigQueryServiceTest {
 
     @Test
     void versionsThrowsNotFoundWhenEmpty() {
-        when(queries.versionHistory("instruction.nope")).thenReturn(List.of());
+        when(queries.versionHistory(new ConfigKey("instruction.nope"))).thenReturn(List.of());
 
-        assertThatThrownBy(() -> service.versions("instruction.nope"))
+        assertThatThrownBy(() -> service.versions(new ConfigKey("instruction.nope")))
                 .isInstanceOfSatisfying(AssistantException.class,
                         e -> assertThat(e.code()).isEqualTo(ErrorCode.AI_CONFIG_NOT_FOUND));
     }
 
     @Test
     void versionThrowsNotFoundWhenMissing() {
-        when(repository.findVersion("instruction.x", 3)).thenReturn(Optional.empty());
+        when(repository.findVersion(new ConfigKey("instruction.x"), 3)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.version("instruction.x", 3))
+        assertThatThrownBy(() -> service.version(new ConfigKey("instruction.x"), 3))
                 .isInstanceOfSatisfying(AssistantException.class,
                         e -> assertThat(e.code()).isEqualTo(ErrorCode.AI_CONFIG_NOT_FOUND));
     }
 
     @Test
     void versionReturnsRepositoryRecord() {
-        AssistantConfig config = AssistantConfig.newDraft("instruction.x", ConfigType.SYSTEM_INSTRUCTION, "X", "body",
+        AssistantConfig config = AssistantConfig.newDraft(new ConfigKey("instruction.x"), ConfigType.SYSTEM_INSTRUCTION, "X", "body",
                 3, "EEE11111", Instant.parse("2026-10-20T02:00:00Z"));
-        when(repository.findVersion("instruction.x", 3)).thenReturn(Optional.of(config));
+        when(repository.findVersion(new ConfigKey("instruction.x"), 3)).thenReturn(Optional.of(config));
 
-        assertThat(service.version("instruction.x", 3)).isSameAs(config);
+        assertThat(service.version(new ConfigKey("instruction.x"), 3)).isSameAs(config);
     }
 
     @Test
@@ -60,8 +61,8 @@ class ConfigQueryServiceTest {
     @Test
     void versionsReturnsHistoryAsIs() {
         VersionHistoryEntry entry = new VersionHistoryEntry(1, ConfigStatus.PUBLISHED, null, "n", null, "a", "b", null);
-        when(queries.versionHistory("instruction.x")).thenReturn(List.of(entry));
+        when(queries.versionHistory(new ConfigKey("instruction.x"))).thenReturn(List.of(entry));
 
-        assertThat(service.versions("instruction.x")).containsExactly(entry);
+        assertThat(service.versions(new ConfigKey("instruction.x"))).containsExactly(entry);
     }
 }
