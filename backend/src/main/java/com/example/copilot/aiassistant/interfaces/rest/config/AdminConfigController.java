@@ -1,11 +1,11 @@
 package com.example.copilot.aiassistant.interfaces.rest.config;
 
-import com.example.copilot.aiassistant.application.config.ApplyCommand;
-import com.example.copilot.aiassistant.application.config.ConfigCommandService;
-import com.example.copilot.aiassistant.application.config.ConfigQueryService;
-import com.example.copilot.aiassistant.application.config.PublishCommand;
-import com.example.copilot.aiassistant.application.config.PublishMode;
-import com.example.copilot.aiassistant.application.config.SaveCommand;
+import com.example.copilot.aiassistant.application.command.config.ApplyCommand;
+import com.example.copilot.aiassistant.application.command.config.ConfigCommandUseCase;
+import com.example.copilot.aiassistant.application.query.config.ConfigQueryService;
+import com.example.copilot.aiassistant.application.command.config.PublishCommand;
+import com.example.copilot.aiassistant.application.command.config.PublishMode;
+import com.example.copilot.aiassistant.application.command.config.SaveCommand;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
 import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
@@ -52,12 +52,12 @@ public class AdminConfigController {
     private static final String EDIT = "hasAuthority('AI_CONFIG_EDIT')";
     private static final String PUBLISH = "hasAuthority('AI_CONFIG_PUBLISH')";
 
-    private final ConfigCommandService service;
+    private final ConfigCommandUseCase service;
     private final ConfigQueryService queries;
     private final CurrentUserPort currentUser;
     private final ExampleQuestionParser exampleQuestions;
 
-    public AdminConfigController(ConfigCommandService service, ConfigQueryService queries,
+    public AdminConfigController(ConfigCommandUseCase service, ConfigQueryService queries,
                                  CurrentUserPort currentUser, ExampleQuestionParser exampleQuestions) {
         this.service = service;
         this.queries = queries;
@@ -121,7 +121,7 @@ public class AdminConfigController {
     @PostMapping("/{configKey}/draft/validate")
     @PreAuthorize(EDIT)
     public ValidationReportView validate(@PathVariable @Pattern(regexp = ConfigKey.PATTERN) String configKey) {
-        return ValidationReportView.of(service.validateWorkingCopy(new ConfigKey(configKey)));
+        return ValidationReportView.of(queries.validateWorkingCopy(new ConfigKey(configKey)));
     }
 
     @PostMapping("/{configKey}/publish")

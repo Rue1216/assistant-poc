@@ -1,5 +1,6 @@
 package com.example.copilot.aiassistant.application.config;
 
+import com.example.copilot.aiassistant.application.command.config.ConfigPublishedEvent;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
@@ -10,6 +11,8 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 /** In-memory cache of all PUBLISHED configs with a 60 second TTL (04 section 2.6). */
 @Component
@@ -42,6 +45,15 @@ public class PublishedConfigCache {
 
     public void invalidate() {
         entry = null;
+    }
+
+    /**
+     * Drops the cached configs once the publishing transaction has committed, so a request in between cannot
+     * reload the old version into the cache. Nothing happens when the transaction rolls back.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onPublished(ConfigPublishedEvent event) {
+        invalidate();
     }
 
     /** Reads the published configs straight from MongoDB without touching the cache. */

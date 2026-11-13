@@ -41,13 +41,16 @@ class ArchitectureRulesTest {
 
     private static final List<String> APPLICATION_FORBIDDEN = List.of(
             "org.springframework.data.",
-            "org.springframework.transaction.",
+            "org.springframework.transaction.support.",
+            "org.springframework.transaction.interceptor.",
             "com.mongodb.",
             "org.bson.",
             "jakarta.servlet.",
             "com.example.copilot.aiassistant.interfaces.",
             "com.example.copilot.aiassistant.infrastructure.",
             "com.example.copilot.mockplatform.");
+
+    private static final String TRANSACTION_ANNOTATION = "org.springframework.transaction.annotation.";
 
     private static final List<String> INTERFACES_FORBIDDEN = List.of(
             "com.example.copilot.aiassistant.domain.repository.",
@@ -69,6 +72,18 @@ class ArchitectureRulesTest {
     @Test
     void applicationHasNoSpringDataOrMongoImports() {
         assertThat(violations("application", APPLICATION_FORBIDDEN, Set.of())).isEmpty();
+    }
+
+    /** Transaction boundaries are declared on command use cases only (spec 5.3). */
+    @Test
+    void transactionAnnotationOnlyInCommand() {
+        Path applicationDir = ROOT.resolve("application");
+        List<String> users = javaFiles(applicationDir).stream()
+                .filter(file -> importLines(file).stream().anyMatch(l -> importedName(l).startsWith(TRANSACTION_ANNOTATION)))
+                .map(file -> relative(applicationDir, file))
+                .toList();
+        assertThat(users).as("application files importing " + TRANSACTION_ANNOTATION).isNotEmpty();
+        assertThat(users).allSatisfy(path -> assertThat(path).startsWith("command/"));
     }
 
     @Test

@@ -3,8 +3,8 @@ package com.example.copilot.aiassistant.infrastructure.mongo;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.copilot.IntegrationTestBase;
-import com.example.copilot.aiassistant.application.config.ConfigSummary;
-import com.example.copilot.aiassistant.application.config.VersionHistoryEntry;
+import com.example.copilot.aiassistant.application.query.config.ConfigSummary;
+import com.example.copilot.aiassistant.application.query.config.VersionHistoryEntry;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
 import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.config.ConfigStatus;

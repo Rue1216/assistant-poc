@@ -6,6 +6,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.example.copilot.aiassistant.application.command.config.ConfigPublishedEvent;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
 import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
@@ -52,6 +53,21 @@ class PublishedConfigCacheTest {
         cache.invalidate();
         cache.current();
         verify(repo, times(3)).findPublished();
+    }
+
+    @Test
+    void publishedEventDropsTheCachedConfigs() {
+        AssistantConfigRepository repo = mock(AssistantConfigRepository.class);
+        when(repo.findPublished()).thenReturn(List.of(cfg("system.main", ConfigType.SYSTEM_PROMPT)));
+        PublishedConfigCache cache = new PublishedConfigCache(repo, new MutableClock());
+
+        cache.current();
+        cache.current();
+        verify(repo, times(1)).findPublished();
+
+        cache.onPublished(new ConfigPublishedEvent(new ConfigKey("system.main")));
+        cache.current();
+        verify(repo, times(2)).findPublished();
     }
 
     private static final class MutableClock extends Clock {

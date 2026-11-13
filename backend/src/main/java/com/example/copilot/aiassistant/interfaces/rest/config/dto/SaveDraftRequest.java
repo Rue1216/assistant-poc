@@ -1,6 +1,6 @@
 package com.example.copilot.aiassistant.interfaces.rest.config.dto;
 
-import com.example.copilot.aiassistant.application.config.SaveMode;
+import com.example.copilot.aiassistant.domain.config.SaveMode;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;

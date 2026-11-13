@@ -1,5 +1,6 @@
 package com.example.copilot.aiassistant.application.evaluation;
 
+import com.example.copilot.aiassistant.application.command.evaluation.EvalRunCommandUseCase;
 import static com.example.copilot.aiassistant.application.chat.ScriptedChatModel.answer;
 import static com.example.copilot.aiassistant.application.chat.ScriptedChatModel.text;
 import static org.mockito.ArgumentMatchers.any;
@@ -73,13 +74,13 @@ abstract class EvalRunnerTestBase extends IntegrationTestBase {
                 null, null);
     }
 
-    static EvalRunService.EvalSnapshot snapshot() {
+    static EvalRunCommandUseCase.EvalSnapshot snapshot() {
         return snapshot(List.of(), List.of());
     }
 
-    static EvalRunService.EvalSnapshot snapshot(List<AssistantConfig> baselineInstructions,
+    static EvalRunCommandUseCase.EvalSnapshot snapshot(List<AssistantConfig> baselineInstructions,
                                                 List<AssistantConfig> candidateInstructions) {
-        return new EvalRunService.EvalSnapshot(
+        return new EvalRunCommandUseCase.EvalSnapshot(
                 new PublishedConfigs(config("system.main", 1, "BASELINE-PROMPT"), baselineInstructions),
                 new PublishedConfigs(config("system.main", 2, "CANDIDATE-PROMPT"), candidateInstructions));
     }

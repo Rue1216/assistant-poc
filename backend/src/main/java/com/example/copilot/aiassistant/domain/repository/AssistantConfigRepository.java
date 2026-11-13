@@ -36,21 +36,26 @@ public interface AssistantConfigRepository {
     /** Updates the version conditionally on its {@code docVersion}; returns it with the incremented docVersion. */
     AssistantConfig save(AssistantConfig config);
 
-    /** In one transaction: archives the key's current PUBLISHED version and stores the given one (PUBLISHED). */
+    /**
+     * Archives the key's current PUBLISHED version and stores the given one (PUBLISHED). Several writes: the caller
+     * runs it in a transaction.
+     */
     AssistantConfig publish(AssistantConfig workingCopy);
 
-    /** In one transaction: stores {@code discarded} (may be null) and inserts {@code draft}. */
+    /** Stores {@code discarded} (may be null) and inserts {@code draft}. Several writes: the caller runs it in a transaction. */
     AssistantConfig replaceWorkingCopy(AssistantConfig discarded, AssistantConfig draft);
 
     /**
-     * In one transaction: archives the current PUBLISHED version and claims {@code due} if it is still SCHEDULED
-     * with the same docVersion. Returns false, with nothing changed, when another change won the race.
+     * Archives the current PUBLISHED version and claims {@code due} if it is still SCHEDULED with the same
+     * docVersion; the caller runs it in a transaction. When another change won the race it throws
+     * {@code AI_CONFIG_CONFLICT}, so the caller's transaction rolls the archive back. Store failures (including
+     * write conflicts) propagate unmapped.
      */
-    boolean publishScheduled(AssistantConfig due, Instant now);
+    void publishScheduled(AssistantConfig due, Instant now);
 
     /**
      * Turns {@code due} back into a DRAFT (clearing {@code scheduledAt}) if it is still SCHEDULED with the same
-     * docVersion. Returns false, with nothing changed, when another change won the race. No transaction.
+     * docVersion. Returns false, with nothing changed, when another change won the race. A single conditional write.
      */
     boolean revertScheduled(AssistantConfig due, String actor, Instant now);
 }

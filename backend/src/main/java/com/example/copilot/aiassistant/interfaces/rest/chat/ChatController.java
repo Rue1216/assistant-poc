@@ -1,9 +1,9 @@
 package com.example.copilot.aiassistant.interfaces.rest.chat;
 
 import com.example.copilot.aiassistant.AiAssistantProperties;
-import com.example.copilot.aiassistant.application.chat.ChatCommand.HistoryMessage;
-import com.example.copilot.aiassistant.application.chat.ChatCommand;
-import com.example.copilot.aiassistant.application.chat.ChatOrchestrator;
+import com.example.copilot.aiassistant.application.command.chat.ChatCommand.HistoryMessage;
+import com.example.copilot.aiassistant.application.command.chat.ChatCommand;
+import com.example.copilot.aiassistant.application.command.chat.ChatUseCase;
 import com.example.copilot.aiassistant.domain.customer.CertNo;
 import com.example.copilot.aiassistant.interfaces.rest.chat.dto.ChatRequestBody;
 import com.example.copilot.aiassistant.interfaces.rest.chat.dto.ChatResponseBody;
@@ -30,12 +30,12 @@ public class ChatController {
 
     private final CurrentUserPort currentUser;
     private final CustomerContextFactory contexts;
-    private final ChatOrchestrator orchestrator;
+    private final ChatUseCase orchestrator;
     private final PerUserRateLimiter rateLimiter;
     private final AiAssistantProperties.Limits limits;
 
     public ChatController(CurrentUserPort currentUser, CustomerContextFactory contexts,
-            ChatOrchestrator orchestrator, PerUserRateLimiter rateLimiter, AiAssistantProperties props) {
+            ChatUseCase orchestrator, PerUserRateLimiter rateLimiter, AiAssistantProperties props) {
         this.limits = props.limits();
         this.currentUser = currentUser;
         this.contexts = contexts;

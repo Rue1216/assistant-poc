@@ -5,8 +5,8 @@ import com.example.copilot.aiassistant.domain.exception.AssistantException;
 import com.example.copilot.aiassistant.domain.exception.ErrorCode;
 import com.example.copilot.aiassistant.application.port.CurrentUserPort;
 import com.example.copilot.aiassistant.application.chat.CustomerContextFactory;
-import com.example.copilot.aiassistant.application.chat.SuggestionService;
-import com.example.copilot.aiassistant.application.chat.SuggestionService.SuggestionCategory;
+import com.example.copilot.aiassistant.application.query.chat.SuggestionQueryService;
+import com.example.copilot.aiassistant.application.query.chat.SuggestionQueryService.SuggestionCategory;
 import jakarta.validation.constraints.Pattern;
 import java.util.List;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -22,10 +22,10 @@ public class SuggestionController {
 
     private final CurrentUserPort currentUser;
     private final CustomerContextFactory contexts;
-    private final SuggestionService suggestions;
+    private final SuggestionQueryService suggestions;
 
     public SuggestionController(CurrentUserPort currentUser, CustomerContextFactory contexts,
-            SuggestionService suggestions) {
+            SuggestionQueryService suggestions) {
         this.currentUser = currentUser;
         this.contexts = contexts;
         this.suggestions = suggestions;

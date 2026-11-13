@@ -1,7 +1,7 @@
 package com.example.copilot.aiassistant.infrastructure.mongo;
 
-import com.example.copilot.aiassistant.application.feedback.FeedbackStatsQueryRepository;
-import com.example.copilot.aiassistant.application.feedback.VersionFeedback;
+import com.example.copilot.aiassistant.application.query.feedback.FeedbackStatsQueryRepository;
+import com.example.copilot.aiassistant.application.query.feedback.VersionFeedback;
 import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import java.util.List;
 import org.bson.Document;

@@ -12,21 +12,32 @@ import static org.mockito.Mockito.withSettings;
 import static org.springframework.data.mongodb.core.query.Criteria.where;
 
 import com.example.copilot.IntegrationTestBase;
+import com.example.copilot.aiassistant.application.command.config.ApplyCommand;
+import com.example.copilot.aiassistant.application.command.config.ConfigCommandUseCase;
+import com.example.copilot.aiassistant.application.command.config.PublishCommand;
+import com.example.copilot.aiassistant.application.command.config.PublishMode;
+import com.example.copilot.aiassistant.application.command.config.ScheduledPublishOutcome;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
 import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.config.ConfigStatus;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
+import com.example.copilot.aiassistant.domain.config.ConfigValidator;
+import com.example.copilot.aiassistant.domain.config.ScheduleWindow;
 import com.example.copilot.aiassistant.domain.exception.AssistantException;
 import com.example.copilot.aiassistant.domain.exception.ErrorCode;
+import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
 import com.example.copilot.aiassistant.infrastructure.seed.SeedLoader;
 import com.example.copilot.testsupport.LogCapture;
+import com.example.copilot.testsupport.SpringAop;
 import com.mongodb.MongoException;
 import com.mongodb.client.ClientSession;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import org.apache.logging.log4j.Level;
@@ -39,17 +50,19 @@ import org.junit.jupiter.api.Test;
 import org.mockito.AdditionalAnswers;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.DefaultApplicationArguments;
+import org.springframework.context.ApplicationContext;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.data.mongodb.MongoTransactionManager;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.transaction.TransactionSystemException;
 
 /**
- * Transactions and conflict mapping of the config repository, against the real replica set. Mongo failures
- * are injected through a delegating {@link MongoTemplate} handed to a hand-built implementation.
+ * Writes and conflict mapping of the config repository, against the real replica set. Mongo failures are injected
+ * through a delegating {@link MongoTemplate} handed to a hand-built implementation. The multi-document writes rely
+ * on the caller's transaction, so their atomicity is checked through a {@link ConfigCommandUseCase} carrying the
+ * container's transaction proxy.
  */
 class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
 
@@ -63,14 +76,16 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
     @Autowired MongoClient mongoClient;
     @Autowired AssistantConfigDocumentMapper mapper;
     @Autowired MongoTemplate mongo;
-    @Autowired MongoTransactionManager transactionManager;
     @Autowired SeedLoader seedLoader;
+    @Autowired ConfigValidator validator;
+    @Autowired ScheduleWindow window;
+    @Autowired ApplicationContext context;
 
     private AssistantConfigRepositoryImpl repository;
 
     @BeforeEach
     void setUp() {
-        repository = new AssistantConfigRepositoryImpl(mongo, mapper, transactionManager);
+        repository = new AssistantConfigRepositoryImpl(mongo, mapper);
     }
 
     @AfterEach
@@ -80,7 +95,23 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
     }
 
     private AssistantConfigRepositoryImpl withMongoTemplate(MongoTemplate template) {
-        return new AssistantConfigRepositoryImpl(template, mapper, transactionManager);
+        return new AssistantConfigRepositoryImpl(template, mapper);
+    }
+
+    /** The use case over {@code repo}, at a fixed time, inside the container's transaction proxy. */
+    private ConfigCommandUseCase useCase(AssistantConfigRepository repo, Instant now) {
+        return SpringAop.advised(context,
+                new ConfigCommandUseCase(repo, validator, context, Clock.fixed(now, ZoneOffset.UTC), window));
+    }
+
+    private static PublishCommand immediate(AssistantConfig wc) {
+        return new PublishCommand(PublishMode.IMMEDIATE, null, wc.docVersion());
+    }
+
+    /** Delegates to the real repository unless a call is stubbed. */
+    private AssistantConfigRepository delegatingRepository() {
+        return mock(AssistantConfigRepository.class,
+                withSettings().defaultAnswer(AdditionalAnswers.delegatesTo(repository)));
     }
 
     /** Delegates to the real MongoTemplate unless a call is stubbed. */
@@ -170,8 +201,7 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
         AssistantConfig draft = insertDraft(OTHER);
         Instant later = NOW.plus(Duration.ofMinutes(10));
 
-        AssistantConfig published = repository.publish(
-                draft.withStatus(ConfigStatus.PUBLISHED, null).touched(ACTOR, later));
+        AssistantConfig published = useCase(repository, later).publish(KEY, immediate(draft), ACTOR);
 
         assertThat(published.status()).isEqualTo(ConfigStatus.PUBLISHED);
         assertThat(published.docVersion()).isEqualTo(draft.docVersion() + 1);
@@ -187,7 +217,7 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
         assertThat(repository.findPublished(KEY)).map(AssistantConfig::version).contains(2);
     }
 
-    /** Moved from ConfigCommandServiceTest#publishedVersionChangedBeforeArchiveIsConflict. */
+    /** Moved from ConfigCommandUseCaseTest#publishedVersionChangedBeforeArchiveIsConflict. */
     @Test
     void publishedVersionChangedBeforeArchiveIsConflictAndRollsBack() {
         AssistantConfig v1Before = reload(1);
@@ -201,8 +231,7 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
             return read;
         }).when(racing).findOne(any(Query.class), eq(AssistantConfigDocument.class));
 
-        assertConflict(() -> withMongoTemplate(racing).publish(
-                draft.withStatus(ConfigStatus.PUBLISHED, null).touched(ACTOR, NOW)));
+        assertConflict(() -> useCase(withMongoTemplate(racing), NOW).publish(KEY, immediate(draft), ACTOR));
 
         // The bump ran inside the publishing transaction, so it was rolled back with everything else.
         assertThat(reload(1).status()).isEqualTo(ConfigStatus.PUBLISHED);
@@ -221,7 +250,7 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
                     Filters.and(Filters.eq("configKey", KEY.value()), Filters.eq("version", 1)),
                     Updates.set("changeNote", "uncommitted change by another transaction"));
             try {
-                assertConflict(() -> repository.publish(draft.withStatus(ConfigStatus.PUBLISHED, null)));
+                assertConflict(() -> useCase(repository, NOW).publish(KEY, immediate(draft), ACTOR));
             } finally {
                 other.abortTransaction();
             }
@@ -233,24 +262,25 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
     }
 
     @Test
-    void publishScheduledLosesRaceReturnsFalseAndRollsBackArchive() {
+    void publishScheduledLosesRaceIsConflictAndRollsBackArchive() {
         AssistantConfig v1Before = reload(1);
         Instant at = NOW.plus(Duration.ofMinutes(2));
         scheduleDraft(at);
         Instant due = NOW.plus(Duration.ofMinutes(3));
-        AssistantConfig stale = repository.findScheduledDue(due).getFirst();
+        ConfigCommandUseCase scheduler = useCase(repository, due);
+        AssistantConfig stale = scheduler.findScheduledDue().getFirst();
 
         // Someone saves the scheduled version between the scheduler's query and its conditional claim.
         repository.save(stale.withContent("saved meanwhile", stale.content(), "note").touched(OTHER, due));
 
-        assertThat(repository.publishScheduled(stale, due)).isFalse();
+        assertConflict(() -> scheduler.publishScheduled(stale));
         assertThat(reload(1).status()).isEqualTo(ConfigStatus.PUBLISHED);
         assertThat(reload(1).docVersion()).isEqualTo(v1Before.docVersion());
         assertThat(reload(2).status()).isEqualTo(ConfigStatus.SCHEDULED);
 
         // A fresh read claims it: published at the run time, the last editor stays the updatedBy.
-        AssistantConfig fresh = repository.findScheduledDue(due).getFirst();
-        assertThat(repository.publishScheduled(fresh, due)).isTrue();
+        AssistantConfig fresh = scheduler.findScheduledDue().getFirst();
+        assertThat(scheduler.publishScheduled(fresh)).isEqualTo(ScheduledPublishOutcome.PUBLISHED);
         AssistantConfig v2 = reload(2);
         assertThat(v2.status()).isEqualTo(ConfigStatus.PUBLISHED);
         assertThat(v2.updatedBy()).isEqualTo(OTHER);
@@ -260,9 +290,10 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
         AssistantConfig v1 = reload(1);
         assertThat(v1.status()).isEqualTo(ConfigStatus.ARCHIVED);
         assertThat(v1.updatedAt()).isEqualTo(v1Before.updatedAt());
-        assertThat(repository.findScheduledDue(due)).isEmpty();
-        assertThat(repository.publishScheduled(fresh, due)).isFalse();
+        assertThat(scheduler.findScheduledDue()).isEmpty();
+        assertConflict(() -> scheduler.publishScheduled(fresh));
         assertThat(countOf(ConfigStatus.PUBLISHED)).isEqualTo(1);
+        assertThat(countOf(ConfigStatus.ARCHIVED)).isEqualTo(1);
     }
 
     @Test
@@ -295,23 +326,34 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
         assertThat(reload(2).status()).isEqualTo(ConfigStatus.SCHEDULED);
     }
 
-    /** Impl-level half of ScheduledPublishJobTest#writeConflictOnClaimIsLoggedAtDebug. */
+    /**
+     * Impl-level half of ScheduledPublishJobTest#writeConflictOnClaimIsLoggedAtDebug: the repository neither maps
+     * nor logs a write conflict on the claim; the use case's boundary turns it into a conflict (keeping the cause)
+     * and the job decides it is a lost race.
+     */
     @Test
     void publishScheduledWriteConflictIsLostRaceLoggedAtDebug() {
         scheduleDraft(NOW.plus(Duration.ofMinutes(2)));
         Instant due = NOW.plus(Duration.ofMinutes(3));
         AssistantConfig scheduled = repository.findScheduledDue(due).getFirst();
+        DataIntegrityViolationException writeConflict = new DataIntegrityViolationException("x",
+                new MongoException(112, "conflict"));
         MongoTemplate failing = delegatingMongoTemplate();
-        doThrow(new DataIntegrityViolationException("x", new MongoException(112, "conflict")))
-                .when(failing).findOne(any(Query.class), eq(AssistantConfigDocument.class));
+        doThrow(writeConflict).when(failing).findOne(any(Query.class), eq(AssistantConfigDocument.class));
 
         List<LogEvent> events;
         try (LogCapture capture = LogCapture.of(AssistantConfigRepositoryImpl.class, Level.DEBUG)) {
-            assertThat(withMongoTemplate(failing).publishScheduled(scheduled, due)).isFalse();
+            assertThatThrownBy(() -> withMongoTemplate(failing).publishScheduled(scheduled, due))
+                    .isSameAs(writeConflict);
+            assertThatThrownBy(() -> useCase(withMongoTemplate(failing), due).publishScheduled(scheduled))
+                    .isInstanceOfSatisfying(AssistantException.class, e -> {
+                        assertThat(e.code()).isEqualTo(ErrorCode.AI_CONFIG_CONFLICT);
+                        assertThat(e.getCause()).isSameAs(writeConflict);
+                    });
             events = capture.events();
         }
 
-        assertThat(events).extracting(LogEvent::getLevel).containsExactly(Level.DEBUG);
+        assertThat(events).isEmpty();
         assertThat(reload(2).status()).isEqualTo(ConfigStatus.SCHEDULED);
     }
 
@@ -336,24 +378,6 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
         assertThat(reload(2).status()).isEqualTo(ConfigStatus.SCHEDULED);
     }
 
-    /** Moved from ScheduledPublishJobTest#lostRaceClassification (was ConfigCommandService.isLostRace). */
-    @Test
-    void lostRaceClassification() {
-        assertThat(AssistantConfigRepositoryImpl.isLostRace(new AssistantException(ErrorCode.AI_CONFIG_CONFLICT)))
-                .isTrue();
-        assertThat(AssistantConfigRepositoryImpl.isLostRace(new AssistantException(ErrorCode.AI_CONFIG_NOT_FOUND)))
-                .isFalse();
-        assertThat(AssistantConfigRepositoryImpl.isLostRace(new RuntimeException(new MongoException(112, "w"))))
-                .isTrue();
-        assertThat(AssistantConfigRepositoryImpl.isLostRace(new RuntimeException(new MongoException(11000, "d"))))
-                .isTrue();
-        assertThat(AssistantConfigRepositoryImpl.isLostRace(new RuntimeException(
-                labelled(91, MongoException.TRANSIENT_TRANSACTION_ERROR_LABEL)))).isFalse();
-        assertThat(AssistantConfigRepositoryImpl.isLostRace(new RuntimeException(
-                labelled(1, MongoException.UNKNOWN_TRANSACTION_COMMIT_RESULT_LABEL)))).isFalse();
-        assertThat(AssistantConfigRepositoryImpl.isLostRace(new RuntimeException("other"))).isFalse();
-    }
-
     @Test
     void validationFailure121Propagates() {
         AssistantConfig draft = insertDraft(OTHER);
@@ -363,12 +387,18 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
                 AssistantConfig.newDraft(new ConfigKey("instruction.too-long"), ConfigType.SYSTEM_INSTRUCTION, TOO_LONG_NAME,
                         "x", 1, ACTOR, NOW)));
         assertValidationFailure(() -> repository.save(draft.withContent(TOO_LONG_NAME, "x", null)));
-        // ... and inside the publishing and applying transactions.
-        assertValidationFailure(() -> repository.publish(
-                draft.withContent(TOO_LONG_NAME, draft.content(), null).withStatus(ConfigStatus.PUBLISHED, null)));
-        assertValidationFailure(() -> repository.replaceWorkingCopy(
-                draft.withStatus(ConfigStatus.DISCARDED, null),
-                AssistantConfig.newDraft(KEY, ConfigType.SYSTEM_INSTRUCTION, TOO_LONG_NAME, "x", 3, ACTOR, NOW)));
+        // ... and inside the publishing and applying transactions (the use case's, around the repository).
+        AssistantConfigRepository corrupting = delegatingRepository();
+        doAnswer(inv -> repository.findWorkingCopy(inv.getArgument(0))
+                .map(c -> c.withContent(TOO_LONG_NAME, c.content(), c.changeNote())))
+                .when(corrupting).findWorkingCopy(any());
+        doAnswer(inv -> repository.findVersion(inv.getArgument(0), inv.getArgument(1))
+                .map(c -> c.withContent(TOO_LONG_NAME, c.content(), c.changeNote())))
+                .when(corrupting).findVersion(any(), eq(1));
+        ConfigCommandUseCase corruptingUseCase = useCase(corrupting, NOW);
+        assertValidationFailure(() -> corruptingUseCase.publish(KEY, immediate(draft), ACTOR));
+        assertValidationFailure(() -> corruptingUseCase.applyVersion(KEY,
+                new ApplyCommand(1, draft.docVersion(), true), ACTOR));
 
         assertThat(repository.findLatest(new ConfigKey("instruction.too-long"))).isEmpty();
         assertThat(reload(1).status()).isEqualTo(ConfigStatus.PUBLISHED);
@@ -418,27 +448,25 @@ class AssistantConfigRepositoryImplTest extends IntegrationTestBase {
         assertThat(versionCount()).isEqualTo(2);
     }
 
-    /** Moved from ConfigCommandServiceTest#applyIsAtomic. */
+    /** Moved from ConfigCommandUseCaseTest#applyIsAtomic; the transaction is the use case's. */
     @Test
     void replaceWorkingCopyFailureRollsBackDiscard() {
         MongoTemplate failing = delegatingMongoTemplate();
         DataAccessResourceFailureException boom = new DataAccessResourceFailureException("insert failed");
         doThrow(boom).when(failing).insert(any(AssistantConfigDocument.class));
         doThrow(boom).when(failing).save(argThat((AssistantConfigDocument d) -> d != null && d.getId() == null));
-        AssistantConfigRepositoryImpl failingRepository = withMongoTemplate(failing);
+        ConfigCommandUseCase failingUseCase = useCase(withMongoTemplate(failing), NOW);
 
         AssistantConfig draft = insertDraft(OTHER);
-        assertThatThrownBy(() -> failingRepository.replaceWorkingCopy(
-                draft.withStatus(ConfigStatus.DISCARDED, null).touched(ACTOR, NOW),
-                newDraft(3, ACTOR).withBasedOnVersion(1))).isSameAs(boom);
+        assertThatThrownBy(() -> failingUseCase.applyVersion(KEY,
+                new ApplyCommand(1, draft.docVersion(), true), ACTOR)).isSameAs(boom);
         assertThat(reload(2).status()).isEqualTo(ConfigStatus.DRAFT);
         assertThat(reload(2).docVersion()).isEqualTo(draft.docVersion());
 
         AssistantConfig scheduled = repository.save(
                 draft.withStatus(ConfigStatus.SCHEDULED, NOW.plus(Duration.ofHours(1))).touched(OTHER, NOW));
-        assertThatThrownBy(() -> failingRepository.replaceWorkingCopy(
-                scheduled.withStatus(ConfigStatus.DISCARDED, scheduled.scheduledAt()).touched(ACTOR, NOW),
-                newDraft(3, ACTOR).withBasedOnVersion(1))).isSameAs(boom);
+        assertThatThrownBy(() -> failingUseCase.applyVersion(KEY,
+                new ApplyCommand(1, scheduled.docVersion(), true), ACTOR)).isSameAs(boom);
         assertThat(reload(2).status()).isEqualTo(ConfigStatus.SCHEDULED);
         assertThat(reload(2).updatedBy()).isEqualTo(OTHER);
 

@@ -3,7 +3,7 @@ package com.example.copilot.aiassistant.infrastructure.mongo;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.copilot.IntegrationTestBase;
-import com.example.copilot.aiassistant.application.feedback.VersionFeedback;
+import com.example.copilot.aiassistant.application.query.feedback.VersionFeedback;
 import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import java.util.Date;
 import java.util.List;

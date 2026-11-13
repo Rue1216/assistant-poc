@@ -1,6 +1,6 @@
 package com.example.copilot.aiassistant.interfaces.rest.config.dto;
 
-import com.example.copilot.aiassistant.application.config.VersionHistoryEntry;
+import com.example.copilot.aiassistant.application.query.config.VersionHistoryEntry;
 import com.example.copilot.aiassistant.domain.config.ConfigStatus;
 import java.time.OffsetDateTime;
 

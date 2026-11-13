@@ -1,7 +1,8 @@
 package com.example.copilot.aiassistant.application.evaluation;
 
 import com.example.copilot.aiassistant.AiAssistantProperties;
-import com.example.copilot.aiassistant.application.chat.ChatOrchestrator;
+import com.example.copilot.aiassistant.application.command.evaluation.EvalRunCommandUseCase;
+import com.example.copilot.aiassistant.application.command.chat.ChatUseCase;
 import com.example.copilot.aiassistant.domain.chat.EvaluationReport;
 import com.example.copilot.aiassistant.domain.customer.CertNo;
 import com.example.copilot.aiassistant.domain.eval.CaseChecker;
@@ -49,7 +50,7 @@ public class EvalRunner {
             ErrorCode.AI_LLM_RATE_LIMITED.name());
     private static final UserContext EVAL_USER = new UserContext("eval-runner", "評測", "EVAL", Set.of());
 
-    private final ChatOrchestrator orchestrator;
+    private final ChatUseCase orchestrator;
     private final CustomerContextFactory customerFactory;
     private final CustomerAccessPort accessPort;
     private final EvalJudge judge;
@@ -58,7 +59,7 @@ public class EvalRunner {
     private final Clock clock;
     private final Duration runTimeout;
 
-    public EvalRunner(ChatOrchestrator orchestrator, CustomerContextFactory customerFactory, CustomerAccessPort accessPort, EvalJudge judge,
+    public EvalRunner(ChatUseCase orchestrator, CustomerContextFactory customerFactory, CustomerAccessPort accessPort, EvalJudge judge,
                       EvalRunRepository repository, EvalDataset dataset, Clock clock,
                       AiAssistantProperties properties) {
         this.orchestrator = orchestrator;
@@ -78,7 +79,7 @@ public class EvalRunner {
         long judgeTokens;
     }
 
-    public void run(EvalRun run, EvalRunService.EvalSnapshot snapshot) {
+    public void run(EvalRun run, EvalRunCommandUseCase.EvalSnapshot snapshot) {
         Instant began = clock.instant();
         Progress progress = new Progress();
         progress.docVersion = run.docVersion();
@@ -120,7 +121,7 @@ public class EvalRunner {
      * Returns how the run ended: COMPLETED, FAILED (timeout, or the model unavailable after a case) or INTERRUPTED (a conditional write was refused, or the
      * thread was interrupted).
      */
-    private String execute(EvalRun run, EvalRunService.EvalSnapshot snapshot, Progress progress) {
+    private String execute(EvalRun run, EvalRunCommandUseCase.EvalSnapshot snapshot, Progress progress) {
         Instant deadline = run.startedAt().plus(runTimeout);
         List<EvalCaseRecord> records = new ArrayList<>();
         for (EvalCase c : dataset.cases()) {

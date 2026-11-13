@@ -2,9 +2,9 @@ package com.example.copilot.aiassistant.infrastructure.mongo;
 
 import static org.springframework.data.mongodb.core.query.Criteria.where;
 
-import com.example.copilot.aiassistant.application.config.ConfigQueryRepository;
-import com.example.copilot.aiassistant.application.config.ConfigSummary;
-import com.example.copilot.aiassistant.application.config.VersionHistoryEntry;
+import com.example.copilot.aiassistant.application.query.config.ConfigQueryRepository;
+import com.example.copilot.aiassistant.application.query.config.ConfigSummary;
+import com.example.copilot.aiassistant.application.query.config.VersionHistoryEntry;
 import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.config.ConfigStatus;
 import java.util.ArrayList;

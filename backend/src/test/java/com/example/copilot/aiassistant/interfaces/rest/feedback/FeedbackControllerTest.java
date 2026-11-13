@@ -9,7 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.example.copilot.IntegrationTestBase;
 import com.example.copilot.TestUsers;
-import com.example.copilot.aiassistant.application.feedback.FeedbackService;
+import com.example.copilot.aiassistant.application.command.feedback.FeedbackCommandUseCase;
 import com.example.copilot.aiassistant.infrastructure.mongo.AiAssistantCollections;
 import com.example.copilot.testsupport.LogCapture;
 import java.util.ArrayList;
@@ -98,7 +98,7 @@ class FeedbackControllerTest extends IntegrationTestBase {
     @Test
     void eachChangeIsLoggedWithTheAnsweredTraceId() throws Exception {
         insert(audit(id("a1b2c3e1"), "ICRM00028", "ANSWERED", new Date()));
-        try (LogCapture capture = LogCapture.of(FeedbackService.class, Level.INFO)) {
+        try (LogCapture capture = LogCapture.of(FeedbackCommandUseCase.class, Level.INFO)) {
             String httpTraceId = rate(id("a1b2c3e1"), TestUsers.as("ICRM00028"), "{\"rating\":\"UP\"}")
                     .andReturn().getResponse().getHeader("X-Trace-Id");
             rate(id("a1b2c3e1"), TestUsers.as("ICRM00028"), "{\"rating\":null}");
@@ -113,7 +113,7 @@ class FeedbackControllerTest extends IntegrationTestBase {
 
     @Test
     void rejectedRatingIsNotLoggedAsAChange() throws Exception {
-        try (LogCapture capture = LogCapture.of(FeedbackService.class, Level.INFO)) {
+        try (LogCapture capture = LogCapture.of(FeedbackCommandUseCase.class, Level.INFO)) {
             rate(id("a1b2c3e2"), TestUsers.as("ICRM00028"), "{\"rating\":\"UP\"}").andExpect(status().isNotFound());
             assertThat(capture.events()).isEmpty();
         }

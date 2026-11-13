@@ -4,6 +4,7 @@ import com.example.copilot.aiassistant.AiAssistantProperties;
 import com.example.copilot.aiassistant.domain.answer.AnswerAssembler;
 import com.example.copilot.aiassistant.domain.audit.CredentialMasker;
 import com.example.copilot.aiassistant.domain.config.ConfigValidator;
+import com.example.copilot.aiassistant.domain.config.ScheduleWindow;
 import com.example.copilot.aiassistant.domain.privacy.PiiRedactor;
 import com.example.copilot.aiassistant.domain.prompt.CustomerNotes;
 import com.example.copilot.aiassistant.domain.prompt.ExampleQuestionParser;
@@ -62,6 +63,11 @@ public class DomainBeanConfiguration {
     @Bean
     ConfigValidator configValidator(ExampleQuestionParser parser, AiAssistantProperties props, ToolRegistry registry) {
         return new ConfigValidator(parser, props.config().allowedUrlHosts(), registry);
+    }
+
+    @Bean
+    ScheduleWindow scheduleWindow(AiAssistantProperties props) {
+        return new ScheduleWindow(props.config().scheduleMinLead(), props.config().scheduleMaxLead());
     }
 
     @Bean

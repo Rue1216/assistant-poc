@@ -1,8 +1,8 @@
 package com.example.copilot.aiassistant.interfaces.rest.feedback;
 
-import com.example.copilot.aiassistant.application.feedback.FeedbackQueryService;
-import com.example.copilot.aiassistant.application.feedback.FeedbackService;
-import com.example.copilot.aiassistant.application.feedback.VersionFeedback;
+import com.example.copilot.aiassistant.application.query.feedback.FeedbackQueryService;
+import com.example.copilot.aiassistant.application.command.feedback.FeedbackCommandUseCase;
+import com.example.copilot.aiassistant.application.query.feedback.VersionFeedback;
 import com.example.copilot.aiassistant.domain.audit.TraceId;
 import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.application.port.CurrentUserPort;
@@ -23,11 +23,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class FeedbackController {
 
-    private final FeedbackService service;
+    private final FeedbackCommandUseCase service;
     private final FeedbackQueryService queries;
     private final CurrentUserPort currentUser;
 
-    public FeedbackController(FeedbackService service, FeedbackQueryService queries,
+    public FeedbackController(FeedbackCommandUseCase service, FeedbackQueryService queries,
             CurrentUserPort currentUser) {
         this.service = service;
         this.queries = queries;

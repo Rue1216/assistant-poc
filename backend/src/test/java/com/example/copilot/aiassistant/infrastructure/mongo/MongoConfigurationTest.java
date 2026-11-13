@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.data.mongodb.core.query.Criteria.where;
 
 import com.example.copilot.IntegrationTestBase;
+import com.example.copilot.aiassistant.application.support.Transactions;
 import com.example.copilot.aiassistant.domain.config.ConfigStatus;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
 import com.example.copilot.testsupport.ConfigDocumentStore;
@@ -14,12 +15,13 @@ import org.junit.jupiter.api.Test;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.mongodb.MongoTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 class MongoConfigurationTest extends IntegrationTestBase {
 
-    @Autowired MongoTransactionManager transactionManager;
+    @Autowired @Qualifier(Transactions.MONGO) MongoTransactionManager transactionManager;
     @Autowired MongoTemplate mongo;
     ConfigDocumentStore repository;
 

@@ -1,6 +1,7 @@
 package com.example.copilot.aiassistant.interfaces.rest.evaluation;
 
-import com.example.copilot.aiassistant.application.evaluation.EvalRunService;
+import com.example.copilot.aiassistant.application.command.evaluation.EvalRunCommandUseCase;
+import com.example.copilot.aiassistant.application.query.evaluation.EvalRunQueryService;
 import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.eval.EvalDataset;
 import com.example.copilot.aiassistant.interfaces.rest.evaluation.dto.CurrentEvaluationView;
@@ -32,12 +33,15 @@ public class EvalController {
     private static final String READ = "hasAuthority('AI_CONFIG_READ')";
     private static final String EDIT = "hasAuthority('AI_CONFIG_EDIT')";
 
-    private final EvalRunService service;
+    private final EvalRunCommandUseCase commands;
+    private final EvalRunQueryService queries;
     private final EvalDataset dataset;
     private final CurrentUserPort currentUser;
 
-    public EvalController(EvalRunService service, EvalDataset dataset, CurrentUserPort currentUser) {
-        this.service = service;
+    public EvalController(EvalRunCommandUseCase commands, EvalRunQueryService queries,
+                          EvalDataset dataset, CurrentUserPort currentUser) {
+        this.commands = commands;
+        this.queries = queries;
         this.dataset = dataset;
         this.currentUser = currentUser;
     }
@@ -48,26 +52,26 @@ public class EvalController {
     public StartEvaluationResponse start(@PathVariable @Pattern(regexp = ConfigKey.PATTERN) String configKey,
                                          @Valid @RequestBody StartEvaluationRequest request) {
         return StartEvaluationResponse.of(
-                service.start(new ConfigKey(configKey), request.docVersion(), currentUser.currentUser().userId()));
+                commands.start(new ConfigKey(configKey), request.docVersion(), currentUser.currentUser().userId()));
     }
 
     @GetMapping("/configs/{configKey}/evaluations")
     @PreAuthorize(READ)
     public List<EvalRunSummaryView> recent(@PathVariable @Pattern(regexp = ConfigKey.PATTERN) String configKey) {
-        return service.recent(new ConfigKey(configKey)).stream().map(r -> EvalRunSummaryView.of(r, dataset.hash())).toList();
+        return queries.recent(new ConfigKey(configKey)).stream().map(r -> EvalRunSummaryView.of(r, dataset.hash())).toList();
     }
 
     @GetMapping("/evaluations/current")
     @PreAuthorize(READ)
     public ResponseEntity<CurrentEvaluationView> current() {
-        return service.current().map(r -> ResponseEntity.ok(CurrentEvaluationView.of(r)))
+        return queries.current().map(r -> ResponseEntity.ok(CurrentEvaluationView.of(r)))
                 .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
     @GetMapping("/evaluations/{runId}")
     @PreAuthorize(READ)
     public EvalRunView run(@PathVariable @Pattern(regexp = "^[0-9a-f]{24}$") String runId) {
-        return EvalRunView.of(service.get(runId), dataset.hash());
+        return EvalRunView.of(queries.get(runId), dataset.hash());
     }
 
     @GetMapping("/evaluation-cases")

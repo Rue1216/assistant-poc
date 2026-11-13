@@ -1,5 +1,6 @@
 package com.example.copilot.aiassistant.infrastructure.mongo;
 
+import com.example.copilot.aiassistant.application.support.Transactions;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -11,8 +12,9 @@ import org.springframework.data.mongodb.core.convert.MappingMongoConverter;
 @Configuration
 public class MongoConfiguration {
 
-    @Bean
-    MongoTransactionManager transactionManager(MongoDatabaseFactory factory) {
+    /** Named so that {@code @Transactional(transactionManager = Transactions.MONGO)} picks it explicitly. */
+    @Bean(Transactions.MONGO)
+    MongoTransactionManager aiAssistantMongoTransactionManager(MongoDatabaseFactory factory) {
         return new MongoTransactionManager(factory);
     }
 
