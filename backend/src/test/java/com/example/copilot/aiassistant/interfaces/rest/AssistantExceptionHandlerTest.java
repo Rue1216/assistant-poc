@@ -121,7 +121,16 @@ class AssistantExceptionHandlerTest extends IntegrationTestBase {
     void malformedJsonBecomesInputInvalid() throws Exception {
         call("validate", "{not json")
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("AI_INPUT_INVALID"));
+                .andExpect(jsonPath("$.code").value("AI_INPUT_INVALID"))
+                .andExpect(jsonPath("$.details", hasSize(0)));
+    }
+
+    @Test
+    void typeMismatchNamesTheField() throws Exception {
+        call("validate", "{\"message\":{\"a\":1}}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("AI_INPUT_INVALID"))
+                .andExpect(jsonPath("$.details[0].field").value("message"));
     }
 
     @Test

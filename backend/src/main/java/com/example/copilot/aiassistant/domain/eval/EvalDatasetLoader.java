@@ -1,6 +1,7 @@
 package com.example.copilot.aiassistant.domain.eval;
 
 import com.example.copilot.aiassistant.domain.customer.AccessLevel;
+import com.example.copilot.aiassistant.domain.customer.CertNo;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -37,7 +38,7 @@ public final class EvalDatasetLoader {
             "expect", "rubric");
     private static final Set<String> EXPECT_KEYS = Set.of("tools", "forbiddenTools", "refusal", "mustContain",
             "mustNotContain", "category", "toolOrder");
-    private static final Pattern CERT_NO = Pattern.compile("^[A-Z0-9&]{8,12}$");
+    private static final Pattern CERT_NO = Pattern.compile(CertNo.PATTERN);
     private static final Pattern CATEGORY = Pattern.compile("^(instruction\\.[a-z0-9-]{1,50}|none)$");
 
     private EvalDatasetLoader() {

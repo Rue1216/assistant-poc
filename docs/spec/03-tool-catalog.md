@@ -212,7 +212,7 @@ v0.2 起，內部工具與平台 API 一對一（`getCustomer` ↔ `getCustomer`
 
 ### 2.1 每題資料暫存 `TurnCustomerData`
 
-- 每個問題開始時，`ChatOrchestrator` 建立該題專用的 `TurnCustomerData`（放在 `ToolContext.data`），延遲載入 `findCustomer360`、`findRealTimeStatus`，各最多呼叫一次，成功或例外結果都記住；兩個工具與「本顧客註記」注入都由它取資料。
+- 每個問題開始時，`ChatUseCase` 建立該題專用的 `TurnCustomerData`（放在 `ToolContext.data`），延遲載入 `findCustomer360`、`findRealTimeStatus`，各最多呼叫一次，成功或例外結果都記住；兩個工具與「本顧客註記」注入都由它取資料。
 - 問題結束即丟棄；跨問題的快取交由平台（L2 cache），小幫手不自建。評測執行（`EvalRunner`）每題同樣建立一份。
 - 顧客工具需要 `data` 非 null，否則回 `CUSTOMER_DATA_UNAVAILABLE`。
 

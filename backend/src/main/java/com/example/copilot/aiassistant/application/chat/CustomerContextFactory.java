@@ -32,7 +32,7 @@ public class CustomerContextFactory {
         if (level == AccessLevel.NONE) {
             return Optional.empty();
         }
-        return dataPort.findCustomer(certNo.value()).map(record -> build(record, level));
+        return dataPort.findCustomer(certNo.value()).map(record -> build(record, certNo, level));
     }
 
     /**
@@ -40,10 +40,16 @@ public class CustomerContextFactory {
      * check the user's access to the customer. Empty when the customer does not exist.
      */
     public Optional<CustomerContext> forEvaluation(CertNo certNo, AccessLevel level) {
-        return dataPort.findCustomer(certNo.value()).map(record -> build(record, level));
+        return dataPort.findCustomer(certNo.value()).map(record -> build(record, certNo, level));
     }
 
+    /** For tests: validates the record's own certNo. */
     public static CustomerContext build(CustomerRecord record, AccessLevel level) {
+        return build(record, new CertNo(record.certNo()), level);
+    }
+
+    /** The already-validated {@code certNo} is used as is: the data port's own formatting is never re-validated. */
+    public static CustomerContext build(CustomerRecord record, CertNo certNo, AccessLevel level) {
         Set<String> self = new LinkedHashSet<>();
         add(self, record.certNo());
         add(self, record.name());
@@ -54,7 +60,7 @@ public class CustomerContextFactory {
         if (record.accountNumbers() != null) {
             record.accountNumbers().forEach(a -> add(sensitive, a));
         }
-        return new CustomerContext(new CertNo(record.certNo()), level, self, sensitive);
+        return new CustomerContext(certNo, level, self, sensitive);
     }
 
     /**

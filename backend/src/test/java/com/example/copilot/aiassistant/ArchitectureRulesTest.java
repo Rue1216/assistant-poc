@@ -33,6 +33,7 @@ class ArchitectureRulesTest {
             "org.bson.",
             "jakarta.servlet.",
             "jakarta.annotation.",
+            "com.fasterxml.jackson.annotation.JsonIgnore",
             "com.example.copilot.aiassistant.AiAssistantProperties",
             "com.example.copilot.aiassistant.application.",
             "com.example.copilot.aiassistant.interfaces.",
@@ -50,6 +51,8 @@ class ArchitectureRulesTest {
             "com.example.copilot.aiassistant.infrastructure.",
             "com.example.copilot.mockplatform.");
 
+    private static final Pattern TRANSACTIONAL_USAGE = Pattern.compile("^\\s*@Transactional\\b", Pattern.MULTILINE);
+
     private static final String TRANSACTION_ANNOTATION = "org.springframework.transaction.annotation.";
 
     private static final List<String> INTERFACES_FORBIDDEN = List.of(
@@ -61,6 +64,7 @@ class ArchitectureRulesTest {
             "com.example.copilot.mockplatform.");
 
     private static final List<String> INFRASTRUCTURE_FORBIDDEN = List.of(
+            "org.springframework.data.mongodb.repository.",
             "com.example.copilot.aiassistant.interfaces.",
             "com.example.copilot.mockplatform.");
 
@@ -84,6 +88,54 @@ class ArchitectureRulesTest {
                 .toList();
         assertThat(users).as("application files importing " + TRANSACTION_ANNOTATION).isNotEmpty();
         assertThat(users).allSatisfy(path -> assertThat(path).startsWith("command/"));
+    }
+
+    /** Controllers do not catch; exceptions are translated by AssistantExceptionHandler. */
+    @Test
+    void controllersHaveNoTryCatch() {
+        List<Path> controllers = javaFiles(ROOT.resolve("interfaces")).stream()
+                .filter(file -> file.getFileName().toString().endsWith("Controller.java"))
+                .toList();
+        assertThat(controllers).as("controllers found").isNotEmpty();
+        assertThat(controllers.stream()
+                        .filter(file -> read(file).contains("catch ("))
+                        .map(file -> relative(ROOT, file))
+                        .toList())
+                .isEmpty();
+    }
+
+    @Test
+    void transactionalOnlyOnUseCases() {
+        List<Path> transactional = javaFiles(ROOT).stream()
+                .filter(file -> TRANSACTIONAL_USAGE.matcher(read(file)).find())
+                .toList();
+        assertThat(transactional).as("files using @Transactional").isNotEmpty();
+        assertThat(transactional.stream()
+                        .filter(file -> !read(file).contains("@UseCase"))
+                        .map(file -> relative(ROOT, file))
+                        .toList())
+                .isEmpty();
+    }
+
+    @Test
+    void commandEntryPointsAreUseCases() {
+        Path commandDir = ROOT.resolve("application/command");
+        List<Path> files = javaFiles(commandDir);
+        assertThat(files.stream().filter(file -> read(file).contains("@UseCase")).count()).isPositive();
+        assertThat(files.stream()
+                        .filter(file -> file.getFileName().toString().endsWith("UseCase.java"))
+                        .filter(file -> !read(file).contains("@UseCase"))
+                        .map(file -> relative(commandDir, file))
+                        .toList())
+                .as("*UseCase.java without @UseCase")
+                .isEmpty();
+        assertThat(files.stream()
+                        .filter(file -> read(file).contains("@UseCase"))
+                        .filter(file -> !file.getFileName().toString().endsWith("UseCase.java"))
+                        .map(file -> relative(commandDir, file))
+                        .toList())
+                .as("@UseCase files not named *UseCase.java")
+                .isEmpty();
     }
 
     @Test

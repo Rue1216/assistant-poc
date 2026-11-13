@@ -1,5 +1,7 @@
 # Clean Architecture 分層對齊設計
 
+> **2026-11-12 更新**：本文 §2 的「交易邊界由 infrastructure 負責」與「Domain 允許 Jackson 註解（`@JsonIgnore`）」兩項已由 [2026-11-12 spec](2026-11-12-backend-layering-rules-alignment-design.md) 取代（交易改在 `application/command/` 的 `@UseCase` 上，Domain 禁止 `@JsonIgnore`）；其餘內容維持歷史紀錄，不再逐項修改。
+
 > 版本 v0.1・2026-11-02。依平台「Clean Architecture 分層守則（MUST）」把 `backend/.../aiassistant` 從功能切分改為 `domain / application / interfaces / infrastructure` 四層。回答 [questions-for-manager.md](../../questions-for-manager.md) S2。
 
 ## 1. 平台守則（摘自 reference.md §3，reference.md 不進版控，故抄錄於此）

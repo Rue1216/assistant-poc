@@ -9,10 +9,6 @@ import com.example.copilot.aiassistant.application.command.config.SaveCommand;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
 import com.example.copilot.aiassistant.domain.config.ConfigKey;
 import com.example.copilot.aiassistant.domain.config.ConfigType;
-import com.example.copilot.aiassistant.domain.config.ConfigValidator;
-import com.example.copilot.aiassistant.domain.exception.AssistantException;
-import com.example.copilot.aiassistant.domain.exception.ErrorCode;
-import com.example.copilot.aiassistant.domain.exception.FieldDetail;
 import com.example.copilot.aiassistant.interfaces.rest.config.dto.ApplyRequest;
 import com.example.copilot.aiassistant.interfaces.rest.config.dto.ConfigSummaryView;
 import com.example.copilot.aiassistant.interfaces.rest.config.dto.ConfigVersionView;
@@ -25,10 +21,7 @@ import com.example.copilot.aiassistant.application.port.CurrentUserPort;
 import com.example.copilot.aiassistant.domain.prompt.ExampleQuestionParser;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Pattern;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.time.OffsetDateTime;
-import java.time.format.DateTimeParseException;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -102,9 +95,6 @@ public class AdminConfigController {
     @PreAuthorize(EDIT)
     public ConfigVersionView save(@PathVariable @Pattern(regexp = ConfigKey.PATTERN) String configKey,
                                   @Valid @RequestBody SaveDraftRequest request) {
-        if (request.content().getBytes(StandardCharsets.UTF_8).length > ConfigValidator.MAX_BYTES) {
-            throw invalidInput("content");
-        }
         SaveCommand command = new SaveCommand(request.name(), request.content(), request.changeNote(),
                 request.saveMode(), request.docVersion());
         return view(service.saveWorkingCopy(new ConfigKey(configKey), command, actor()));
@@ -128,10 +118,8 @@ public class AdminConfigController {
     @PreAuthorize(PUBLISH)
     public ConfigVersionView publish(@PathVariable @Pattern(regexp = ConfigKey.PATTERN) String configKey,
                                      @Valid @RequestBody PublishRequest request) {
-        Instant scheduledAt = null;
-        if (request.publishMode() == PublishMode.SCHEDULED) {
-            scheduledAt = parseScheduledAt(request.scheduledAt());
-        }
+        Instant scheduledAt = request.publishMode() == PublishMode.SCHEDULED && request.scheduledAt() != null
+                ? request.scheduledAt().toInstant() : null;
         PublishCommand command = new PublishCommand(request.publishMode(), scheduledAt, request.docVersion());
         return view(service.publish(new ConfigKey(configKey), command, actor()));
     }
@@ -141,7 +129,7 @@ public class AdminConfigController {
     @PreAuthorize(EDIT)
     public ConfigVersionView apply(@PathVariable @Pattern(regexp = ConfigKey.PATTERN) String configKey,
                                    @PathVariable int version,
-                                   @RequestBody(required = false) ApplyRequest request) {
+                                   @Valid @RequestBody(required = false) ApplyRequest request) {
         ApplyRequest body = request != null ? request : new ApplyRequest(null, null);
         return view(service.applyVersion(new ConfigKey(configKey),
                 new ApplyCommand(version, body.workingCopyDocVersion(), body.confirmed()), actor()));
@@ -155,20 +143,5 @@ public class AdminConfigController {
 
     private String actor() {
         return currentUser.currentUser().userId();
-    }
-
-    private static Instant parseScheduledAt(String value) {
-        if (value == null || value.isBlank()) {
-            throw invalidInput("scheduledAt");
-        }
-        try {
-            return OffsetDateTime.parse(value).toInstant();
-        } catch (DateTimeParseException e) {
-            throw invalidInput("scheduledAt");
-        }
-    }
-
-    private static AssistantException invalidInput(String field) {
-        return new AssistantException(ErrorCode.AI_INPUT_INVALID, List.of(new FieldDetail(field)));
     }
 }

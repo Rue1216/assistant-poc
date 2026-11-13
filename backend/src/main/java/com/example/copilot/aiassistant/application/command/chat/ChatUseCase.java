@@ -17,6 +17,7 @@ import com.example.copilot.aiassistant.domain.exception.AssistantException;
 import com.example.copilot.aiassistant.domain.exception.ErrorCode;
 import com.example.copilot.aiassistant.application.support.RequestContext;
 import com.example.copilot.aiassistant.domain.config.AssistantConfig;
+import com.example.copilot.aiassistant.application.chat.CustomerContextFactory;
 import com.example.copilot.aiassistant.application.chat.HistorySummarizer;
 import com.example.copilot.aiassistant.application.chat.InstructionRouter;
 import com.example.copilot.aiassistant.application.chat.StepArgumentExtractor;
@@ -25,6 +26,7 @@ import com.example.copilot.aiassistant.application.config.PublishedConfigCache;
 import com.example.copilot.aiassistant.application.llm.LlmCallPurpose;
 import com.example.copilot.aiassistant.application.llm.LlmErrorMapper;
 import com.example.copilot.aiassistant.application.port.CustomerDataPort;
+import com.example.copilot.aiassistant.domain.customer.CertNo;
 import com.example.copilot.aiassistant.domain.user.UserContext;
 import com.example.copilot.aiassistant.domain.privacy.CustomerContext;
 import com.example.copilot.aiassistant.domain.privacy.CustomerDeidentifier;
@@ -116,13 +118,14 @@ public class ChatUseCase {
     /** The audit's model name until an answer round reports the one the provider used. */
     private final String configuredModelName;
     private final Clock clock;
+    private final CustomerContextFactory contexts;
 
     public ChatUseCase(ChatModel chatModel, ToolRegistry registry, ToolExecutor executor, PiiRedactor redactor,
                             PromptAssembler promptAssembler, PublishedConfigCache cache, CustomerNotes customerNotes,
                             CustomerDataPort port,
                             InstructionRouter router, HistorySummarizer summarizer, WorkflowRunner workflowRunner,
                             AnswerAssembler answerAssembler, AuditLogger auditLogger, LlmErrorMapper errorMapper,
-                            AiAssistantProperties props, Clock clock) {
+                            AiAssistantProperties props, Clock clock, CustomerContextFactory contexts) {
         this.chatModel = chatModel;
         this.registry = registry;
         this.executor = executor;
@@ -140,6 +143,14 @@ public class ChatUseCase {
         this.limits = props.limits();
         this.configuredModelName = props.llm() == null ? null : props.llm().modelName();
         this.clock = clock;
+        this.contexts = contexts;
+    }
+
+    /** Checks the user's access to the customer ({@code AI_CUSTOMER_NOT_FOUND} when none), then delegates. */
+    public ChatResult chat(CertNo certNo, ChatCommand command, UserContext user) {
+        CustomerContext customer = contexts.create(user, certNo)
+                .orElseThrow(() -> new AssistantException(ErrorCode.AI_CUSTOMER_NOT_FOUND));
+        return chat(command, user, customer);
     }
 
     /** Answers one question; on failure writes a FAILED audit entry and throws {@link AssistantException}. */

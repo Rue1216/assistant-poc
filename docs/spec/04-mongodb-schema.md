@@ -119,7 +119,7 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_CONFIG", {
 });
 ```
 
-> validator 可以同時使用 `$jsonSchema` 和查詢運算子；上面的 `$and` 以三條 `$or` 規則確保 `SCHEDULED` 一定有 `scheduledAt`，且 `configType` 與 `configKey` 一致。`ConfigCommandService` 也會在寫入前檢查。實際內容見 `backend/src/main/resources/mongo/config-validator.json`。
+> validator 可以同時使用 `$jsonSchema` 和查詢運算子；上面的 `$and` 以三條 `$or` 規則確保 `SCHEDULED` 一定有 `scheduledAt`，且 `configType` 與 `configKey` 一致。`ConfigCommandUseCase`（與 domain 的 `AssistantConfig`）也會在寫入前檢查。實際內容見 `backend/src/main/resources/mongo/config-validator.json`。
 >
 > `maxLength` 以字元計算，上限 65,536 字元；API 以 UTF-8 bytes 計算（見 2.1 `content`），所以通過 API 的內容一定通過這裡。`validationLevel: strict` 會讓既有文件在下次更新時也受檢查；初始資料都符合規則，不需要資料遷移。
 
@@ -629,5 +629,5 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_AUDIT", {
   - 結束：`$set: { status: "COMPLETED", summary, finishedAt }`，或 `$set: { status: "FAILED", errorCode, finishedAt }`
 - 條件不成立（`docVersion` 已變或 `status` 不再是 `RUNNING`）代表紀錄已被標為中斷，執行緒隨即停止，不再寫入。
 - **陳舊紀錄**：「開始評測」與「查詢目前評測」時，若 `RUNNING` 紀錄的 `heartbeatAt` 超過 `stale-after`（10 分鐘），先標為 `FAILED`（`AI_EVAL_INTERRUPTED`）再繼續。
-- 寫入一律用明確的 `org.bson.Document`，不產生 `_class`，null 欄位明確寫入。
+- 以 `@Document` 類別（`EvalRunDocument`）搭配 MapStruct 的 `EvalRunDocumentMapper` 讀寫；一律存在的可為 null 欄位標 `@Field(write = Field.Write.ALWAYS)`，null 也明確寫入。全域以 `DefaultMongoTypeMapper(null)`（`MongoConfiguration`）不產生 `_class`。集合名稱集中在 `infrastructure/mongo/AiAssistantCollections`，`@Document` 引用該常數。
 - 不提供刪除 API；紀錄由 TTL 在 180 天後刪除。

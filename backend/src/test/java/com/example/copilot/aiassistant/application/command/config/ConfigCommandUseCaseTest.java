@@ -294,6 +294,17 @@ class ConfigCommandUseCaseTest extends IntegrationTestBase {
         assertThat(after.docVersion()).isEqualTo(saved.docVersion());
     }
 
+    @Test
+    void contentOverTheByteLimitIsInvalidInputOnContent() {
+        AssistantConfig draft = service.createDraft(KEY, ACTOR);
+
+        AssistantException e = assertError(
+                () -> save(draft, "聯繫準備", "字".repeat(ConfigValidator.MAX_BYTES / 3 + 1), SaveMode.DRAFT, ACTOR),
+                ErrorCode.AI_INPUT_INVALID);
+
+        assertThat(e.details()).containsExactly(new FieldDetail("content"));
+    }
+
     private AssistantConfig staleDraftWithForbiddenChangeNote() {
         AssistantConfig draft = service.createDraft(KEY, ACTOR);
         return repository.save(draft.withContent(draft.name(), draft.content(), "0912-345-678"));

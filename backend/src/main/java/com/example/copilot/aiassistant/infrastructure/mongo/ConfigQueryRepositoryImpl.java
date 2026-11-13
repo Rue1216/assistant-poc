@@ -37,7 +37,7 @@ public class ConfigQueryRepositoryImpl implements ConfigQueryRepository {
     @Override
     public List<ConfigSummary> listSummaries() {
         List<String> keys = mongo.findDistinct(new Query(), "configKey", AssistantConfigDocument.class, String.class);
-       Map<String, List<AssistantConfigDocument>> byKey = mongo.find(activeVersionsQuery(), AssistantConfigDocument.class)
+        Map<String, List<AssistantConfigDocument>> byKey = mongo.find(activeVersionsQuery(), AssistantConfigDocument.class)
                 .stream()
                 .collect(Collectors.groupingBy(AssistantConfigDocument::getConfigKey));
         List<List<AssistantConfigDocument>> groups = new ArrayList<>(byKey.values());

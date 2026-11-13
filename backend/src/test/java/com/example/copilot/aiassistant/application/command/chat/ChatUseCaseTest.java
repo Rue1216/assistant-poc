@@ -227,7 +227,9 @@ class ChatUseCaseTest {
                 new HistorySummarizer(model, new LlmErrorMapper(), mapper, redactor, props),
                 new WorkflowRunner(registry, executor, guard,
                         new StepArgumentExtractor(model, new LlmErrorMapper(), mapper, props), mapper),
-                new AnswerAssembler(redactor, mapper), auditLogger, new LlmErrorMapper(), props, clock);
+                new AnswerAssembler(redactor, mapper), auditLogger, new LlmErrorMapper(), props, clock,
+                new com.example.copilot.aiassistant.application.chat.CustomerContextFactory(
+                        (user, certNo) -> com.example.copilot.aiassistant.domain.customer.AccessLevel.FULL, port));
     }
 
     @AfterEach

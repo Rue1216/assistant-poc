@@ -227,6 +227,29 @@ class AuditLoggerTest extends IntegrationTestBase {
     }
 
     @Test
+    void toolResultWithUnstorableMapKeyIsOmittedButRecordIsWritten() {
+        List<String> payloads = List.of(
+                "{\"data\":{\"a.b\":1,\"close\":2420}}",
+                "{\"data\":{\"rows\":[{\"ok\":1,\"$bad\":2}],\"close\":2420}}",
+                "{\"data\":{\"outer\":{\"inner\":{\"x.y\":1}}}}");
+        AuditLogger enabled = new AuditLogger(repository, Clock.systemUTC(), new CredentialMasker(), propsWith(true), new PiiRedactor());
+        for (int i = 0; i < payloads.size(); i++) {
+            ToolResult result = ToolResult.success(java.util.Map.of("close", 2420),
+                    List.of(new Source("TWSE", "https://openapi.twse.com.tw", "2026-10-16")),
+                    new CitationDetail("t", "台積電 2330", "e", null, 1));
+            ToolOutcome o = new ToolOutcome("getStockQuote", "p", result, payloads.get(i), 7, "S1");
+            String id = "req-key-" + i;
+            enabled.record(new AuditEntry(id, USER, CUSTOMER, "q", "a", false, "ANSWERED", null,
+                    List.of(o), java.util.Map.of("S1", 1), List.of(), 10, 1, 0, 0, 0, List.of(), null, null, false, null, 0, 0, null));
+            Document doc = find(id);
+            assertThat(doc).isNotNull();
+            Document call = doc.getList("toolCalls", Document.class).get(0);
+            assertThat(call.getString("toolName")).isEqualTo("getStockQuote");
+            assertThat(call.containsKey("result")).isFalse();
+        }
+    }
+
+    @Test
     void answerTruncatedFromAssemblerIsKept() {
         auditLogger.record(citedEntry("req-cite-5", true, "short", List.of()));
         assertThat(find("req-cite-5").getBoolean("answerTruncated")).isTrue();

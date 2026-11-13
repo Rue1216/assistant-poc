@@ -13,8 +13,6 @@ import com.example.copilot.aiassistant.domain.exception.FieldDetail;
 import com.example.copilot.aiassistant.interfaces.rest.PerUserRateLimiter;
 import com.example.copilot.aiassistant.application.port.CurrentUserPort;
 import com.example.copilot.aiassistant.domain.user.UserContext;
-import com.example.copilot.aiassistant.domain.privacy.CustomerContext;
-import com.example.copilot.aiassistant.application.chat.CustomerContextFactory;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Pattern;
 import java.util.List;
@@ -24,21 +22,19 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 02 section 2.1. Order: validate, rate limit, resolve customer scope (404), then the tool-calling loop. */
+/** 02 section 2.1. Order: validate input, rate limit, then the use case resolves the customer scope (404) and runs the tool-calling loop. */
 @RestController
 public class ChatController {
 
     private final CurrentUserPort currentUser;
-    private final CustomerContextFactory contexts;
     private final ChatUseCase orchestrator;
     private final PerUserRateLimiter rateLimiter;
     private final AiAssistantProperties.Limits limits;
 
-    public ChatController(CurrentUserPort currentUser, CustomerContextFactory contexts,
+    public ChatController(CurrentUserPort currentUser,
             ChatUseCase orchestrator, PerUserRateLimiter rateLimiter, AiAssistantProperties props) {
         this.limits = props.limits();
         this.currentUser = currentUser;
-        this.contexts = contexts;
         this.orchestrator = orchestrator;
         this.rateLimiter = rateLimiter;
     }
@@ -66,11 +62,9 @@ public class ChatController {
         if (!rateLimiter.tryAcquire(user.userId())) {
             throw new AssistantException(ErrorCode.AI_RATE_LIMITED);
         }
-        CustomerContext customer = contexts.create(user, new CertNo(certNo))
-                .orElseThrow(() -> new AssistantException(ErrorCode.AI_CUSTOMER_NOT_FOUND));
         List<HistoryMessage> history = body.history() == null ? List.of()
                 : body.history().stream().map(h -> new HistoryMessage(h.role(), h.content())).toList();
-        return ChatResponseBody.from(orchestrator.chat(new ChatCommand(message, history, body.categoryKey(),
-                historySummary), user, customer));
+        return ChatResponseBody.from(orchestrator.chat(new CertNo(certNo),
+                new ChatCommand(message, history, body.categoryKey(), historySummary), user));
     }
 }

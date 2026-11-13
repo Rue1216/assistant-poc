@@ -169,20 +169,22 @@ public class AuditLogger {
                     ? JSON.convertValue(data, new TypeReference<Map<String, Object>>() { })
                     : Collections.singletonMap("value", JSON.convertValue(data, Object.class));
             // The store has no codec for these; omit the result rather than lose the whole record.
-            return hasBigNumber(result) ? null : result;
+            return hasUnstorable(result) ? null : result;
         } catch (RuntimeException e) {
             return null;
         }
     }
 
-    private static boolean hasBigNumber(Object v) {
+    /** Big numbers have no codec; a map key with '.' or a leading '$' makes the mapping converter throw. */
+    private static boolean hasUnstorable(Object v) {
         if (v instanceof BigInteger || v instanceof BigDecimal) {
             return true;
         }
         if (v instanceof Map<?, ?> m) {
-            return m.values().stream().anyMatch(AuditLogger::hasBigNumber);
+            return m.entrySet().stream().anyMatch(e -> e.getKey() instanceof String k
+                    && (k.indexOf('.') >= 0 || k.startsWith("$")) || hasUnstorable(e.getValue()));
         }
-        return v instanceof List<?> l && l.stream().anyMatch(AuditLogger::hasBigNumber);
+        return v instanceof List<?> l && l.stream().anyMatch(AuditLogger::hasUnstorable);
     }
 
     /** Clips to {@code max} code points so a surrogate pair is never split. */

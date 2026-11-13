@@ -8,6 +8,8 @@ import com.example.copilot.aiassistant.domain.exception.FieldDetail;
 import java.util.List;
 import java.util.stream.Stream;
 import lombok.extern.slf4j.Slf4j;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.exc.MismatchedInputException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
@@ -71,7 +73,22 @@ public class AssistantExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     ResponseEntity<ApiError> handleUnreadable(HttpMessageNotReadableException e) {
         log.warn("traceId={} code={}", RequestContext.currentTraceId(), ErrorCode.AI_INPUT_INVALID);
-        return respond(ErrorCode.AI_INPUT_INVALID, List.of());
+        return respond(ErrorCode.AI_INPUT_INVALID, unreadableFieldDetails(e));
+    }
+
+    /** The field a Jackson type mismatch points at (e.g. an unparsable date); empty for any other unreadable body. */
+    private static List<FieldDetail> unreadableFieldDetails(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause() == t ? null : t.getCause()) {
+            if (t instanceof MismatchedInputException mie) {
+                return mie.getPath().stream()
+                        .map(JacksonException.Reference::getPropertyName)
+                        .filter(n -> n != null)
+                        .reduce((first, last) -> last)
+                        .map(n -> List.of(new FieldDetail(n)))
+                        .orElse(List.of());
+            }
+        }
+        return List.of();
     }
 
     @ExceptionHandler(AccessDeniedException.class)

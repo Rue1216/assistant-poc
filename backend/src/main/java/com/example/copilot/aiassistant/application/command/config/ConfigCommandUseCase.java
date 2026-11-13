@@ -10,8 +10,10 @@ import com.example.copilot.aiassistant.domain.config.ScheduleWindow;
 import com.example.copilot.aiassistant.domain.config.ValidationError;
 import com.example.copilot.aiassistant.domain.exception.AssistantException;
 import com.example.copilot.aiassistant.domain.exception.ErrorCode;
+import com.example.copilot.aiassistant.domain.exception.FieldDetail;
 import com.example.copilot.aiassistant.domain.exception.WorkingCopyDetail;
 import com.example.copilot.aiassistant.domain.repository.AssistantConfigRepository;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -79,6 +81,9 @@ public class ConfigCommandUseCase {
     }
 
     public AssistantConfig saveWorkingCopy(ConfigKey configKey, SaveCommand cmd, String actor) {
+        if (cmd.content().getBytes(StandardCharsets.UTF_8).length > ConfigValidator.MAX_BYTES) {
+            throw new AssistantException(ErrorCode.AI_INPUT_INVALID, List.of(new FieldDetail("content")));
+        }
         AssistantConfig wc = requireWorkingCopy(configKey, cmd.docVersion());
         if (wc.keepsScheduleOnSave(cmd.saveMode())) {
             // The schedule stays, so the new content must still be publishable when it falls due.

@@ -211,6 +211,25 @@ class AdminConfigControllerTest extends IntegrationTestBase {
     }
 
     @Test
+    void scheduledAtEmptyStringIsInvalid() throws Exception {
+        long doc = docVersion(createDraft());
+        call(post(PUBLISH_URL),
+                "{\"publishMode\":\"SCHEDULED\",\"scheduledAt\":\"\",\"docVersion\":" + doc + "}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("AI_INPUT_INVALID"))
+                .andExpect(jsonPath("$.details[0].field").value("scheduledAt"));
+    }
+
+    @Test
+    void scheduledAtMissingIsInvalid() throws Exception {
+        long doc = docVersion(createDraft());
+        call(post(PUBLISH_URL), "{\"publishMode\":\"SCHEDULED\",\"docVersion\":" + doc + "}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("AI_INPUT_INVALID"))
+                .andExpect(jsonPath("$.details[0].field").value("scheduledAt"));
+    }
+
+    @Test
     void validateEndpointReturnsErrors() throws Exception {
         save(createDraft(), INVALID_CONTENT, "KEEP_STATUS");
         call(post(DRAFT_URL + "/validate"), null)

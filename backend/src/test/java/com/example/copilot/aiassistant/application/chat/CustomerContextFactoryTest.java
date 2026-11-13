@@ -7,8 +7,10 @@ import com.example.copilot.TestCustomers;
 import com.example.copilot.aiassistant.domain.customer.AccessLevel;
 import com.example.copilot.aiassistant.application.port.CustomerDataPort;
 import com.example.copilot.aiassistant.domain.customer.CertNo;
+import com.example.copilot.aiassistant.domain.customer.CustomerRecord;
 import com.example.copilot.aiassistant.domain.privacy.CustomerContext;
 import com.example.copilot.aiassistant.domain.user.UserContext;
+import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,6 +25,20 @@ class CustomerContextFactoryTest extends IntegrationTestBase {
 
     @Autowired
     CustomerDataPort dataPort;
+
+    @Test
+    void certNoReturnedByThePortIsNotRevalidated() {
+        CustomerDataPort oddFormat = org.mockito.Mockito.mock(CustomerDataPort.class);
+        org.mockito.Mockito.when(oddFormat.findCustomer(org.mockito.ArgumentMatchers.any())).thenReturn(Optional.of(new CustomerRecord("a-123", "王小明", null, null, null, null,
+                null, null, null, null, null, null, null, null, null)));
+        CustomerContextFactory f = new CustomerContextFactory((user, certNo) -> AccessLevel.FULL, oddFormat);
+
+        CustomerContext ctx = f.create(ADMIN, new CertNo(TestCustomers.RETIREE)).orElseThrow();
+
+        assertThat(ctx.certNo().value()).isEqualTo(TestCustomers.RETIREE);
+        assertThat(ctx.selfReferences()).contains("a-123");
+        assertThat(f.forEvaluation(new CertNo(TestCustomers.RETIREE), AccessLevel.FULL)).isPresent();
+    }
 
     @Test
     void noneAccessYieldsEmpty() {
