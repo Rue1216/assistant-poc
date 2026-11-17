@@ -267,4 +267,18 @@ class ConfigValidatorTest {
     void cleanNameAddsNoErrors() {
         assertThat(validator.validate(ConfigType.SYSTEM_INSTRUCTION, "聯繫準備", null, instruction())).isEmpty();
     }
+
+    /** Built the way the scheduler builds it: no tool catalog, every other rule unchanged. */
+    @Test
+    void withoutCatalogSkipsToolLookupButKeepsOtherRules() {
+        ConfigValidator structureOnly = new ConfigValidator(new ExampleQuestionParser(), List.of());
+        String body = "## 適用問題\n\n問題\n\n## 回答套版\n\n";
+
+        assertThat(structureOnly.validate(ConfigType.SYSTEM_INSTRUCTION, body + "{{noSuchTool}}\n")).isEmpty();
+        assertThat(validator.validate(ConfigType.SYSTEM_INSTRUCTION, body + "{{noSuchTool}}\n"))
+                .extracting(ValidationError::message).containsExactly("第 1 個工具標記：找不到工具 noSuchTool");
+        assertThat(structureOnly.validate(ConfigType.SYSTEM_INSTRUCTION,
+                body + "{{noSuchTool}}\n見 https://evil.com\n"))
+                .extracting(ValidationError::message).containsExactly("第 8 行疑似包含未允許的網址，請移除");
+    }
 }

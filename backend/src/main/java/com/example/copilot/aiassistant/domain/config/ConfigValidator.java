@@ -1,8 +1,6 @@
 package com.example.copilot.aiassistant.domain.config;
 
 import com.example.copilot.aiassistant.domain.prompt.ExampleQuestionParser;
-import com.example.copilot.aiassistant.domain.privacy.PiiRedactor;
-import com.example.copilot.aiassistant.domain.tool.ToolRegistry;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -26,6 +24,9 @@ public class ConfigValidator {
     public static final List<String> API_KEY_REGEXES =
             List.of("sk-[A-Za-z0-9_-]{16,}", "Bearer\\s+[A-Za-z0-9._-]{16,}");
     public static final String PASSWORD_REGEX = "(password|passwd|密碼)\\s*[:：=]";
+    /** Cert number formats (national id, resident certificate, foreign national); shared with the PiiRedactor. */
+    public static final String CERT_NO_REGEX =
+            "(?<![A-Za-z0-9&])(?:[A-Z][12]\\d{8}|[A-Z]{3}\\d{6}|&[A-Z]\\d{8})(?![A-Za-z0-9])";
 
     /** Hostname characters only, so Markdown ")" or CJK punctuation after the host is not part of it. */
     private static final Pattern URL_HOST = Pattern.compile("(?i)https?://([a-z0-9.-]*)");
@@ -44,8 +45,21 @@ public class ConfigValidator {
 
     /** A null or empty host list allows no URL at all. */
     public ConfigValidator(ExampleQuestionParser exampleQuestionParser, Collection<String> allowedUrlHosts,
-                           ToolRegistry registry) {
-        this.workflowValidator = new WorkflowValidator(registry);
+                           ToolCatalog catalog) {
+        this(exampleQuestionParser, allowedUrlHosts, new WorkflowValidator(catalog));
+    }
+
+    /**
+     * Without a tool catalog: tool markers are checked for structure only, every other rule applies as usual.
+     * For callers that have no tools, such as the scheduler re-validating a version that is due.
+     */
+    public ConfigValidator(ExampleQuestionParser exampleQuestionParser, Collection<String> allowedUrlHosts) {
+        this(exampleQuestionParser, allowedUrlHosts, new WorkflowValidator());
+    }
+
+    private ConfigValidator(ExampleQuestionParser exampleQuestionParser, Collection<String> allowedUrlHosts,
+                            WorkflowValidator workflowValidator) {
+        this.workflowValidator = workflowValidator;
         this.exampleQuestionParser = exampleQuestionParser;
         this.allowedUrlHosts = allowedUrlHosts == null ? Set.of()
                 : allowedUrlHosts.stream().map(h -> h.toLowerCase(Locale.ROOT)).collect(Collectors.toUnmodifiableSet());
@@ -56,7 +70,7 @@ public class ConfigValidator {
                 Forbidden.regex("IP 位址", "\\b\\d{1,3}(\\.\\d{1,3}){3}\\b"),
                 Forbidden.regex("身分證號", "\\b[A-Z][12]\\d{8}\\b"),
                 Forbidden.regex("手機號碼", "\\b09\\d{2}-?\\d{3}-?\\d{3}\\b"),
-                Forbidden.regex("顧客編號", PiiRedactor.CERT_NO_REGEX));
+                Forbidden.regex("顧客編號", CERT_NO_REGEX));
     }
 
     private boolean hasDisallowedUrl(String line) {

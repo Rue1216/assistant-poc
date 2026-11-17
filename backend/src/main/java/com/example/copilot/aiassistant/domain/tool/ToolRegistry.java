@@ -1,5 +1,6 @@
 package com.example.copilot.aiassistant.domain.tool;
 
+import com.example.copilot.aiassistant.domain.config.ToolCatalog;
 import com.example.copilot.aiassistant.domain.customer.AccessLevel;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -7,7 +8,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-public class ToolRegistry {
+public class ToolRegistry implements ToolCatalog {
 
     private final Map<String, AssistantTool<?>> byName = new LinkedHashMap<>();
 
@@ -35,5 +36,10 @@ public class ToolRegistry {
 
     public Optional<AssistantTool<?>> find(String name) {
         return Optional.ofNullable(byName.get(name));
+    }
+
+    @Override
+    public Optional<List<String>> optionKeys(String toolName) {
+        return find(toolName).map(tool -> tool.options().stream().map(ToolOption::key).toList());
     }
 }

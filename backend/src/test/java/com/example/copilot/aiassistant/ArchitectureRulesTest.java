@@ -73,6 +73,27 @@ class ArchitectureRulesTest {
         assertThat(violations("domain", DOMAIN_FORBIDDEN, Set.of())).isEmpty();
     }
 
+    /**
+     * Config validation is shared with the scheduler module, which has no tools and no customer data: it must
+     * stay free of those packages (backend/PORTING-scheduler.md section 5.2).
+     */
+    @Test
+    void configValidationDoesNotDependOnToolsOrCustomerData() {
+        List<String> forbidden = List.of(BASE + "domain.tool.", BASE + "domain.customer.", BASE + "domain.privacy.",
+                BASE + "domain.user.", "dev.langchain4j.");
+        List<Path> shared = Stream.of("ConfigValidator", "WorkflowValidator", "ToolCatalog", "ValidationError",
+                        "ConfigType")
+                .map(name -> ROOT.resolve("domain/config/" + name + ".java"))
+                .toList();
+        assertThat(shared).allSatisfy(file -> assertThat(file).isRegularFile());
+        assertThat(shared.stream()
+                        .flatMap(file -> importLines(file).stream()
+                                .filter(line -> forbidden.stream().anyMatch(importedName(line)::startsWith))
+                                .map(line -> relative(ROOT, file) + ": " + line))
+                        .toList())
+                .isEmpty();
+    }
+
     @Test
     void applicationHasNoSpringDataOrMongoImports() {
         assertThat(violations("application", APPLICATION_FORBIDDEN, Set.of())).isEmpty();

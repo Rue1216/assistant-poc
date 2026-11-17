@@ -2,9 +2,6 @@ package com.example.copilot.aiassistant.domain.config;
 
 import com.example.copilot.aiassistant.domain.prompt.WorkflowParser;
 import com.example.copilot.aiassistant.domain.prompt.WorkflowParser.Marker;
-import com.example.copilot.aiassistant.domain.tool.AssistantTool;
-import com.example.copilot.aiassistant.domain.tool.ToolOption;
-import com.example.copilot.aiassistant.domain.tool.ToolRegistry;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -21,10 +18,16 @@ public class WorkflowValidator {
     private static final List<String> MARKER_FREE_SECTIONS = List.of("## 適用問題", "## 範例問題");
     private static final Pattern COMPLETE_MARKER = Pattern.compile("\\{\\{[^{}\\r\\n]*\\}\\}");
 
-    private final ToolRegistry registry;
+    /** Null when the caller has no tools to check against. */
+    private final ToolCatalog catalog;
 
-    public WorkflowValidator(ToolRegistry registry) {
-        this.registry = registry;
+    public WorkflowValidator(ToolCatalog catalog) {
+        this.catalog = catalog;
+    }
+
+    /** Checks marker structure only: whether the named tools and options exist is left unchecked. */
+    public WorkflowValidator() {
+        this(null);
     }
 
     public List<ValidationError> validate(ConfigType type, String content) {
@@ -100,19 +103,21 @@ public class WorkflowValidator {
                 errors.add(error(prefix + "格式不正確"));
                 continue;
             }
-            Optional<AssistantTool<?>> tool = registry.find(marker.toolName());
-            if (tool.isEmpty()) {
+            if (catalog == null) {
+                continue;
+            }
+            Optional<List<String>> optionKeys = catalog.optionKeys(marker.toolName());
+            if (optionKeys.isEmpty()) {
                 errors.add(error(prefix + "：找不到工具 " + clip(marker.toolName())));
                 continue;
             }
-            checkOptions(prefix, tool.get(), marker, errors);
+            checkOptions(prefix, marker, optionKeys.get(), errors);
         }
     }
 
-    private static void checkOptions(String prefix, AssistantTool<?> tool, Marker marker,
+    private static void checkOptions(String prefix, Marker marker, List<String> keys,
                                      List<ValidationError> errors) {
-        String name = clip(tool.name());
-        List<String> keys = tool.options().stream().map(ToolOption::key).toList();
+        String name = clip(marker.toolName());
         if (keys.isEmpty()) {
             if (!marker.options().isEmpty()) {
                 errors.add(error(prefix + "：" + name + " 不接受選項"));

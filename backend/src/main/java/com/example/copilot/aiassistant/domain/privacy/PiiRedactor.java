@@ -1,5 +1,6 @@
 package com.example.copilot.aiassistant.domain.privacy;
 
+import com.example.copilot.aiassistant.domain.config.ConfigValidator;
 import java.text.Normalizer;
 import java.util.Comparator;
 import java.util.List;
@@ -24,10 +25,7 @@ public class PiiRedactor {
     private static final Pattern MOBILE = Pattern.compile("(?<!\\d)09\\d{2}-?\\d{3}-?\\d{3}(?!\\d)", FLAGS);
     private static final Pattern EMAIL = Pattern.compile("[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}", FLAGS);
     private static final Pattern ACCOUNT = Pattern.compile("(?<!\\d)\\d{10,}(?!\\d)", FLAGS);
-    /** Cert number formats (national id, resident certificate, foreign national); shared with the config validator. */
-    public static final String CERT_NO_REGEX =
-            "(?<![A-Za-z0-9&])(?:[A-Z][12]\\d{8}|[A-Z]{3}\\d{6}|&[A-Z]\\d{8})(?![A-Za-z0-9])";
-    private static final Pattern OTHER_CUSTOMER = Pattern.compile(CERT_NO_REGEX, FLAGS);
+    private static final Pattern OTHER_CUSTOMER = Pattern.compile(ConfigValidator.CERT_NO_REGEX, FLAGS);
 
     public String redact(String text, CustomerContext customer) {
         Objects.requireNonNull(customer, "customer");

@@ -16,6 +16,7 @@ import com.example.copilot.aiassistant.domain.tool.market.GetStockQuoteTool;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class WorkflowValidatorTest {
@@ -163,5 +164,52 @@ class WorkflowValidatorTest {
         String longName = "a".repeat(40);
         assertInstruction("{{" + longName + "}}", PREFIX + "：找不到工具 " + "a".repeat(32));
         assertInstruction("{{getCustomer: " + longName + "}}", PREFIX + "：getCustomer 沒有選項 " + "a".repeat(32));
+    }
+
+    /** A catalog written by hand: one tool with two options, one tool without options. */
+    private static final ToolCatalog HAND_WRITTEN = name -> switch (name) {
+        case "lookup" -> Optional.of(List.of("a", "b"));
+        case "plain" -> Optional.of(List.of());
+        default -> Optional.empty();
+    };
+
+    private static List<String> messages(WorkflowValidator validator, String content) {
+        return validator.validate(ConfigType.SYSTEM_INSTRUCTION, content).stream()
+                .map(ValidationError::message).toList();
+    }
+
+    @Test
+    void catalogDecidesWhichToolsAndOptionsExist() {
+        WorkflowValidator fromCatalog = new WorkflowValidator(HAND_WRITTEN);
+
+        assertThat(messages(fromCatalog, "{{lookup: a, b}}\n{{plain}}")).isEmpty();
+        assertThat(messages(fromCatalog, "{{getCustomer: profile}}"))
+                .containsExactly(PREFIX + "：找不到工具 getCustomer");
+        assertThat(messages(fromCatalog, "{{lookup: c}}")).containsExactly(PREFIX + "：lookup 沒有選項 c");
+        assertThat(messages(fromCatalog, "{{lookup}}")).containsExactly(PREFIX + "：lookup 至少要選一個選項");
+        assertThat(messages(fromCatalog, "{{plain: a}}")).containsExactly(PREFIX + "：plain 不接受選項");
+    }
+
+    /** The scheduler has no tool beans: which tools and options exist is not checked there. */
+    @Test
+    void withoutCatalogUnknownToolsAndOptionsPass() {
+        WorkflowValidator structureOnly = new WorkflowValidator();
+
+        assertThat(messages(structureOnly, "{{noSuchTool}}\n{{getCustomer: nope}}\n{{getMarketIndex: x}}"))
+                .isEmpty();
+    }
+
+    @Test
+    void withoutCatalogStructureIsStillChecked() {
+        WorkflowValidator structureOnly = new WorkflowValidator();
+
+        assertThat(messages(structureOnly, "{{姓名}}")).containsExactly("第 1 個工具標記格式不正確");
+        assertThat(messages(structureOnly, "看 {{a")).containsExactly("第 1 行的工具標記沒有結尾");
+        assertThat(messages(structureOnly, "{{a}}{{b}}{{c}}{{d}}"))
+                .containsExactly("工具標記最多 3 個不同的工具，目前有 4 個");
+        assertThat(messages(structureOnly, "## 適用問題\n{{a}}"))
+                .containsExactly("「## 適用問題」不可放工具標記（這段會交給路由或顯示成快捷按鈕）");
+        assertThat(structureOnly.validate(ConfigType.SYSTEM_PROMPT, "{{a}}")).extracting(ValidationError::message)
+                .containsExactly("System Prompt 不可放工具標記，流程要設定在問題分類");
     }
 }
