@@ -20,7 +20,6 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.TransientClientSessionException;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.TransactionSystemException;
 
@@ -37,10 +36,13 @@ public class AssistantConfigRepositoryImpl implements AssistantConfigRepository 
 
     private final MongoTemplate mongo;
     private final AssistantConfigDocumentMapper mapper;
+    /** The document-level writes of publishing; kept apart so that they can be shared with the scheduler. */
+    private final AssistantConfigPublishStore publishStore;
 
     public AssistantConfigRepositoryImpl(MongoTemplate mongo, AssistantConfigDocumentMapper mapper) {
         this.mongo = mongo;
         this.mapper = mapper;
+        this.publishStore = new AssistantConfigPublishStore(mongo);
     }
 
     @Override
@@ -76,8 +78,7 @@ public class AssistantConfigRepositoryImpl implements AssistantConfigRepository 
 
     @Override
     public List<AssistantConfig> findScheduledDue(Instant now) {
-        Query query = Query.query(where("status").is(ConfigStatus.SCHEDULED).and("scheduledAt").lte(now));
-        return toDomain(mongo.find(query, AssistantConfigDocument.class));
+        return toDomain(publishStore.findScheduledDue(now));
     }
 
     @Override
@@ -98,7 +99,7 @@ public class AssistantConfigRepositoryImpl implements AssistantConfigRepository 
     @Override
     public AssistantConfig publish(AssistantConfig workingCopy) {
         return write(() -> {
-            archivePublished(workingCopy.configKey());
+            publishStore.archivePublished(workingCopy.configKey().value());
             return mapper.toDomain(mongo.save(mapper.toDocument(workingCopy)));
         });
     }
@@ -114,55 +115,23 @@ public class AssistantConfigRepositoryImpl implements AssistantConfigRepository 
     }
 
     /**
-     * Claims {@code due} with a conditional update (still SCHEDULED, same docVersion) so that concurrent runs
-     * publish it once; {@code updatedBy} stays the person who scheduled it. Mongo failures are not mapped here:
-     * the use-case boundary translates conflicts and the scheduler tells a lost race from a real failure.
+     * Mongo failures are not mapped here: the use-case boundary translates conflicts and the scheduler tells a
+     * lost race from a real failure. Only the store's own refusal (changed since it was read: saved, applied over,
+     * or published by another instance) becomes a conflict, with no cause, and the caller's transaction rolls the
+     * archive back.
      */
     @Override
     public void publishScheduled(AssistantConfig due, Instant now) {
-        archivePublished(due.configKey());
-        Query claim = Query.query(where("id").is(due.id())
-                .and("status").is(ConfigStatus.SCHEDULED)
-                .and("docVersion").is(due.docVersion()));
-        Update publish = new Update()
-                .set("status", ConfigStatus.PUBLISHED)
-                .set("updatedAt", now)
-                .inc("docVersion", 1L);
-        if (mongo.updateFirst(claim, publish, AssistantConfigDocument.class).getModifiedCount() != 1) {
-            // Changed since it was read (saved, applied over, or published by another instance): the caller's
-            // transaction rolls the archive back.
+        try {
+            publishStore.publishScheduled(mapper.toDocument(due), now);
+        } catch (OptimisticLockingFailureException e) {
             throw new AssistantException(ErrorCode.AI_CONFIG_CONFLICT);
         }
     }
 
     @Override
     public boolean revertScheduled(AssistantConfig due, String actor, Instant now) {
-        Query current = Query.query(where("id").is(due.id())
-                .and("status").is(ConfigStatus.SCHEDULED)
-                .and("docVersion").is(due.docVersion()));
-        Update revert = new Update()
-                .set("status", ConfigStatus.DRAFT)
-                .unset("scheduledAt")
-                .set("updatedBy", actor)
-                .set("updatedAt", now)
-                .inc("docVersion", 1L);
-        return mongo.updateFirst(current, revert, AssistantConfigDocument.class).getModifiedCount() == 1;
-    }
-
-    /**
-     * Targeted update of the status only: the archived version keeps its updatedBy / updatedAt (= when it
-     * went live). Must run inside the caller's publishing transaction.
-     */
-    private void archivePublished(ConfigKey configKey) {
-        Optional.ofNullable(mongo.findOne(byKeyAndStatus(configKey, ConfigStatus.PUBLISHED), AssistantConfigDocument.class)).ifPresent(old -> {
-            Query current = Query.query(where("id").is(old.getId())
-                    .and("status").is(ConfigStatus.PUBLISHED)
-                    .and("docVersion").is(old.getDocVersion()));
-            Update archive = new Update().set("status", ConfigStatus.ARCHIVED).inc("docVersion", 1L);
-            if (mongo.updateFirst(current, archive, AssistantConfigDocument.class).getModifiedCount() != 1) {
-                throw new AssistantException(ErrorCode.AI_CONFIG_CONFLICT);
-            }
-        });
+        return publishStore.revertScheduled(mapper.toDocument(due), actor, now);
     }
 
     private static Query byKeyAndStatus(ConfigKey configKey, ConfigStatus status) {

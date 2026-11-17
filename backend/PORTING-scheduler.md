@@ -3,7 +3,7 @@
 > 用途：把小幫手的預約發布排程（POC 的 `ScheduledPublishJob`）從 `backend/` 抽出，改成平台 `scheduler/` 模組的一支 Job。
 > 讀者：在新 session 內執行這件事的 agent。你沒有先前對話的內容，需要的事實都寫在這裡。
 > 與 [PORTING.md](PORTING.md) 的關係：本文件是 PORTING.md 第 4 節的展開與修正。第 5 節的依賴盤點是對照程式碼重新算過的，與 PORTING.md §4.3 的清單不同，**不一致時以本文件為準**。其他主題（權限、OpenAI、資料庫）仍看 PORTING.md。
-> 寫成時間：2026-11-17，對照 POC commit `d44bea9`。
+> 寫成時間：2026-11-17，對照 POC commit `d44bea9`；同日已在 POC 完成兩項準備（步驟 2 與持久化操作的抽離），本文件描述的是完成之後的程式狀態。
 > 標示：**【已確認】** 是 POC 程式碼或平台規範文件（`reference.md`、`db-instructions.md`）明寫的事實；**【推論】** 是依線索推出、要你在平台程式碼裡驗證的判斷；**【預設】** 是使用者已選定的預設答案（第 9 節），照做即可，盤點結果與它衝突時才停下來問。
 
 **重要限制**：寫這份文件的人看不到平台 `scheduler/` 與 `core/` 的程式碼，只看得到 POC 與兩份平台規範文件。所有關於平台現有寫法的描述都是【推論】，動手前先做第 6 節的盤點。
@@ -16,7 +16,7 @@
 2. **以平台現有程式碼為準**。本文件的類別名稱、介面形狀都是建議；平台既有 Job 怎麼寫，就照它寫。
 3. **不要 commit**。每個階段結束，列出 `git add` 清單與建議的 commit message 給使用者。
 4. 每個階段跑平台的建置驗證（`reference.md` §1-2）：改 `core` 後跑 `mvn -pl backend -am compile -Pdev -U` 與 `mvn -pl scheduler -am compile -Pdev -U`；提交前跑 `mvn test`。結果原樣回報，失敗不要說成功。
-5. POC repo 沒有 `scheduler/` 與 `core/` 模組。如果你的工作目錄是 POC，只能做第 6 節步驟 2（縮小驗證器的依賴），其餘要到平台專案才能做；遇到這種情況先告訴使用者。
+5. POC repo 沒有 `scheduler/` 與 `core/` 模組。能在 POC 先做的準備已經做完（第 6 節步驟 2），其餘要到平台專案才能做；如果你的工作目錄是 POC，先告訴使用者。不要在 POC 刪除 backend 的排程，POC 的預約發布還要靠它運作。
 6. log 不得出現 Prompt 內容、驗證訊息文字或例外訊息，只能有 `configKey`、`version`、規則代碼、例外類別名稱（POC 現行規則，搬過去要維持）。
 
 ---
@@ -25,7 +25,8 @@
 
 - 排程入口與「逐筆發布」的流程放 `scheduler/`；它需要的持久化操作與驗證規則下沉到 `core/`；`backend/` 刪掉排程。
 - 不採用「CronJob 呼叫 backend 內部 endpoint」。理由見第 3 節。
-- PORTING.md §4.3 的方案 A 低估了下沉範圍：`ConfigValidator` 依賴 `ToolRegistry`，照搬會把 46 個類別（含整組工具與顧客 360 資料型別，以及 LangChain4j）拉進 `core`。要先把驗證器對工具的依賴縮成一個小介面（第 5.2 節）。
+- PORTING.md §4.3 的方案 A 低估了下沉範圍：`ConfigValidator` 原本依賴 `ToolRegistry`，照搬會把 46 個類別（含整組工具與顧客 360 資料型別，以及 LangChain4j）拉進 `core`。POC 已把這個依賴縮成小介面 `ToolCatalog`，現在只剩 9 個類別（第 5.2 節）。
+- 預約發布的持久化操作已抽成只認 Document 的 `AssistantConfigPublishStore`，相依範圍 5 個類別（第 5.1 節）。下沉 core 時搬這個類別即可。
 - 建議 scheduler 到期重驗時**不檢查「工具是否存在、選項是否存在」**，其餘規則照舊。理由見第 4 節。這是行為上的小改變，使用者已採用（S1）。
 
 ---
@@ -52,15 +53,18 @@
 
 ### 2.3 持久化操作
 
-`infrastructure/mongo/AssistantConfigRepositoryImpl`（`MongoTemplate` + `Criteria`），collection `COLL_ICRM_AI_ASSISTANT_CONFIG`：
+`infrastructure/mongo/AssistantConfigPublishStore`（`MongoTemplate` + `Criteria`，參數與回傳都是 `AssistantConfigDocument`），collection `COLL_ICRM_AI_ASSISTANT_CONFIG`：
 
 | 操作 | 內容 |
 |---|---|
 | `findScheduledDue(now)` | `status = SCHEDULED` 且 `scheduledAt <= now`（index `IX_ICRM_AI_CFG_5`） |
-| `publishScheduled(due, now)` | (a) 把同 `configKey` 的 PUBLISHED 條件更新成 ARCHIVED（只改 `status`、`docVersion + 1`，不動 `updatedBy`、`updatedAt`）；(b) 條件更新 `due`（`_id` 相符、仍是 SCHEDULED、`docVersion` 相同）：`status = PUBLISHED`、`updatedAt = now`、`docVersion + 1`。`updatedBy` 維持預約者，`scheduledAt` 保留。任一步沒命中就丟 `AI_CONFIG_CONFLICT` |
+| `archivePublished(configKey)` | 把該 key 的 PUBLISHED 條件更新成 ARCHIVED（只改 `status`、`docVersion + 1`，不動 `updatedBy`、`updatedAt`）；沒有 PUBLISHED 版本就什麼都不做。立即發布也用它 |
+| `publishScheduled(due, now)` | (a) `archivePublished`；(b) 條件更新 `due`（`_id` 相符、仍是 SCHEDULED、`docVersion` 相同）：`status = PUBLISHED`、`updatedAt = now`、`docVersion + 1`。`updatedBy` 維持預約者，`scheduledAt` 保留。任一步沒命中就丟 Spring 的 `OptimisticLockingFailureException` |
 | `revertScheduled(due, actor, now)` | 單一條件更新（條件同上）：`status = DRAFT`、清掉 `scheduledAt`、`updatedBy = actor`、`updatedAt = now`、`docVersion + 1`。回傳是否命中 |
 
-**(a) 與 (b) 必須在同一個 MongoDB transaction 內**，而且 (b) 沒命中時要讓交易 rollback。否則 (a) 已生效、(b) 失敗，該 `configKey` 會沒有任何 PUBLISHED 版本。POC 靠丟例外讓交易 rollback。
+**(a) 與 (b) 必須在同一個 MongoDB transaction 內**，而且 (b) 沒命中時要讓交易 rollback。否則 (a) 已生效、(b) 失敗，該 `configKey` 會沒有任何 PUBLISHED 版本。所以沒命中時是丟例外，不是回傳 false。
+
+`AssistantConfigRepositoryImpl` 委派給這個類別，並把 `OptimisticLockingFailureException` 轉成不帶 cause 的 `AI_CONFIG_CONFLICT`（Job 的 `isLostRace` 靠「沒有 cause」判斷為搶輸）。這個類別目前不是 Spring bean，由 `AssistantConfigRepositoryImpl` 的建構子建立；搬進 core 後依平台慣例註冊。
 
 多個執行個體同時跑是安全的：條件更新、transaction，加上 unique index `UK_ICRM_AI_CFG_2`（同一 `configKey` 只能有一個 PUBLISHED）。
 
@@ -80,6 +84,7 @@
 | `infrastructure/scheduler/ScheduledPublishJobTest` | 全部（發布、未到期、並行只發布一次、搶輸記 DEBUG、非競爭失敗記 WARN、單筆失敗不中斷、traceId） |
 | `application/command/config/ConfigCommandUseCaseTest` | 名稱以 `publishDue` 開頭的測試、`publishScheduledLeavesAnInvalidVersionChangedMeanwhileAlone` |
 | `application/command/config/ConfigCommandUseCaseTransactionTest` | `concurrentPublishScheduledPublishesOnce`、`scheduledPublishDoesNotInvalidateCache` |
+| `infrastructure/mongo/AssistantConfigPublishStoreTest` | 全部（7 個，文件層的查詢、封存、認領、退回、交易 rollback）。跟著 `AssistantConfigPublishStore` 搬到 core |
 | `infrastructure/mongo/AssistantConfigRepositoryImplTest` | `publishScheduled*`（3 個）、`revertScheduled*`（2 個）、`findScheduledDue` 的查詢 |
 | `domain/config/ConfigValidatorTest`、`WorkflowValidatorTest`、`domain/prompt/WorkflowParserTest`、`ExampleQuestionParserTest` | 全部（驗證器下沉時一起搬） |
 
@@ -136,34 +141,22 @@
 
 ### 5.1 持久化（必須下沉）
 
-`AssistantConfigRepositoryImpl` 的相依範圍共 15 個類別：`AssistantConfigDocument`、`AssistantConfigDocumentMapper`、`AiAssistantCollections`、`MongoConflicts`、`AssistantConfig`、`ConfigKey`、`ConfigStatus`、`ConfigType`、`SaveMode`、`AssistantConfigRepository`、`AssistantException`、`ErrorCode`、`ErrorDetail`、`FieldDetail`，加上它自己。
+`AssistantConfigRepositoryImpl` 的相依範圍共 16 個類別，含 `AssistantConfig` 聚合、`ConfigKey`、`SaveMode`、`AssistantException`、`ErrorCode` 等。PORTING.md §4.3 建議把這一組都搬進 core。
 
-PORTING.md §4.3 建議把這一組（含 `AssistantConfig` 聚合與 `AssistantException`／`ErrorCode`）都搬進 core。改成**以 Document 為介面，只下沉最少的東西**【預設 S5】：
+改成**以 Document 為介面，只下沉最少的東西**【預設 S5】。POC 已把預約發布用到的操作抽成 `AssistantConfigPublishStore`（2.3），它的相依範圍只有 5 個類別：
 
 | 下沉到 core | 留在 backend |
 |---|---|
-| `AssistantConfigDocument`、`ConfigStatus`、`ConfigType`、CONFIG collection 名稱常數、`MongoConflicts`、預約發布的三個持久化操作（新的 core repository） | `AssistantConfig` 聚合、`ConfigKey`、`SaveMode`、`AssistantConfigDocumentMapper`、`AssistantException`／`ErrorCode`、`AssistantConfigRepository` 介面的其餘方法 |
+| `AssistantConfigPublishStore`、`AssistantConfigDocument`、`ConfigStatus`、`ConfigType`、`AiAssistantCollections` 的 CONFIG 常數；另外搬 `MongoConflicts`（scheduler 的 Job 判斷搶輸要用） | `AssistantConfig` 聚合、`ConfigKey`、`SaveMode`、`AssistantConfigDocumentMapper`、`AssistantException`／`ErrorCode`、`AssistantConfigRepository` 介面與 `AssistantConfigRepositoryImpl` |
 
 理由：`AssistantConfig` 帶有存檔、套用、捨棄等業務規則，`ErrorCode` 含全部 `AI_*` 錯誤碼與 HTTP 狀態，都是單一 bounded context 的東西；scheduler 的流程只需要讀 Document 的幾個欄位。平台 core 既有的 repository 若是回傳 domain 物件而不是 Document，就照平台的形狀，回報這個差異即可。
 
-core repository 的建議介面：
-
-```java
-List<AssistantConfigDocument> findScheduledDue(Instant now);
-
-/** 封存目前的 PUBLISHED 並認領 due；必須在呼叫端的交易內執行。任一步沒命中就丟例外，讓交易 rollback。 */
-void publishScheduled(AssistantConfigDocument due, Instant now);
-
-/** 單一條件更新，回傳是否命中。 */
-boolean revertScheduled(AssistantConfigDocument due, String actor, Instant now);
-```
-
-- `publishScheduled` 沒命中時要丟 core 層級的例外（例如 Spring 的 `OptimisticLockingFailureException`），不能回傳 false 了事，原因見 2.3。
-- backend 的立即發布（`AssistantConfigRepositoryImpl.publish`）也會封存舊版。封存邏輯只留一份：放 core，backend 委派過去。
+- 封存舊版的邏輯只有一份（`archivePublished`），backend 的立即發布也委派給它；搬到 core 後維持這樣。
+- `AiAssistantCollections` 還有稽核與評測的 collection 名稱，那兩個留在 backend；只把 CONFIG 的常數移到 core。
 
 ### 5.2 驗證器（方案 A、A′ 需要）
 
-`ConfigValidator` 現在的相依範圍是 **46 個類別**，原因是這條鏈：
+`ConfigValidator` 原本的相依範圍是 **46 個類別**，原因是這條鏈：
 
 ```
 ConfigValidator → WorkflowValidator → ToolRegistry → AssistantTool
@@ -173,25 +166,25 @@ ConfigValidator → WorkflowValidator → ToolRegistry → AssistantTool
 
 `AssistantTool` 還 import LangChain4j 的 `ToolSpecification`；要真的組出 `ToolRegistry`，另外需要 5 個工具實作與 `TwseGateway`。這些不能進 core。
 
-`WorkflowValidator` 實際只用到工具的兩件事：工具名稱是否存在（`registry.find(name)`）、工具有哪些選項 key（`tool.options()` 的 `ToolOption.key()`）。所以先把依賴縮成一個小介面，建議形狀：
+`WorkflowValidator` 實際只用到工具的兩件事：工具名稱是否存在、工具有哪些選項 key。POC 已把依賴縮成 `domain/config/ToolCatalog`：
 
 ```java
-/** 工作流檢查需要知道的工具資訊。 */
 public interface ToolCatalog {
-    /** 工具的選項 key；工具不存在時回傳 empty。 */
+    /** 工具的選項 key（空 list 表示沒有選項）；工具不存在時回傳 empty。 */
     Optional<List<String>> optionKeys(String toolName);
 }
 ```
 
-- `WorkflowValidator`、`ConfigValidator` 的建構子改收 `ToolCatalog`。
-- backend 用 `ToolRegistry` 實作它（`DomainBeanConfiguration.configValidator`），backend 的驗證行為與錯誤訊息完全不變。
-- scheduler 不提供目錄。`WorkflowValidator` 在沒有目錄時跳過「找不到工具」與選項檢查，其餘照做：標記格式、標記未結尾、不同工具最多 3 個、`## 適用問題` 與 `## 範例問題` 不可放標記、System Prompt 不可放標記。
+- `ToolRegistry implements ToolCatalog`，backend 仍把 `ToolRegistry` 傳給 `ConfigValidator`，驗證行為與錯誤訊息完全不變。
+- 沒有工具目錄的呼叫端用兩個參數的建構子：`new ConfigValidator(exampleQuestionParser, allowedUrlHosts)`。這時跳過「找不到工具」與選項檢查，其餘照做：標記格式、標記未結尾、不同工具最多 3 個、`## 適用問題` 與 `## 範例問題` 不可放標記、System Prompt 不可放標記。scheduler 用這個建構子。
+- `ArchitectureRulesTest.configValidationDoesNotDependOnToolsOrCustomerData` 會擋下之後又把工具或顧客資料的依賴加回驗證器。
 
-縮小之後，驗證器下沉的範圍是 8 個類別加 1 個常數：`ConfigValidator`、`WorkflowValidator`、`ToolCatalog`（新）、`ConfigType`、`ValidationError`、`ExampleQuestionParser`、`WorkflowParser`、`WorkflowStep`，以及顧客編號的 regex 常數。
+現在驗證器下沉的範圍是 9 個類別：`ConfigValidator`、`WorkflowValidator`、`ToolCatalog`、`ConfigType`、`ValidationError`、`ErrorDetail`（`ValidationError` 實作的空標記介面）、`ExampleQuestionParser`、`WorkflowParser`、`WorkflowStep`。
 
-- `ConfigValidator` 現在引用 `PiiRedactor.CERT_NO_REGEX`。`PiiRedactor` 依賴 `CustomerContext`，不要搬；只把常數移到 core，`PiiRedactor` 改引用它。
+- 顧客編號的 regex 已移到 `ConfigValidator.CERT_NO_REGEX`，`PiiRedactor` 改引用它。`PiiRedactor` 依賴 `CustomerContext`，留在 backend。
+- `ErrorDetail` 在 `domain/exception`，是給 `AssistantException` 帶細節用的標記介面。下沉時二選一：跟著搬到 core，或讓 core 的 `ValidationError` 不實作它、在 backend 轉換。照平台對 core 例外型別的慣例決定。
 - `allowed-url-hosts` 由呼叫端傳入建構子，core 不讀 `ai-assistant.*` 設定。
-- backend 還有其他地方用到這些類別（`ConfigQueryService`、`EvalRunCommandUseCase`、`CredentialMasker`、`WorkflowRunner`、`SuggestionQueryService`），下沉後改 import 即可。
+- backend 還有其他地方用到這些類別（`ConfigQueryService`、`EvalRunCommandUseCase`、`CredentialMasker`、`WorkflowRunner`、`SuggestionQueryService`、`PiiRedactor`、`ToolRegistry`），下沉後改 import 即可。
 
 ---
 
@@ -209,24 +202,26 @@ public interface ToolCatalog {
 | CronJob 排程設定檔的位置、最小間隔、是否禁止重疊執行 | K8s manifest／Helm／SCP 設定 | 步驟 5 |
 | scheduler 的 `application-{env}.yml` 與設定綁定方式 | `scheduler/src/main/resources` | `allowed-url-hosts` 放哪裡 |
 | scheduler 的測試怎麼連 MongoDB | `scheduler/src/test` | 測試搬到哪裡、怎麼寫 |
-| 小幫手是否已搬進平台 backend | PORTING.md §7 步驟 2 是否完成 | 還沒搬完就先做步驟 2，其餘等搬完 |
+| 小幫手是否已搬進平台 backend，搬的是哪個版本 | PORTING.md §7 的「搬程式」階段是否完成；平台 backend 裡有沒有 `ToolCatalog`、`AssistantConfigPublishStore` | 還沒搬完就等搬完；搬來的版本沒有這兩個類別時，先補上本節步驟 2 的三項準備 |
 | 選項不存在時的執行期行為 | backend 的 `WorkflowRunner`、`ToolGuard` | 補上第 4 節缺的那項確認 |
 
 回報盤點結果與第 9 節的問題，等使用者回覆。
 
-### 步驟 2：縮小驗證器的依賴（在 backend 內，行為不變）
+### 步驟 2：在 backend 內的準備（POC 已完成，2026-11-17）
 
-1. 新增 `ToolCatalog`，`WorkflowValidator`、`ConfigValidator` 改依賴它（5.2）。
-2. 補測試：有目錄時現有 `WorkflowValidatorTest`、`ConfigValidatorTest` 全部照過；沒有目錄時，工具與選項的檢查不產生錯誤，其餘結構檢查照舊。
-3. 把 `CERT_NO_REGEX` 從 `PiiRedactor` 移出。
+行為不變的重構，POC 全部 1,059 個測試通過（另有 4 個需要真實 OpenAI 金鑰的測試照例略過）：
 
-這一步不依賴平台模組，可以先做、先驗證。
+1. 新增 `ToolCatalog`，`WorkflowValidator`、`ConfigValidator` 改依賴它，並提供沒有工具目錄的建構子（5.2）。
+2. `CERT_NO_REGEX` 從 `PiiRedactor` 移到 `ConfigValidator`。
+3. 預約發布的持久化操作抽成 `AssistantConfigPublishStore`，`AssistantConfigRepositoryImpl` 委派給它（2.3、5.1）。
+
+如果平台 backend 裡的小幫手是從這個 commit 之前的 POC 搬過去的，先把這三項補上，再做步驟 3。
 
 ### 步驟 3：下沉到 core
 
 1. 依 5.1、5.2 建立套件（位置照 core 既有命名），搬入類別，改 backend 的 import。
-2. 新增 core repository 與實作，內容照 2.3。封存舊版的邏輯只留這一份。
-3. 把 2.5 的 repository 測試與驗證器測試搬到 core。
+2. `AssistantConfigPublishStore` 依平台慣例註冊成 bean（或改成 core repository 的介面加實作），backend 的 `AssistantConfigRepositoryImpl` 改用注入的實例。
+3. 把 `AssistantConfigPublishStoreTest` 與驗證器的測試搬到 core。
 4. 兩個模組都編譯通過後，backend 的測試應該全數通過（此時 backend 的排程還在）。
 
 ### 步驟 4：scheduler 新增 Job
@@ -235,10 +230,10 @@ public interface ToolCatalog {
 
 1. `findScheduledDue(now)`。
 2. 逐筆處理，每筆各自一個交易，一筆失敗不影響其他筆：
-   - 用 core 的 `ConfigValidator` 驗證（不提供工具目錄；`allowed-url-hosts` 從 scheduler 設定讀入）。
+   - 用 core 的 `ConfigValidator` 驗證（兩個參數的建構子，不提供工具目錄；`allowed-url-hosts` 從 scheduler 設定讀入）。
    - 不通過 → `revertScheduled(due, "system", now)`；命中記 WARN（`configKey`、`version`、規則代碼），沒命中略過。
    - 通過 → 在交易內呼叫 `publishScheduled(due, now)`。
-3. 搶輸與失敗的區分照 POC 的 `isLostRace`（2.1）。scheduler 沒有 `ConfigTransactionConflictAspect`，要直接判斷原始例外：`MongoConflicts.isWriteConflictOrDuplicateKey(e)`，或 core repository 丟出的「沒命中」例外，視為搶輸；其餘是失敗。
+3. 搶輸與失敗的區分照 POC 的 `isLostRace`（2.1）。scheduler 沒有 `ConfigTransactionConflictAspect`，要直接判斷原始例外：`MongoConflicts.isWriteConflictOrDuplicateKey(e)`，或 `AssistantConfigPublishStore` 丟出的 `OptimisticLockingFailureException`，視為搶輸；其餘是失敗。
 4. 結束時記錄發布筆數。exit code 的表示方式依平台慣例；判定規則是全部處理完才決定，只有「非競爭的失敗」才算 Job 失敗，驗證不過被退回不算失敗【預設 S4】。
 5. 掛 `@SchedulerLog`；traceId 用平台 scheduler 的機制，不要搬 `RequestContext`。
 6. scheduler 的設定檔加入 `ai-assistant.config.allowed-url-hosts`，**值必須與 backend 相同**。兩邊不一致會造成「存檔時通過、到期時被退回」。
@@ -250,6 +245,7 @@ public interface ToolCatalog {
 
 ### 步驟 6：backend 移除排程
 
+- 只在平台專案做，不要在 POC 做。
 - 刪除 `ScheduledPublishJob`、`ScheduledPublishOutcome`、`ConfigCommandUseCase.findScheduledDue` 與 `publishScheduled`、`AssistantConfigRepository` 介面與實作上的 `findScheduledDue`／`publishScheduled`／`revertScheduled`。
 - 刪除設定 `ai-assistant.config.scheduler-enabled`、`schedule-check-interval`，`AiAssistantProperties.Config.scheduleCheckInterval`，以及 `IntegrationTestBase` 裡對 `scheduler-enabled` 的設定。
 - 保留：`schedule-min-lead`、`schedule-max-lead`、`ScheduleWindow`、`SCHEDULED` 狀態在存檔／套用／捨棄的處理、`ConfigPublishedEvent`（立即發布仍在用）。

@@ -444,7 +444,8 @@ backend/
    │  │  │               FieldDetail、WorkingCopyDetail、RunningEvalDetail（三種細節 record）
    │  │  ├─ config/      AssistantConfig（record 聚合，狀態規則為其方法）、ConfigKey（值物件）、ConfigStatus、ConfigType、
    │  │  │               ScheduleWindow（預約時間窗）、SaveMode、ValidationError、PromptVersion、PublishedConfigs、ConfigValidator、
-   │  │  │               WorkflowValidator（工具標記規則，由 ConfigValidator 呼叫）
+   │  │  │               WorkflowValidator（工具標記規則，由 ConfigValidator 呼叫）、
+   │  │  │               ToolCatalog（驗證器需要的工具名稱與選項，由 ToolRegistry 實作）
    │  │  ├─ customer/    CertNo（值物件）、AccessLevel、CustomerRecord、c360/（Customer360Record、RealTimeStatusRecord 等 record）
    │  │  ├─ user/        UserContext
    │  │  ├─ chat/        ChatResult、EvaluationReport
@@ -502,6 +503,7 @@ backend/
    │     ├─ mongo/       AiAssistantCollections（集合名稱常數）、@Document 類別 AssistantConfigDocument／PromptVersionDocument、
    │     │               AuditRecordDocument、EvalRunDocument 與各自的 MapStruct Mapper（AssistantConfigDocumentMapper、
    │     │               AuditRecordDocumentMapper、EvalRunDocumentMapper）、AssistantConfigRepositoryImpl、
+   │     │               AssistantConfigPublishStore（封存與預約發布的文件層寫入，只認 Document）、
    │     │               ConfigQueryRepositoryImpl、AuditRepositoryImpl、FeedbackStatsQueryRepositoryImpl、
    │     │               EvalRunRepositoryImpl（皆用 MongoTemplate + Criteria）、MongoConflicts、
    │     │               ConfigTransactionConflictAspect（交易衝突轉 AI_CONFIG_CONFLICT）、
