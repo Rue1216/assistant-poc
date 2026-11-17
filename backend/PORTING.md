@@ -198,6 +198,8 @@ public interface CustomerDataPort {     // 平台顧客資料
 
 ## 4. 排程：抽離到平台 `scheduler/`
 
+> 細部做法與重新盤點過的依賴範圍見 [PORTING-scheduler.md](PORTING-scheduler.md)。它修正了 4.3 方案 A 的下沉清單（`ConfigValidator` 依賴 `ToolRegistry`），兩者不一致時以該文件為準。
+
 ### 4.1 POC 目前的做法【已確認】
 
 - 只有一個排程：`infrastructure/scheduler/ScheduledPublishJob`，`@Scheduled(fixedDelayString = "${ai-assistant.config.schedule-check-interval}")`，每 30 秒一次；`@EnableScheduling` 寫在 `CopilotApplication`（不會跟著搬）；`ai-assistant.config.scheduler-enabled`（測試設 false）控制是否註冊。
