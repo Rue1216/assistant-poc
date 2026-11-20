@@ -3,11 +3,14 @@ let pickerSeq = 0
 </script>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
-import { promptManagementApi } from '@/views/maintenance/prompt-management/prompt-management-api'
-import type { ToolCatalogItem } from '@/beans/prompt-management-bean'
+import { computed, nextTick, ref } from 'vue'
+import { onClickOutside } from '@vueuse/core'
+import { injectToolCatalog } from '@/composables/use-tool-catalog'
 
 const emit = defineEmits<{ insert: [marker: string] }>()
+
+// provided by the page, so remounting the picker does not fetch the catalog again
+const catalog = injectToolCatalog()
 
 const uid = `pm-tools-${++pickerSeq}`
 const listId = `${uid}-list`
@@ -31,13 +34,12 @@ const isOpen = ref(false)
 const query = ref('')
 const activeMarker = ref('')
 
-const catalog = ref<ToolCatalogItem[] | null>(null)
-const loading = ref(false)
-const failed = ref(false)
+const loading = computed(() => catalog.state.loading)
+const failed = computed(() => catalog.state.failed)
 
 // one item per option; a tool without options is a single item, the bare tool of an optioned tool is none
 const items = computed<Item[]>(() =>
-  (catalog.value ?? []).flatMap((t) =>
+  (catalog.state.items ?? []).flatMap((t) =>
     t.options.length
       ? t.options.map((o) => ({
           marker: `{{${t.name}: ${o.key}}}`,
@@ -61,16 +63,7 @@ function resetActive() {
 }
 
 async function load() {
-  if (loading.value || catalog.value) return
-  loading.value = true
-  failed.value = false
-  try {
-    catalog.value = await promptManagementApi.tools()
-  } catch {
-    failed.value = true
-  } finally {
-    loading.value = false
-  }
+  await catalog.load()
   resetActive()
 }
 
@@ -89,9 +82,8 @@ function onRetryKeydown(event: KeyboardEvent) {
   }
 }
 
-function onOutside(event: Event) {
-  if (root.value && !root.value.contains(event.target as Node)) close(false)
-}
+// listens for the component's lifetime; close() does nothing while the panel is closed
+onClickOutside(root, () => close(false))
 
 function open() {
   if (isOpen.value) return void input.value?.focus()
@@ -99,19 +91,15 @@ function open() {
   query.value = ''
   activeMarker.value = ''
   resetActive()
-  document.addEventListener('pointerdown', onOutside)
   void nextTick(() => input.value?.focus())
-  void load() // lazy: the catalog is fetched on the first open only
+  void load() // lazy: the page's catalog is fetched on the first open of any picker, then reused
 }
 
 function close(focusButton: boolean) {
   if (!isOpen.value) return
   isOpen.value = false
-  document.removeEventListener('pointerdown', onOutside)
   if (focusButton) void nextTick(() => button.value?.focus())
 }
-
-onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutside))
 
 function choose(marker: string) {
   // the editor takes focus back after inserting, so the button must not grab it

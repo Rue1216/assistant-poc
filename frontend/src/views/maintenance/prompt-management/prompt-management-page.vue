@@ -4,6 +4,7 @@ import { onBeforeRouteLeave } from 'vue-router'
 import { useAuthStore } from '@/stores/use-auth-store'
 import { usePromptAdmin } from '@/composables/use-prompt-admin'
 import { usePromptEvaluation } from '@/composables/use-prompt-evaluation'
+import { provideToolCatalog } from '@/composables/use-tool-catalog'
 import { formatTaipeiShort } from '@/utils/taipei-time'
 import type { ConfigType, OverwritePendingDetail, VersionHistoryItem } from '@/beans/prompt-management-bean'
 import ConfigEditor from '@/views/maintenance/prompt-management/components/config-editor.vue'
@@ -35,6 +36,10 @@ const evaluation = usePromptEvaluation(selectedKey)
 const mark = computed(() =>
   verdictMark(evaluation.state.history, evaluation.state.current, selectedKey.value, state.workingCopy),
 )
+
+// Owned by the page so the tool picker, remounted on every tab, config and version switch, fetches it once.
+// Provided rather than passed: only the picker, three components down, uses it.
+provideToolCatalog()
 
 /** Save first; the evaluation starts only if the save went through (errors are shown by the save itself). */
 async function onSaveAndRun() {

@@ -21,6 +21,7 @@ vi.mock('@/composables/use-toast', () => ({ useToast: () => ({ show: vi.fn() }) 
 
 import { ApiError } from '@/utils/api-client'
 import { usePromptAdmin } from '@/composables/use-prompt-admin'
+import { TOOL_CATALOG_KEY, useToolCatalog } from '@/composables/use-tool-catalog'
 import ConfigEditor from '@/views/maintenance/prompt-management/components/config-editor.vue'
 import { settleValidation } from '../../../../helpers/settle-validation'
 
@@ -72,7 +73,7 @@ async function mountEditor(
   await flushPromises()
   const wrapper = mount(ConfigEditor, {
     props: { admin, configType: working.configType, publishedInstructionCount: 5, canEdit, canPublish },
-    global: { plugins: [createPinia()] },
+    global: { plugins: [createPinia()], provide: { [TOOL_CATALOG_KEY]: useToolCatalog() } },
   })
   return { wrapper, admin }
 }

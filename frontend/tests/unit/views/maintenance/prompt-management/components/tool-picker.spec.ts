@@ -5,6 +5,7 @@ import type { ToolCatalogItem } from '@/beans/prompt-management-bean'
 const tools = vi.fn()
 vi.mock('@/views/maintenance/prompt-management/prompt-management-api', () => ({ promptManagementApi: { tools: () => tools() } }))
 
+import { TOOL_CATALOG_KEY, useToolCatalog, type ToolCatalog } from '@/composables/use-tool-catalog'
 import ToolPicker from '@/views/maintenance/prompt-management/components/tool-picker.vue'
 
 const CATALOG: ToolCatalogItem[] = [
@@ -23,8 +24,8 @@ const mounted: VueWrapper[] = []
 beforeEach(() => tools.mockReset().mockResolvedValue(CATALOG))
 afterEach(() => mounted.splice(0).forEach((w) => w.unmount()))
 
-function mountPicker() {
-  const w = mount(ToolPicker, { attachTo: document.body })
+function mountPicker(catalog: ToolCatalog = useToolCatalog()) {
+  const w = mount(ToolPicker, { global: { provide: { [TOOL_CATALOG_KEY]: catalog } }, attachTo: document.body })
   mounted.push(w)
   return w
 }
@@ -112,6 +113,34 @@ describe('ToolPicker', () => {
     await button(w).trigger('click')
     await openPanel(w)
     expect(tools).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not load again when remounted with the same catalog', async () => {
+    const catalog = useToolCatalog()
+    const first = mountPicker(catalog)
+    await openPanel(first)
+    first.unmount()
+    const second = mountPicker(catalog)
+    await openPanel(second)
+    expect(tools).toHaveBeenCalledTimes(1)
+    expect(options(second)).toHaveLength(3)
+  })
+
+  it('throws when no catalog is provided, instead of fetching one of its own', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(() => mount(ToolPicker)).toThrow(/no tool catalog provided/)
+    expect(tools).not.toHaveBeenCalled()
+  })
+
+  it('closes on a click outside, and stays open on a click inside', async () => {
+    const w = mountPicker()
+    await openPanel(w)
+    await input(w).trigger('click')
+    expect(input(w).exists()).toBe(true)
+    await new Promise((r) => setTimeout(r)) // onClickOutside handles one click per macrotask
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flushPromises()
+    expect(input(w).exists()).toBe(false)
   })
 
   it('shows an error with retry when loading fails, and retries', async () => {

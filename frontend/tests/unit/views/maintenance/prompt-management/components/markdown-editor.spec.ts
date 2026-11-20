@@ -5,6 +5,10 @@ import SafeMarkdown from '@/utils/markdown/safe-markdown'
 import MarkdownEditor from '@/views/maintenance/prompt-management/components/markdown-editor.vue'
 import ToolPicker from '@/views/maintenance/prompt-management/components/tool-picker.vue'
 import type { ConfigType } from '@/beans/prompt-management-bean'
+import { TOOL_CATALOG_KEY, useToolCatalog } from '@/composables/use-tool-catalog'
+
+/** The tool picker injects the page's catalog; an instruction on the edit tab renders one. */
+const withCatalog = () => ({ provide: { [TOOL_CATALOG_KEY]: useToolCatalog() } })
 
 function mountEditor(modelValue: string, configType: ConfigType = 'SYSTEM_INSTRUCTION') {
   const wrapper = mount(MarkdownEditor, {
@@ -13,6 +17,7 @@ function mountEditor(modelValue: string, configType: ConfigType = 'SYSTEM_INSTRU
       configType,
       'onUpdate:modelValue': (v: string) => wrapper.setProps({ modelValue: v }),
     },
+    global: withCatalog(),
   })
   return wrapper
 }
@@ -123,6 +128,7 @@ describe('MarkdownEditor', () => {
           configType: 'SYSTEM_INSTRUCTION' as const,
           'onUpdate:modelValue': (v: string) => wrapper.setProps({ modelValue: v }),
         },
+        global: withCatalog(),
         attachTo: document.body,
       })
       const ta = wrapper.find('textarea').element as HTMLTextAreaElement
@@ -145,6 +151,7 @@ describe('MarkdownEditor', () => {
           configType: 'SYSTEM_INSTRUCTION' as const,
           'onUpdate:modelValue': (v: string) => wrapper.setProps({ modelValue: v }),
         },
+        global: withCatalog(),
         attachTo: document.body,
       })
       const ta = wrapper.find('textarea').element as HTMLTextAreaElement
@@ -158,7 +165,7 @@ describe('MarkdownEditor', () => {
     })
 
     it('shows the button only for an editable instruction on the edit tab', async () => {
-      const ok = mount(MarkdownEditor, { props: { modelValue: 'x', configType: 'SYSTEM_INSTRUCTION' } })
+      const ok = mount(MarkdownEditor, { props: { modelValue: 'x', configType: 'SYSTEM_INSTRUCTION' }, global: withCatalog() })
       expect(ok.findComponent(ToolPicker).exists()).toBe(true)
       await tab(ok as never, '預覽').trigger('click')
       expect(ok.findComponent(ToolPicker).exists()).toBe(false)

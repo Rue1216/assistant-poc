@@ -16,7 +16,7 @@
 | --- | --- |
 | `src/beans/` | `ai-assistant-bean.ts`、`prompt-management-bean.ts` |
 | `src/components/ai-assistant/` | `ai-assistant-api.ts`、`ai-assistant-constant.ts`、`answer-blocks.vue`、`assistant-header.vue`、`assistant-launcher.vue`、`assistant-message.vue`、`assistant-panel.vue`、`chat-composer.vue`、`citation-list.vue`、`error-message.vue`、`feedback-buttons.vue`、`message-list.vue`、`pending-message.vue`、`quick-questions.vue`、`thumb-icon.vue`、`user-message.vue`、`welcome-card.vue` |
-| `src/composables/` | `use-assistant-chat.ts`、`use-suggestions.ts`、`use-prompt-admin.ts`、`use-prompt-evaluation.ts` |
+| `src/composables/` | `use-assistant-chat.ts`、`use-suggestions.ts`、`use-prompt-admin.ts`、`use-prompt-evaluation.ts`、`use-tool-catalog.ts` |
 | `src/stores/` | `use-assistant-store.ts` |
 | `src/utils/` | `taipei-time.ts` |
 | `src/utils/markdown/` | `parser.ts`、`safe-markdown.ts`、`line-diff.ts`、`example-questions.ts` |
@@ -31,7 +31,7 @@
 | 目錄 | 檔案 |
 | --- | --- |
 | `tests/unit/components/ai-assistant/` | `answer-blocks`、`assistant-launcher`、`assistant-message`、`assistant-panel`、`citation-list`、`feedback-buttons`、`message-list`、`quick-questions`（各 `.spec.ts`） |
-| `tests/unit/composables/` | `use-assistant-chat.spec.ts`、`use-prompt-admin.spec.ts`、`use-prompt-evaluation.spec.ts` |
+| `tests/unit/composables/` | `use-assistant-chat.spec.ts`、`use-prompt-admin.spec.ts`、`use-prompt-evaluation.spec.ts`、`use-tool-catalog.spec.ts` |
 | `tests/unit/stores/` | `use-assistant-store.spec.ts` |
 | `tests/unit/utils/` | `taipei-time.spec.ts` |
 | `tests/unit/utils/markdown/` | `parser`、`safe-markdown`、`line-diff`、`example-questions`（各 `.spec.ts`） |
@@ -66,7 +66,7 @@
 
 替身的測試也不複製：`tests/unit/utils/api-client.spec.ts`、`tests/unit/utils/formatters.spec.ts`、`tests/unit/router/`、`tests/unit/composables/use-theme.spec.ts`、`tests/unit/components/layout/`、`tests/unit/components/charts/`、`tests/unit/views/dev/`、`tests/unit/views/management/`、`tests/unit/fixtures/customer-360-fixtures.ts`。
 
-`index.html`、`vite.config.ts`、`vitest.config.ts`、`tsconfig*.json`、`package.json` 是 POC 自己的設定，不複製。小幫手用到的 npm 套件 `dayjs`、`vee-validate`、`@vee-validate/zod`、`zod` 都是規範指定的套件；接入時版本以平台 `package.json` 為準，`@vee-validate/zod` 需搭配 zod 3（POC 用 `zod@3.25.76`）。
+`index.html`、`vite.config.ts`、`vitest.config.ts`、`tsconfig*.json`、`package.json` 是 POC 自己的設定，不複製。小幫手用到的 npm 套件 `dayjs`、`vee-validate`、`@vee-validate/zod`、`zod` 都是規範指定的套件；接入時版本以平台 `package.json` 為準，`@vee-validate/zod` 需搭配 zod 3（POC 用 `zod@3.25.76`）。另用到 `@vueuse/core`（`tool-picker.vue` 的 `onClickOutside`；POC 用 `15.0.0`），接入時確認平台是否已有，沒有就要加。
 
 ## 3. 接入點
 
@@ -137,7 +137,6 @@ import AssistantLauncher from '@/components/ai-assistant/assistant-launcher.vue'
 | --- | --- | --- | --- |
 | API 錯誤契約 | 攔截器 reject `ApiError`；呼叫端讀 `error.code` | `ApiResponse<T>` 包裝、reject `HandledError`、呼叫端先 `isHandledError()`（§4、§4-1） | **要和後端一起改**：後端目前也還沒回 `ApiResponse<T>`。另需確認平台 `api-client` 有沒有等同 `meta.silentCodes` 的機制 |
 | Modal 點遮罩關閉 | `confirm-dialog.vue`、`new-instruction-dialog.vue`、`evaluation-cases-dialog.vue` 的 `dialog__backdrop` 點擊會關閉 | 點遮罩不得關閉（§6） | 拿掉遮罩的 `@click`，並改對應測試 |
-| 元件直接呼叫 API | `tool-picker.vue` 直接呼叫 `promptManagementApi.tools()` | 元件不直接呼叫 API（§6） | 移到 composable |
 | 訊息提示 | `useToast().show()`，4 個檔案 | 平台的訊息機制 | |
 | 權限判斷 | `useAuthStore().hasPermission(code)`，3 處 | 平台 store 的 `permissions`、`hasAnyRole()`（§5） | |
 | ESLint | 未設定 | 零 error（§1） | template 標籤已是 kebab-case；import 順序未檢查 |
