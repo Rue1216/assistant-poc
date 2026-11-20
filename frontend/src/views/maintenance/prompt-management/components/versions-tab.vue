@@ -151,7 +151,9 @@ async function onCompare() {
         :content-diff="pane.contentDiff"
       />
       <section v-else-if="pane.kind === 'loading'" class="pm-versions-tab__empty">載入中…</section>
-      <section v-else class="pm-versions-tab__empty">尚未發布過，草稿請在內容分頁編輯</section>
+      <section v-else class="pm-versions-tab__empty">
+        {{ state.workingCopy ? '尚未發布過，草稿請在內容分頁編輯' : '尚未發布過，可從已捨棄的版本建立草稿' }}
+      </section>
     </div>
   </div>
 </template>

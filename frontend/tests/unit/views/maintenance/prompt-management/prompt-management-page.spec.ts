@@ -760,6 +760,73 @@ describe("PromptManagementPage", () => {
     expect(w.text()).not.toContain("請從上方選單選擇一個設定");
   });
 
+  describe("a question category never published whose only draft was discarded", () => {
+    const KEY = "instruction.phone-opening";
+
+    beforeEach(() => {
+      HISTORY[KEY] = [item(9131, "DISCARDED", T.v3)];
+      api.listConfigs.mockResolvedValue([
+        ...CONFIGS,
+        {
+          configKey: KEY,
+          configType: "SYSTEM_INSTRUCTION",
+          name: "新分類",
+          published: null,
+          workingCopy: null,
+        },
+      ]);
+    });
+
+    it("still shows the config with a 已捨棄 badge and 尚未發布 instead of a load failure", async () => {
+      const w = await mountPage();
+      await pickConfig(w, "新分類");
+
+      expect(w.text()).not.toContain("無法載入這個設定");
+      expect(w.find(".pm-confighead .badge").text()).toBe("已捨棄");
+      expect(w.find(".pm-confighead__meta").text()).toBe(`${KEY}・尚未發布`);
+      expect(w.find(".pm-main .pm-empty").text()).toContain("尚未發布，草稿已捨棄");
+      expectNoVersionNumbers(w);
+    });
+
+    it("編輯 creates a new draft from the discarded content and opens the editor", async () => {
+      const w = await mountPage();
+      await pickConfig(w, "新分類");
+
+      api.createDraft.mockResolvedValue(full(KEY, item(9132, "DRAFT", T.v3)));
+      HISTORY[KEY] = [item(9132, "DRAFT", T.v3, { basedOnVersion: 9131 }), item(9131, "DISCARDED", T.v3)];
+      await byText(w, ".pm-main button", "編輯").trigger("click");
+      await flushPromises();
+
+      expect(api.createDraft).toHaveBeenCalledWith(KEY);
+      expect(w.find(".pm-confighead .badge").text()).toBe("草稿");
+      expect(textarea(w).value).toBe("內容：DRAFT");
+    });
+
+    it("keeps the 版本 tab usable so a discarded version can be applied", async () => {
+      const w = await mountPage();
+      await pickConfig(w, "新分類");
+      await openTab(w, "版本");
+
+      expect(w.find(".pm-versions-tab__empty").text()).toBe("尚未發布過，可從已捨棄的版本建立草稿");
+      await w.find(".pm-versions__toggle input").setValue(true);
+      api.applyVersion.mockResolvedValue(full(KEY, item(9132, "DRAFT", T.v3)));
+      HISTORY[KEY] = [item(9132, "DRAFT", T.v3, { basedOnVersion: 9131 }), item(9131, "DISCARDED", T.v3)];
+      await applyFromRow(w, "已捨棄");
+
+      expect(api.applyVersion).toHaveBeenCalledWith(KEY, 9131, { workingCopyDocVersion: null });
+      expect(pageTab(w, "內容").attributes("aria-selected")).toBe("true");
+      expect(textarea(w).value).toBe("內容：DRAFT");
+    });
+
+    it("hides 編輯 without the edit permission", async () => {
+      const w = await mountPage();
+      useAuthStore().user!.permissions = ["AI_CONFIG_READ"];
+      await pickConfig(w, "新分類");
+      expect(w.find(".pm-main .pm-empty").text()).toContain("尚未發布，草稿已捨棄");
+      expect(w.findAll(".pm-main .pm-empty button")).toHaveLength(0);
+    });
+  });
+
   it("keeps the header and picker mounted and focused while switching config", async () => {
     const w = await mountPage(document.body);
     const before = pickerButton(w).element;

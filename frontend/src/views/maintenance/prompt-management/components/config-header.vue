@@ -55,6 +55,7 @@ function onTabKeydown(event: KeyboardEvent) {
 
 const status = computed(() => {
   const wc = props.workingCopy
+  if (!wc && !props.published) return { text: '已捨棄', badge: 'badge--discarded' } // never published, draft discarded
   if (!wc) return { text: '目前生效', badge: 'badge--published' }
   if (wc.status === 'SCHEDULED' && wc.scheduledAt) {
     return { text: `預約 ${formatTaipeiShort(wc.scheduledAt)} 發布`, badge: 'badge--scheduled' }

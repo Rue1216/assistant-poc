@@ -134,11 +134,17 @@ const publishedInstructionCount = computed(
 )
 const itemOf = (version: number) => state.versions.find((v) => v.version === version)
 
-/** R27: without a working copy the published version is shown read-only. */
-const mainPane = computed<'editor' | 'published' | 'none'>(() => {
+/** A config always has a version, so none after loading means the load failed (or it is still loading). */
+const hasVersions = computed(() => !!(state.workingCopy || state.published || state.versions.length))
+
+/**
+ * R27: without a working copy the published version is shown read-only. A config never published whose
+ * draft was discarded has neither: only discarded versions, which 編輯 or the 版本 tab copy into a new draft.
+ */
+const mainPane = computed<'editor' | 'published' | 'discarded'>(() => {
   if (state.workingCopy) return 'editor'
   if (state.published) return 'published'
-  return 'none'
+  return 'discarded'
 })
 
 const nameOfKey = (key: string) => state.configs.find((c) => c.configKey === key)?.name ?? key
@@ -229,7 +235,7 @@ async function onCreateInstruction(keySuffix: string, name: string) {
         ref="header"
         v-model:tab="tab"
         :name="(state.workingCopy ?? state.published ?? selectedSummary).name"
-        :ready="!!(state.workingCopy || state.published)"
+        :ready="hasVersions"
         :configs="state.configs"
         :loading="!state.configsLoaded"
         :config-key="selectedKey"
@@ -241,8 +247,7 @@ async function onCreateInstruction(keySuffix: string, name: string) {
       />
 
       <div :id="pageTabPanelId(tabIdPrefix)" role="tabpanel" :aria-labelledby="pageTabId(tabIdPrefix, tab)">
-        <section v-if="!state.workingCopy && !state.published" class="pm-empty">
-          <!-- a config always has a version (creating one makes a draft): none after loading means the load failed -->
+        <section v-if="!hasVersions" class="pm-empty">
           {{ state.loading ? '載入中…' : '無法載入這個設定，請重新整理後再試' }}
         </section>
 
@@ -259,6 +264,18 @@ async function onCreateInstruction(keySuffix: string, name: string) {
             @discard="onDiscard"
             @reload="onReload"
           />
+          <section v-else-if="mainPane === 'discarded'" class="pm-empty">
+            <p>尚未發布，草稿已捨棄。按「編輯」以最後捨棄的內容建立新草稿，或在版本分頁挑選其他已捨棄的版本。</p>
+            <button
+              v-if="canEdit"
+              class="btn btn--primary pm-empty__action"
+              type="button"
+              :disabled="state.busy"
+              @click="onCreateDraft"
+            >
+              編輯
+            </button>
+          </section>
           <version-viewer
             v-else
             :version="state.published!"
@@ -387,6 +404,10 @@ async function onCreateInstruction(keySuffix: string, name: string) {
   padding: var(--space-8);
   text-align: center;
   color: var(--color-text-muted);
+}
+
+.pm-empty__action {
+  margin-top: var(--space-4);
 }
 
 @media (max-width: 1100px) {
