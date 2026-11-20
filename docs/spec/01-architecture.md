@@ -270,8 +270,8 @@ flowchart TD
 3. **依序執行**：每步組成 id 為 `workflow-{n}` 的 tool 請求，經 `ToolExecutor` 執行（權限、逾時、去識別化、大小限制與引用編號和模型自行調用相同），結果以 `AiMessage`（tool request）加 `ToolExecutionResultMessage` 放進 messages。步驟失敗（`ToolStatus` 不是 `SUCCESS`）不中斷，下一步照跑。步驟計入整題 5 次調用，不計入 3 輪 `toolRounds`。tool 不在 `ToolRegistry` 的步驟（標記格式錯誤或發布後工具被移除）不執行也不送進訊息，只記原因代碼的 warn log。
 4. **去識別化**：步驟只對**參數**去識別化，tool 名稱是已註冊的常數，保持原樣。
 5. **Prompt 內的標記**：`PromptAssembler` 把 `{{…}}` 換成文字：路由選中單一分類時為「`getCustomer（系統已查詢）`」，載入全部分類時只剩 tool 名稱，GPT 仍可自行調用。
-6. **程式提示**：`AnswerAssembler.assemble` 的 `programNotices` 在 GPT 內容之前各放一個 `PARAGRAPH` block，順序為：註記提示（不宜行銷、客訴與應注意名單、特殊客群、讀不到註記；本題調用過顧客工具才顯示，來自 `CustomerRestrictions.notices()`）、步驟未完成（「未能完成「{用途}」，以下回答可能不完整。」）。提示不被 `limit` 截斷、不跑數字檢查、沒有引用，也**不經 `PiiRedactor`**（寬度折疊會把全形括號改成半形；內容只有固定文字、已驗證格式的日期與程式碼定義的 tool 用途）。
-7. **註記限制**：`CustomerRestrictions` 由 `TurnCustomerData.realTime()` 算出，`CustomerNotes`、`getCustomer`（有不宜行銷註記或讀不到註記時不回傳 `management`、`productIntent`，見 [03-tool-catalog.md](03-tool-catalog.md) 2.2）與程式提示共用，同一題只讀一次平台資料。
+6. **程式提示**：`AnswerAssembler.assemble` 的 `programNotices` 在 GPT 內容之前各放一個 `PARAGRAPH` block，順序為：註記提示（不宜行銷、客訴與應注意名單、特殊客群、讀不到註記；本題調用過顧客工具才顯示，來自 `CustomerRestrictions.unseenNotices()`；同一段對話只顯示一次：請求 `history` 中 assistant 的回答已含同一句提示就不再加，新出現的註記仍會顯示）、步驟未完成（「未能完成「{用途}」，以下回答可能不完整。」，每題照常顯示）。提示不被 `limit` 截斷、不跑數字檢查、沒有引用，也**不經 `PiiRedactor`**（寬度折疊會把全形括號改成半形；內容只有固定文字、已驗證格式的日期與程式碼定義的 tool 用途）。
+7. **註記限制**：`CustomerRestrictions` 由 `TurnCustomerData.realTime()` 算出，`CustomerNotes`、`getCustomer`（有不宜行銷註記或讀不到註記時不回傳 `management`；`productIntent` 照常回傳，見 [03-tool-catalog.md](03-tool-catalog.md) 2.2）與程式提示共用，同一題只讀一次平台資料。
 
 標記只在內容發布前檢查：`WORKFLOW_INVALID`（見 [05-error-codes.md](05-error-codes.md) 2.3）。
 
@@ -327,7 +327,7 @@ flowchart TD
      內容裡的工具標記 {{tool}} 由 PromptAssembler 換成文字：路由選中單一分類（步驟已由程式執行）時為「tool 名稱（系統已查詢）」，其他情況只剩 tool 名稱（見 3.2）
   ③ # 本顧客註記（寫死在 Java，由 CustomerNotes 依即時資料產生；只在存取等級 FULL；不存於設定、不經 API 輸出，也不寫入稽核的 prompt 版本）
      - 列入：不宜行銷、客訴（附到期日）、特殊客群、應注意名單；沒有任何註記時寫「- 無」
-     - 有註記時，清單後固定多一句「本題查詢顧客資料時，程式會在回答最前面列出以上註記，回答中不要重複；未查詢顧客資料時，簡短說明註記類別。」（註記提示改由程式加在回答前，見 3.2；放在這段程式固定文字，已發布的 system.main 也立即生效）
+     - 有註記時，清單後固定多一句「查詢顧客資料時，程式會在回答最前面提示以上註記，同一段對話只提示一次；回答中不要主動重複列出，使用者問到註記時才說明類別與到期日。」（註記提示改由程式加在回答前，見 3.2；放在這段程式固定文字，已發布的 system.main 也立即生效）
      - 取得失敗時寫「- 無法取得註記，涉及商品或行銷的回答請先參考平台畫面上的註記」，並照常回答（記 warn log，不含顧客資料）
      - 高資產、專區、專投不影響回答規則，不列入，只由 getRealTimeCustomer 回傳
   ④ # 不可覆寫的安全規則（寫死在 Java，管理頁無法修改）

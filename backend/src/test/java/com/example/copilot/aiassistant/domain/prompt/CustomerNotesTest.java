@@ -30,7 +30,7 @@ import org.mockito.Mockito;
 class CustomerNotesTest {
 
     private static final String SENTENCE =
-            "本題查詢顧客資料時，程式會在回答最前面列出以上註記，回答中不要重複；未查詢顧客資料時，簡短說明註記類別。";
+            "查詢顧客資料時，程式會在回答最前面提示以上註記，同一段對話只提示一次；回答中不要主動重複列出，使用者問到註記時才說明類別與到期日。";
     private static final String UNAVAILABLE =
             "# 本顧客註記\n- 無法取得註記，涉及商品或行銷的回答請先參考平台畫面上的註記\n" + SENTENCE;
 

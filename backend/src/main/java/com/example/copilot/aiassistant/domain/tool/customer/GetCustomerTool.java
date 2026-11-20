@@ -44,9 +44,11 @@ public class GetCustomerTool extends AbstractCustomerTool<GetCustomerTool.Custom
     public record CustomerArgs(@NotEmpty @Size(max = 6) List<String> sections) {
     }
 
-    /** Sections carrying product opportunities or sales talk, withheld when the notes forbid marketing. */
-    private static final Set<CustomerSection> MARKETING_SECTIONS =
-            EnumSet.of(CustomerSection.MANAGEMENT, CustomerSection.PRODUCT_INTENT);
+    /**
+     * Sections carrying product recommendations, campaigns or sales talk, withheld when the notes forbid marketing.
+     * Product intent stays: it is data to analyse, and the prompt rules keep recommendations out of the answer.
+     */
+    private static final Set<CustomerSection> MARKETING_SECTIONS = EnumSet.of(CustomerSection.MANAGEMENT);
     private static final String RESTRICTION_NOTE = "依本顧客註記，這些區塊不提供";
 
     private final ManagementSection management;

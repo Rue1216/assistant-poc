@@ -18,7 +18,7 @@ import org.mockito.Mockito;
 class CustomerRestrictionsTest {
 
     private static final String CERT = "A123456789";
-    private static final String NO_MARKETING_NOTICE = "本顧客有不宜行銷註記，以下不提供商品機會、推薦產品或行銷話術。";
+    private static final String NO_MARKETING_NOTICE = "本顧客有不宜行銷註記，不提供商品推薦、專屬活動與行銷話術；資料分析照常提供。";
     private static final String UNAVAILABLE_NOTICE = "無法取得註記，商品與行銷資料暫不提供，請先參考平台畫面上的註記。";
 
     private static CustomerContext full() {
@@ -117,6 +117,26 @@ class CustomerRestrictionsTest {
         assertThat(r.notesUnavailable()).isTrue();
         assertThat(r.withholdMarketingData()).isTrue();
         assertThat(r.notices()).containsExactly(UNAVAILABLE_NOTICE);
+    }
+
+    @Test
+    void noticeAlreadyInAnEarlierAnswerIsNotRepeated() {
+        CustomerRestrictions r = of(record(true, false, new CustomFlagging(FlagType.NO_MARKETING, "不宜行銷", null)));
+
+        assertThat(r.unseenNotices(List.of("好的。", NO_MARKETING_NOTICE + "\n\n整理如下。")))
+                .containsExactly("注意事項：本顧客有應注意名單註記，請依規定程序處理。");
+    }
+
+    @Test
+    void everyNoticeIsUnseenWithoutEarlierAnswers() {
+        CustomerRestrictions r = of(record(false, false, new CustomFlagging(FlagType.NO_MARKETING, "不宜行銷", null)));
+
+        assertThat(r.unseenNotices(List.of())).containsExactly(NO_MARKETING_NOTICE);
+    }
+
+    @Test
+    void unavailableNoticeIsAlsoShownOnce() {
+        assertThat(of(null).unseenNotices(List.of(UNAVAILABLE_NOTICE + "\n\n依現有資料整理。"))).isEmpty();
     }
 
     @Test

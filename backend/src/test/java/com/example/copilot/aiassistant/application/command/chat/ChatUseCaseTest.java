@@ -914,7 +914,7 @@ class ChatUseCaseTest {
         assertThat(systemText(model.requests().get(0))).doesNotContain("本顧客註記");
     }
 
-    private static final String NO_MARKETING_NOTICE = "本顧客有不宜行銷註記，以下不提供商品機會、推薦產品或行銷話術。";
+    private static final String NO_MARKETING_NOTICE = "本顧客有不宜行銷註記，不提供商品推薦、專屬活動與行銷話術；資料分析照常提供。";
 
     @Test
     void notesPrecedeTheAnswerWhenACustomerToolWasCalled() {
@@ -925,6 +925,30 @@ class ChatUseCaseTest {
 
         assertThat(result.answer()).startsWith(NO_MARKETING_NOTICE + "\n\n").endsWith("整理如下。");
         assertThat(singleAudit().answer()).startsWith(NO_MARKETING_NOTICE);
+    }
+
+    @Test
+    void notesShownInAnEarlierAnswerAreNotRepeated() {
+        model.reply(toolCalls(100, call("c1", "getCustomer", "{\"sections\":[\"profile\"]}")))
+                .reply(answer(100, "整理如下。"));
+        List<HistoryMessage> history = List.of(new HistoryMessage("user", "概況？"),
+                new HistoryMessage("assistant", NO_MARKETING_NOTICE + "\n\n先前的回答。"));
+
+        ChatResult result = orchestrator.chat(new ChatCommand("資產？", history, null), USER, noMarketingFull());
+
+        assertThat(result.answer()).isEqualTo("整理如下。");
+    }
+
+    @Test
+    void notesQuotedByTheUserStillShow() {
+        model.reply(toolCalls(100, call("c1", "getCustomer", "{\"sections\":[\"profile\"]}")))
+                .reply(answer(100, "整理如下。"));
+        List<HistoryMessage> history = List.of(new HistoryMessage("user", NO_MARKETING_NOTICE),
+                new HistoryMessage("assistant", "先前的回答。"));
+
+        ChatResult result = orchestrator.chat(new ChatCommand("資產？", history, null), USER, noMarketingFull());
+
+        assertThat(result.answer()).startsWith(NO_MARKETING_NOTICE + "\n\n");
     }
 
     @Test
@@ -1872,7 +1896,12 @@ class ChatUseCaseTest {
     }
 
     private static ChatResult askChip(ChatUseCase target, String question, CustomerContext customer) {
-        return target.chat(new ChatCommand(question, List.of(), FLOW_KEY), USER, customer);
+        return askChip(target, question, customer, List.of());
+    }
+
+    private static ChatResult askChip(ChatUseCase target, String question, CustomerContext customer,
+                                      List<HistoryMessage> history) {
+        return target.chat(new ChatCommand(question, history, FLOW_KEY), USER, customer);
     }
 
     private static ChatResponse extraction(String stockCode, int tokens) {
@@ -2024,6 +2053,18 @@ class ChatUseCaseTest {
         ChatResult result = askChip(target, "聯繫準備", noMarketingFull());
 
         assertThat(result.answer()).isEqualTo(NO_MARKETING_NOTICE + "\n\n未能完成「未知工具」，以下回答可能不完整。\n\n整理如下。");
+    }
+
+    @Test
+    void failureNoticeShowsEvenWhenNotesWereShownBefore() {
+        ChatUseCase target = flowOrchestrator("{{getCustomer: profile}} {{removedTool}}");
+        model.reply(answer(100, "整理如下。"));
+        List<HistoryMessage> history = List.of(new HistoryMessage("user", "概況？"),
+                new HistoryMessage("assistant", NO_MARKETING_NOTICE + "\n\n先前的回答。"));
+
+        ChatResult result = askChip(target, "聯繫準備", noMarketingFull(), history);
+
+        assertThat(result.answer()).isEqualTo("未能完成「未知工具」，以下回答可能不完整。\n\n整理如下。");
     }
 
     private static final String UNKNOWN_TOOL_NOTICE = "未能完成「未知工具」，以下回答可能不完整。";

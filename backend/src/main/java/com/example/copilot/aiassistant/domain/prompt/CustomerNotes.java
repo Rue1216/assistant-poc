@@ -21,11 +21,11 @@ public class CustomerNotes {
 
     private static final String HEADING = "# 本顧客註記\n";
     /**
-     * The program only adds its notices when the turn called a customer tool, so the model is told to keep the
-     * notes out of such answers and to describe the note categories briefly otherwise.
+     * The program adds its notices the first time a turn of the conversation calls a customer tool, so the model
+     * is told to keep the notes out of its answers unless the user asks about them.
      */
     private static final String PROGRAM_LISTS_NOTES =
-            "本題查詢顧客資料時，程式會在回答最前面列出以上註記，回答中不要重複；未查詢顧客資料時，簡短說明註記類別。";
+            "查詢顧客資料時，程式會在回答最前面提示以上註記，同一段對話只提示一次；回答中不要主動重複列出，使用者問到註記時才說明類別與到期日。";
     private static final String UNAVAILABLE =
             HEADING + "- 無法取得註記，涉及商品或行銷的回答請先參考平台畫面上的註記\n" + PROGRAM_LISTS_NOTES;
 

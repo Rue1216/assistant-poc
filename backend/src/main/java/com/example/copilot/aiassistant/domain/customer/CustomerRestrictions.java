@@ -20,7 +20,7 @@ public record CustomerRestrictions(boolean notesUnavailable, boolean withholdMar
 
     private static final Pattern EXPIRY_DATE = Pattern.compile("^\\d{4}/\\d{2}/\\d{2}$");
 
-    private static final String NO_MARKETING_NOTICE = "本顧客有不宜行銷註記，以下不提供商品機會、推薦產品或行銷話術。";
+    private static final String NO_MARKETING_NOTICE = "本顧客有不宜行銷註記，不提供商品推薦、專屬活動與行銷話術；資料分析照常提供。";
     private static final String UNAVAILABLE_NOTICE = "無法取得註記，商品與行銷資料暫不提供，請先參考平台畫面上的註記。";
 
     public CustomerRestrictions {
@@ -44,6 +44,14 @@ public record CustomerRestrictions(boolean notesUnavailable, boolean withholdMar
             log.warn("customer restrictions unavailable errorClass={}", e.getClass().getSimpleName());
             return unavailable();
         }
+    }
+
+    /**
+     * The notices not already shown in an earlier answer of the conversation, so each notice is shown once per
+     * conversation. A notice that appears for the first time (the notes changed) is still shown.
+     */
+    public List<String> unseenNotices(List<String> earlierAnswers) {
+        return notices.stream().filter(n -> earlierAnswers.stream().noneMatch(a -> a.contains(n))).toList();
     }
 
     /** An expiry date is shown only in the platform's yyyy/MM/dd form. */

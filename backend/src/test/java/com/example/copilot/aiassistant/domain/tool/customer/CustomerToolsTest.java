@@ -548,11 +548,11 @@ class CustomerToolsTest {
     }
 
     @Test
-    void noMarketingWithholdsManagementAndProductIntent() {
+    void noMarketingWithholdsOnlyManagement() {
         Map<String, Object> data = data(get(full(TestCustomers.NO_MARKETING), "management", "productIntent", "behavior"));
 
-        assertThat(data).containsKey("behavior").doesNotContainKeys("management", "productIntent");
-        assertThat(data.get("withheldSections")).isEqualTo(List.of("management", "productIntent"));
+        assertThat(data).containsKeys("behavior", "productIntent").doesNotContainKey("management");
+        assertThat(data.get("withheldSections")).isEqualTo(List.of("management"));
         assertThat(data.get("restrictionNote")).isEqualTo("依本顧客註記，這些區塊不提供");
     }
 
@@ -575,9 +575,9 @@ class CustomerToolsTest {
                 new CustomerContext(new CertNo(TestCustomers.RETIREE), AccessLevel.FULL, Set.of(TestCustomers.RETIREE),
                         Set.of()), noNotes);
 
-        Map<String, Object> data = data(get(ctx, "management", "assetLiability"));
+        Map<String, Object> data = data(get(ctx, "management", "productIntent", "assetLiability"));
 
-        assertThat(data).containsKey("assetLiability").doesNotContainKey("management");
+        assertThat(data).containsKeys("assetLiability", "productIntent").doesNotContainKey("management");
         assertThat(data.get("withheldSections")).isEqualTo(List.of("management"));
     }
 

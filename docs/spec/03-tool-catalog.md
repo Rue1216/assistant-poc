@@ -289,7 +289,7 @@ flowchart LR
 - 百分點差的正負號依四捨五入後的值決定：`0.001` 與 `-0.001` 都顯示 `0.00 個百分點`，不帶正負號。
 - `management` 的 `insight`、活動 `summary` 是系統或人工產生的文字，經 `PiiRedactor` 處理後截到 200 code point，視為資料（不可信）。
 - 引用（`CitationDetail`）：標題為「個人360・」加實際回傳分組的顯示名稱，依上表順序以「、」連接；說明欄為「資料日期 yyyy/MM/dd」。
-- **扣住行銷資料（只在 `FULL`）**：`CustomerRestrictions.withholdMarketingData` 為真（即時註記有不宜行銷，或註記讀不到、拋出例外而 fail closed）時，`management` 與 `productIntent` 兩個分組不回傳，其他分組照常。`data` 多兩個固定 key：`withheldSections`（被扣的分組 key）與 `restrictionNote`（固定文字「依本顧客註記，這些區塊不提供」）。扣住不算失敗，`status` 仍為 `SUCCESS`；請求的分組全部被扣時也回 `SUCCESS`（不走 `CUSTOMER_DATA_UNAVAILABLE`），引用標題為「個人360・資料受註記限制」，`resultCount` 為 0。這層只保證模型拿不到系統推薦的品項與活動；服務類提醒來自 `getRealTimeCustomer` 的 `keyAlerts`，不會被扣。設計見 [工作流與註記強制設計](../superpowers/specs/2026-11-05-workflow-note-enforcement-design.md) 2.2。
+- **扣住行銷資料（只在 `FULL`）**：`CustomerRestrictions.withholdMarketingData` 為真（即時註記有不宜行銷，或註記讀不到、拋出例外而 fail closed）時，`management` 分組不回傳，其他分組（包含 `productIntent`）照常。產品意圖是可分析的資料，不推薦商品由 prompt 規則要求（2026-11-20 起；需主管確認，見 questions-for-manager M51）。`data` 多兩個固定 key：`withheldSections`（被扣的分組 key）與 `restrictionNote`（固定文字「依本顧客註記，這些區塊不提供」）。扣住不算失敗，`status` 仍為 `SUCCESS`；請求的分組全部被扣時也回 `SUCCESS`（不走 `CUSTOMER_DATA_UNAVAILABLE`），引用標題為「個人360・資料受註記限制」，`resultCount` 為 0。這層只保證模型拿不到系統推薦的品項與活動；服務類提醒來自 `getRealTimeCustomer` 的 `keyAlerts`，不會被扣。設計見 [工作流與註記強制設計](../superpowers/specs/2026-11-05-workflow-note-enforcement-design.md) 2.2。
 
 ```json
 {

@@ -252,6 +252,8 @@ public class ChatUseCase {
         private List<String> programTexts;
         /** One per workflow step that did not succeed or was dropped; shown after the note notices. */
         private List<String> workflowNotices = List.of();
+        /** The assistant answers in the history as the client sent them: a note notice found there is not repeated. */
+        private List<String> earlierAnswers = List.of();
 
         Turn(UserContext user, CustomerContext customer, boolean audited) {
             this.user = user;
@@ -268,6 +270,8 @@ public class ChatUseCase {
          */
         String answer(ChatCommand command) {
             redactedQuestion = redact(command.message());
+            earlierAnswers = command.history().stream().filter(m -> "assistant".equals(m.role()))
+                    .map(HistoryMessage::content).filter(c -> c != null).toList();
             String incoming = command.historySummary() == null ? "" : command.historySummary().strip();
             if (!incoming.isEmpty()) {
                 currentSummary = redact(incoming);
@@ -568,13 +572,15 @@ public class ChatUseCase {
         }
 
         /**
-         * The note notices go in front of the answer once the turn has used customer data, even if the call failed;
-         * the failed workflow steps follow them (spec 2.3).
+         * The note notices go in front of the answer once the turn has used customer data, even if the call failed,
+         * unless an earlier answer in the history already shows them; the failed workflow steps follow them and are
+         * always shown (spec 2.3).
          */
         private List<String> programNotices() {
             boolean customerData = executed.stream().anyMatch(t -> registry.find(t.outcome().toolName())
                     .filter(CustomerDataTool.class::isInstance).isPresent());
-            List<String> notes = customerData ? CustomerRestrictions.of(customer, data).notices() : List.of();
+            List<String> notes = customerData
+                    ? CustomerRestrictions.of(customer, data).unseenNotices(earlierAnswers) : List.of();
             return Stream.concat(notes.stream(), workflowNotices.stream()).toList();
         }
 
