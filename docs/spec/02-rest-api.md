@@ -1,6 +1,6 @@
 # 02 REST API 規格
 
-> 版本：v1.6（POC）・2026-11-06（3.11 回饋統計的範圍隨稽核保存期限改為 5 年；v1.5 2026-11-03：3 節補共通錯誤 400／401／403／500；3.3、3.5 補 404；3.5、3.6 補範例；3.6、3.7 補 400；v1.4 2026-11-03：文件開頭新增「API 一覽」表格，各端點章節加上固定錨點，可點擊跳轉；規格內容不變；v1.3 2026-11-03：Prompt 管理 API review 修正：3 節權限前提與內容上限單位、3.1 `published` 補 `status` 與 `scheduledAt`、3.2 System Prompt key 規則、3.3／3.5 `basedOnVersion`、3.6／3.8 儲存與檢查名稱及修改說明、3.9 立即發布清空 `scheduledAt`、3.10 回 201，見 [Prompt 管理 review 修正設計](../superpowers/specs/2026-11-02-prompt-admin-review-fixes-design.md)；v1.2 2026-10-30 評測集 34 題、`toolCalls` 不顯示的理由；v1.1 2026-10-29 為個人 360 內容重寫：員工帳號與業務角色碼、`scope`、`{certNo}` 路徑、三支 mock 端點，見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
+> 版本：v1.7（POC）・2026-11-26（對齊程式：2.1 處理順序補權限、長度檢查與限流；評測範例題數 36；v1.6 2026-11-06：3.11 回饋統計的範圍隨稽核保存期限改為 5 年；v1.5 2026-11-03：3 節補共通錯誤 400／401／403／500；3.3、3.5 補 404；3.5、3.6 補範例；3.6、3.7 補 400；v1.4 2026-11-03：文件開頭新增「API 一覽」表格，各端點章節加上固定錨點，可點擊跳轉；規格內容不變；v1.3 2026-11-03：Prompt 管理 API review 修正：3 節權限前提與內容上限單位、3.1 `published` 補 `status` 與 `scheduledAt`、3.2 System Prompt key 規則、3.3／3.5 `basedOnVersion`、3.6／3.8 儲存與檢查名稱及修改說明、3.9 立即發布清空 `scheduledAt`、3.10 回 201，見 [Prompt 管理 review 修正設計](../superpowers/specs/2026-11-02-prompt-admin-review-fixes-design.md)；v1.2 2026-10-30 評測集 34 題、`toolCalls` 不顯示的理由；v1.1 2026-10-29 為個人 360 內容重寫：員工帳號與業務角色碼、`scope`、`{certNo}` 路徑、三支 mock 端點，見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
 
 ## API 一覽
 
@@ -148,10 +148,13 @@ Path 省略 base path `/api/ai-assistant`，點 Path 可跳到該章節。編輯
 
 #### 處理順序
 
-1. 驗證路徑參數格式，不符 → 400 `AI_INPUT_INVALID`。
-2. `CustomerAccessPort` 判斷存取等級，`NONE` 或顧客不存在 → 404 `AI_CUSTOMER_NOT_FOUND`（兩者回應相同，不透露顧客是否存在）。
-3. 建立 `CustomerContext`，以 `PiiRedactor` 處理提問、歷史和帶入的摘要。歷史超出保留範圍時，較早的訊息與帶入的摘要由一次模型呼叫整理成新摘要（失敗則捨棄超出的訊息，照常回答；設計見 [history-summary-design](../superpowers/specs/2026-10-30-history-summary-design.md)）。
-4. 決定載入哪個問題分類：request 帶有效的 `categoryKey` 時直接載入（`CHIP`），否則先以一次模型呼叫路由（`ROUTER`，失敗則 `FALLBACK` 載入全部），再進入 tool calling 迴圈（設計見 [instruction-routing-design](../superpowers/specs/2026-10-27-instruction-routing-design.md)）。
+1. 驗證路徑參數與 body 的格式，不符 → 400 `AI_INPUT_INVALID`。
+2. 檢查 `AI_ASSISTANT_USE`，沒有 → 403 `AI_FORBIDDEN`。
+3. 檢查去除前後空白後的字數、歷史則數與摘要長度，不符 → 400 `AI_INPUT_INVALID`。
+4. 限流，超過 → 429 `AI_RATE_LIMITED`。在顧客權限檢查之前，所以 404 的請求也會消耗額度；400 不會。
+5. `CustomerAccessPort` 判斷存取等級，`NONE` 或顧客不存在 → 404 `AI_CUSTOMER_NOT_FOUND`（兩者回應相同，不透露顧客是否存在）。第 1–5 步擋下的請求不寫稽核，只有 WARN log。
+6. 建立 `CustomerContext`，以 `PiiRedactor` 處理提問、歷史和帶入的摘要。歷史超出保留範圍時，較早的訊息與帶入的摘要由一次模型呼叫整理成新摘要（失敗則捨棄超出的訊息，照常回答；設計見 [history-summary-design](../superpowers/specs/2026-10-30-history-summary-design.md)）。
+7. 決定載入哪個問題分類：request 帶有效的 `categoryKey` 時直接載入（`CHIP`），否則先以一次模型呼叫路由（`ROUTER`，失敗則 `FALLBACK` 載入全部），再進入 tool calling 迴圈（設計見 [instruction-routing-design](../superpowers/specs/2026-10-27-instruction-routing-design.md)）。
 
 #### Request
 
@@ -836,7 +839,7 @@ Request：
 Response 202：
 
 ```json
-{ "runId": "6719f0c2a4b5e6f7a8b9c0d1", "status": "RUNNING", "totalCases": 35 }
+{ "runId": "6719f0c2a4b5e6f7a8b9c0d1", "status": "RUNNING", "totalCases": 36 }
 ```
 
 同步檢查依序為：
@@ -875,7 +878,7 @@ Response 202：
         "candidateUpdatedAt": "2026-10-24T14:58:03+08:00",
         "candidateDocVersion": 5,
         "datasetChanged": false,
-        "totalCases": 35,
+        "totalCases": 36,
         "completedCases": 35,
         "summary": {
             "baseline": {
@@ -927,7 +930,7 @@ Response 202：
 目前執行中的評測（任何 key）。
 
 - **權限**：`AI_CONFIG_READ`
-- **200**：`{ "runId": "…", "configKey": "instruction.contact-prep", "triggeredBy": "EEE22222", "startedAt": "2026-10-24T15:02:11+08:00", "totalCases": 35, "completedCases": 7 }`
+- **200**：`{ "runId": "…", "configKey": "instruction.contact-prep", "triggeredBy": "EEE22222", "startedAt": "2026-10-24T15:02:11+08:00", "totalCases": 36, "completedCases": 7 }`
 - **204**：沒有執行中的評測。呼叫時會先處理陳舊紀錄：`RUNNING` 且 `heartbeatAt` 超過 10 分鐘者標為 `FAILED`（`AI_EVAL_INTERRUPTED`）。
 
 <a id="api-eval-get"></a>

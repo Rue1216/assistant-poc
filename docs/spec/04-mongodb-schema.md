@@ -1,6 +1,6 @@
 # 04 MongoDB Schema
 
-> 版本：v1.4（POC）・2026-11-06（稽核紀錄保存期限改為 5 年，對齊平台稽核日誌，待法遵確認；TTL index 改名為 `IX_ICRM_AI_AUDIT_TTL`、`IX_ICRM_AI_EVAL_TTL`；v1.3 2026-11-03：Prompt 管理 review 修正：2.1 `basedOnVersion`、`scheduledAt`、`content` 單位；2.3 validator 加入類型與 key 一致性規則；2.4 建立草稿記錄來源、立即發布清空預約時間、排程到期先驗證；2.5 名稱與修改說明每次儲存都檢查；2.7 多機首次啟動的限制，見 [Prompt 管理 review 修正設計](../superpowers/specs/2026-11-02-prompt-admin-review-fixes-design.md)；v1.2 2026-10-30：2.5 顧客編號禁止規則改為 `certNo` 格式、補未納入的越權指令樣式；v1.1 2026-10-29 為 audit 移除顧客編號欄位與索引 `IX_ICRM_AI_AUDIT_3`；seed 改為 7 個問題分類；範例帳號改為員工帳號；見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md)）
+> 版本：v1.5（POC）・2026-11-26（對齊程式：2.5 補 `WORKFLOW_INVALID` 與常數位置、2.6 範例問題的解析時機、5.3 index 數；v1.4 2026-11-06：稽核紀錄保存期限改為 5 年，對齊平台稽核日誌，待法遵確認；TTL index 改名為 `IX_ICRM_AI_AUDIT_TTL`、`IX_ICRM_AI_EVAL_TTL`；v1.3 2026-11-03：Prompt 管理 review 修正：2.1 `basedOnVersion`、`scheduledAt`、`content` 單位；2.3 validator 加入類型與 key 一致性規則；2.4 建立草稿記錄來源、立即發布清空預約時間、排程到期先驗證；2.5 名稱與修改說明每次儲存都檢查；2.7 多機首次啟動的限制，見 [Prompt 管理 review 修正設計](../superpowers/specs/2026-11-02-prompt-admin-review-fixes-design.md)；v1.2 2026-10-30：2.5 顧客編號禁止規則改為 `certNo` 格式、補未納入的越權指令樣式；v1.1 2026-10-29 為 audit 移除顧客編號欄位與索引 `IX_ICRM_AI_AUDIT_3`；seed 改為 7 個問題分類；範例帳號改為員工帳號；見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md)）
 
 ## 1. Collection 總覽
 
@@ -202,6 +202,7 @@ stateDiagram-v2
 | `REQUIRED_SECTION` | `SYSTEM_PROMPT` 不要求任何章節（平台安全規則由程式碼的 `SafetyRules` 固定附加）；`SYSTEM_INSTRUCTION` 只要求 `## 適用問題`，且該章節（到下一個 `## ` 標題之間）至少有一行非空白文字，因為路由只看分類名稱與這一節 |
 | `EXAMPLE_QUESTIONS` | `SYSTEM_INSTRUCTION` 的 `## 範例問題` 選填：可省略章節，有的話 0–5 個 `- ` 條列，每題最多 40 字；沒有範例問題的分類不顯示在快捷問題區，但仍參與路由 |
 | `FORBIDDEN_CONTENT` | 不得包含下表任何樣式 |
+| `WORKFLOW_INVALID` | 工具標記 `{{tool}}` 不合規則：只能放在 `SYSTEM_INSTRUCTION`、不可放在 `## 適用問題` 與 `## 範例問題`、最多 3 個不同的工具、工具與選項必須存在；完整規則與訊息見 [05-error-codes.md](05-error-codes.md) 2.3 |
 
 禁止內容（regex，不分大小寫）：
 
@@ -213,7 +214,7 @@ stateDiagram-v2
 | IP | `\b\d{1,3}(\.\d{1,3}){3}\b`，獨立一項，一律擋，不受白名單影響（`http://10.1.2.3` 也擋） |
 | 身分證號 | `\b[A-Z][12]\d{8}\b` |
 | 手機號碼 | `\b09\d{2}-?\d{3}-?\d{3}\b` |
-| 顧客編號 | 與 `PiiRedactor` 規則 7 同一組樣式（`PiiRedactor.CERT_NO_REGEX`）：`[A-Z][12]\d{8}`、`[A-Z]{3}\d{6}`、`&[A-Z]\d{8}`，前後不得緊接英數字或 `&`（見 [03-tool-catalog.md](03-tool-catalog.md) 1.6；後兩種為推定，整合時換成平台實際格式） |
+| 顧客編號 | 與 `PiiRedactor` 規則 7 同一組樣式（常數在 `ConfigValidator.CERT_NO_REGEX`）：`[A-Z][12]\d{8}`、`[A-Z]{3}\d{6}`、`&[A-Z]\d{8}`，前後不得緊接英數字或 `&`（見 [03-tool-catalog.md](03-tool-catalog.md) 1.6；後兩種為推定，整合時換成平台實際格式） |
 
 - 白名單與 tool call 的 `market.twse.allowed-hosts` 各自獨立：後者管後端程式可連線的對象，前者管 prompt 裡可以寫的連結。修改清單需改設定並重新啟動。
 - 名稱（`name`）與修改說明（`changeNote`）也套用同一組禁止內容規則，且**每次儲存都檢查**（任何狀態、任何 `saveMode`），不通過回 422 `AI_CONFIG_VALIDATION_FAILED`；`content` 維持只在發布前（及 `SCHEDULED` 以 `KEEP_STATUS` 儲存時）檢查。`changeNote` 為 null 或空字串時略過。錯誤排列順序：內容、名稱、修改說明。
@@ -225,7 +226,7 @@ stateDiagram-v2
 ### 2.6 讀取與快取
 
 - 組 prompt 與快捷問題（`/suggestions`）時讀取所有 `status = PUBLISHED` 的設定，放在記憶體快取。
-- `## 範例問題` 在發布時解析並快取，不在每次請求時重新解析。
+- `## 範例問題` 由 `SuggestionQueryService` 在每次 `/suggestions` 請求時，從快取的內容解析。
 - 發布或排程到期成功後清除快取；為了多台機器的情況，快取另設 60 秒 TTL。（套用只產生草稿，不影響已發布內容，不需清除快取）
 
 ### 2.7 初始資料
@@ -494,7 +495,7 @@ db.createCollection("COLL_ICRM_AI_ASSISTANT_AUDIT", {
 
 ### 5.3 shard 時不需要改的地方
 
-- 稽核紀錄只有新增（回饋只更新 `feedback`、`feedbackAt` 兩個欄位），沒有 unique index，現有的 5 個 index 和 JSON Schema Validation 都可以保留。回饋更新的查詢條件含 `userId`，若以 `{ userId: "hashed" }` shard，仍可定位到單一 shard。
+- 稽核紀錄只有新增（回饋只更新 `feedback`、`feedbackAt` 兩個欄位），沒有 unique index，現有的 4 個 index（不含 `_id`）和 JSON Schema Validation 都可以保留。回饋更新的查詢條件含 `userId`，若以 `{ userId: "hashed" }` shard，仍可定位到單一 shard。
 - TTL index 在 sharded collection 上照常運作。
 - 應用程式透過 mongos 連線，程式碼不需修改；`sh.shardCollection` 指令放在平台的 migration（見第 4 節）。
 

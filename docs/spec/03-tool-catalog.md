@@ -1,6 +1,6 @@
 # 03 Tool Catalog
 
-> 版本：v0.12（POC）・2026-11-03（3.1 補 HTTP 與工具兩層 Timeout 的關係；3.3 `BWIBBU_ALL` 失敗的處理；1.4 單一 tool call 處理、2.1 每題資料暫存、3.3 `getStockQuote` 分支補 mermaid 流程圖；v0.11 2026-10-30：1.4 釐清 `sections` 的檢查分工；v0.10 2026-10-29 為個人 360 內容重寫：顧客工具整併為 `getCustomer(sections)` 與 `getRealTimeCustomer`、`certNo`、新 mock 顧客；設計見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
+> 版本：v0.13（POC）・2026-11-26（對齊程式：1.3 `AssistantTool<A>` 與 `CertNo`、schema 與驗證分開定義；1.4、1.6 欄位白名單；3.3、3.4 參數 schema；v0.12 2026-11-03：3.1 補 HTTP 與工具兩層 Timeout 的關係；3.3 `BWIBBU_ALL` 失敗的處理；1.4 單一 tool call 處理、2.1 每題資料暫存、3.3 `getStockQuote` 分支補 mermaid 流程圖；v0.11 2026-10-30：1.4 釐清 `sections` 的檢查分工；v0.10 2026-10-29 為個人 360 內容重寫：顧客工具整併為 `getCustomer(sections)` 與 `getRealTimeCustomer`、`certNo`、新 mock 顧客；設計見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
 
 ## 1. 共通規則
 
@@ -26,13 +26,15 @@
 ### 1.3 工具宣告
 
 ```java
-public interface AssistantTool {
+// A 是參數 record：參數在 ToolGuard 已解析並驗證過才會傳進來
+public interface AssistantTool<A extends Record> {
   String name();                        // 給 GPT 的工具名稱
   String purpose();                     // 顯示在摘要裡的中文用途
-  ToolSpecification specification();    // 參數 JSON Schema，由參數 record 產生
+  ToolSpecification specification();    // 參數 JSON Schema
+  Class<A> argsType();                  // 參數 record 的型別
   AccessLevel requiredAccessLevel();    // LIMITED 或 FULL；市場工具為 LIMITED（任何可存取者皆可用）
   Duration timeout();
-  ToolResult execute(JsonNode args, ToolContext context);
+  ToolResult execute(A args, ToolContext context);
 
   // 以下三個為工作流與選擇器用的中繼資料，都有預設值，既有工具只改需要的
   default List<ToolOption> options() { return List.of(); }  // 管理者可在工具標記中固定的值；沒有時為空
@@ -48,7 +50,7 @@ public record ToolContext(UserContext user, CustomerContext customer, TurnCustom
 
 // 只存在 Java 端，任何欄位都不會序列化給 LLM
 public record CustomerContext(
-  String certNo,                  // 呼叫 port 用
+  CertNo certNo,                  // 值物件，toString 不印號碼；呼叫 port 用
   AccessLevel accessLevel,
   Set<String> selfReferences,     // 本顧客的 certNo 與姓名（含部分形式）；供 PiiRedactor 換成【本顧客】
   Set<String> sensitiveValues     // 電話、Email、帳號等；供 PiiRedactor 換成【已遮蔽】
@@ -72,7 +74,8 @@ public record CitationDetail(
 ) {}
 ```
 
-- 參數以 Java record 加 Bean Validation 定義；`ToolSpecification` 和驗證規則都從同一個 record 產生。
+- 參數以 Java record 加 Bean Validation 定義；`ToolSpecification` 另外手寫，`ToolSpecificationConsistencyTest` 檢查兩者的欄位名稱一致、宣告 `additionalProperties: false`、沒有顧客參數。
+- **格式限制只在 Java 端生效**：`pattern`、最小最大值寫在 record 的 Bean Validation，不在 `ToolSpecification`；`additionalProperties: false` 雖有宣告，LangChain4j 1.22.0 送給 OpenAI 的工具 schema 不含它（2026-11-26 實測）。所以 `ToolGuard` 是實際的防線。
 - **所有工具都是唯讀的**：沒有任何工具能新增或修改資料。
 - **工具的中繼資料**：`options()`、`optionsArgument()`、`inputRequest()` 供工作流程（工具標記 `{{tool: 選項}}`）與 `GET /admin/tools`（見 [02-rest-api.md](02-rest-api.md) 3.17）使用，不影響模型看到的 `specification()`。`getCustomer` 的 `options()` 來自 6 個 `CustomerSection`（`optionsArgument()` 為 `sections`）；`getStockQuote`、`getCompanyAnnouncements` 的 `inputRequest()` 為「請提供要查詢的股票代號（例如 2330）。」；其餘工具沒有選項，也沒有需要從問題取得的必填參數。工作流的執行與抽取參數見 [01-architecture.md](01-architecture.md) 3.2。
 
@@ -84,7 +87,7 @@ public record CitationDetail(
    2. 參數是合法 JSON，總長不超過 1KB，能轉成參數 record，且通過 Bean Validation，否則 `TOOL_ARGUMENT_INVALID`。`getCustomer` 的 `sections` 數量（1–6 個）由這裡的 Bean Validation 檢查；值是否在分組清單內由 `getCustomer` 自己檢查（2.2），同樣回 `TOOL_ARGUMENT_INVALID`。
    3. 參數中出現 schema 以外的欄位（例如模型自行加上 `certNo`）一律拒絕，同樣回 `TOOL_ARGUMENT_INVALID`。
 3. 在 virtual thread 上執行，超過 `timeout` 就中止，回傳 `TOOL_TIMEOUT`。
-4. 工具結果經過 `CustomerDeidentifier` 與 `PiiRedactor`（見 1.6），序列化後超過 4KB 就截斷清單並加上 `"truncated": true`。
+4. 工具結果經過欄位白名單與 `PiiRedactor`（見 1.6），序列化後超過 4KB 就截斷清單並加上 `"truncated": true`。
 5. 成功的呼叫由 `ToolExecutor` 依序配發引用編號 `S1`、`S2`…；失敗、無權限、逾時、超過次數上限的呼叫不配發。
 6. 工具呼叫的名稱、狀態、錯誤碼、耗時、引用編號、查詢對象、資料日期、結果筆數與結果雜湊記入本次提問的稽核紀錄（見 [04-mongodb-schema.md](04-mongodb-schema.md) 第 3 節）。**不記參數；結果預設不記**，只有 `ai-assistant.audit.store-tool-results: true` 時才記。
 
@@ -102,7 +105,7 @@ flowchart TD
   G2 -->|是| EX["virtual thread 執行<br/>Timeout：工具與 limits.tool-timeout 取較小者"]
   EX -->|逾時| D3["TIMEOUT：TOOL_TIMEOUT"]
   EX -->|未預期例外| D4["ERROR：TOOL_EXECUTION_FAILED"]
-  EX -->|"ToolResult（data 已由 CustomerDeidentifier 篩過欄位）"| RS{"SUCCESS？"}
+  EX -->|"ToolResult（data 只含白名單欄位）"| RS{"SUCCESS？"}
   RS -->|"否：工具自己的錯誤碼"| F["只放 errorCode 與固定 message"]
   RS -->|是| P["data 的文字欄位過 PiiRedactor<br/>超過 4KB 時截斷最大的清單、加 truncated"]
   P -->|"組裝失敗（例如沒有清單可截斷）"| D4
@@ -132,9 +135,9 @@ flowchart TD
 
 **原則：所有含有顧客實際身分的資料，都由程式轉換後才送進 LLM。** 分兩層處理：
 
-**第一層：`CustomerDeidentifier`（結構化欄位）**
+**第一層：欄位白名單（結構化欄位）**
 
-工具從 port 取得的 Record 包含真實欄位，工具只把下表「送出」的欄位放進 `data`：
+工具從 port 取得的 Record 包含真實欄位，`getCustomer` 的各區塊 formatter（`domain/tool/customer/sections/`）與 `getRealTimeCustomer` 只把下表「送出」的欄位放進 `data`；`CustomerDeidentifier` 提供年齡區間與固定文字：
 
 | 欄位 | 處理 |
 |---|---|
@@ -432,12 +435,14 @@ flowchart LR
 {
   "type": "object",
   "properties": {
-    "stockCode": { "type": "string", "pattern": "^\\d{4,6}$", "description": "上市股票代號，例如 2330" }
+    "stockCode": { "type": "string", "description": "上市股票代號，例如 2330" }
   },
   "required": ["stockCode"],
   "additionalProperties": false
 }
 ```
+
+`stockCode` 的格式 `^\d{4,6}$` 由 Bean Validation 檢查（見 1.3）。
 
 回傳 `data`：
 
@@ -493,13 +498,15 @@ flowchart TD
 {
   "type": "object",
   "properties": {
-    "stockCode": { "type": "string", "pattern": "^\\d{4,6}$" },
-    "limit": { "type": "integer", "minimum": 1, "maximum": 5, "default": 3 }
+    "stockCode": { "type": "string", "description": "上市股票代號，例如 2330" },
+    "limit": { "type": "integer", "description": "最多回傳幾則，1 到 5，預設 3" }
   },
   "required": ["stockCode"],
   "additionalProperties": false
 }
 ```
+
+`stockCode`（`^\d{4,6}$`）與 `limit`（1–5，沒給時為 3）由 Bean Validation 與工具檢查（見 1.3）。
 
 回傳 `data`：
 

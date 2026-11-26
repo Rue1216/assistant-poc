@@ -1,6 +1,6 @@
 # 01 架構說明
 
-> 版本：v1.6（POC）・2026-11-10（新增 `OutboundLlmLogListener`：每次模型呼叫寫一行 `Outbound` log，更新 1.2 元件明細圖、5.1 目錄與分層對應；`application/llm/` 加 `LlmCallPurpose`；見 [LLM 可觀測性設計](../superpowers/specs/2026-11-10-llm-observability-design.md)；v1.5 2026-11-03：補架構圖：1.1 全貌、第 2 節 port 替換、2.2 去識別化邊界、3.1 工具迴圈、4 組裝流程、4.1 路由與 4.3 評測改為 mermaid、5.1 分層依賴、5.2 前端元件組成；內容不變；v1.4 2026-11-03：5.1 `domain/exception/` 補錯誤細節介面與三種細節 record，見 [Prompt 管理 review 修正設計](../superpowers/specs/2026-11-02-prompt-admin-review-fixes-design.md) 4.1；v1.3 2026-11-02：後端套件改為 domain／application／interfaces／infrastructure 四層，重寫 5.1 目錄樹、Clean Architecture 對應表與例外說明；v1.2 2026-10-30 新增 5.1 的 Clean Architecture 對應、第 7 節 UI 框架說明、第 9 節與 requirements.md 的差異；v1.1 2026-10-29 為個人 360 內容重寫：`CustomerDataPort` 對應平台兩支 API、每題資料暫存、本顧客註記、`certNo`、mock 帳號與 `scope`，見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
+> 版本：v1.7（POC）・2026-11-26（對齊程式：存取檢查在 `ChatUseCase`、`PublishedConfigCache.current()`、`CustomerDeidentifier` 的職責、5.1 目錄樹與架構規則；新增 3.3 為什麼只用 `ChatModel`；v1.6 2026-11-10：新增 `OutboundLlmLogListener`：每次模型呼叫寫一行 `Outbound` log，更新 1.2 元件明細圖、5.1 目錄與分層對應；`application/llm/` 加 `LlmCallPurpose`；見 [LLM 可觀測性設計](../superpowers/specs/2026-11-10-llm-observability-design.md)；v1.5 2026-11-03：補架構圖：1.1 全貌、第 2 節 port 替換、2.2 去識別化邊界、3.1 工具迴圈、4 組裝流程、4.1 路由與 4.3 評測改為 mermaid、5.1 分層依賴、5.2 前端元件組成；內容不變；v1.4 2026-11-03：5.1 `domain/exception/` 補錯誤細節介面與三種細節 record，見 [Prompt 管理 review 修正設計](../superpowers/specs/2026-11-02-prompt-admin-review-fixes-design.md) 4.1；v1.3 2026-11-02：後端套件改為 domain／application／interfaces／infrastructure 四層，重寫 5.1 目錄樹、Clean Architecture 對應表與例外說明；v1.2 2026-10-30 新增 5.1 的 Clean Architecture 對應、第 7 節 UI 框架說明、第 9 節與 requirements.md 的差異；v1.1 2026-10-29 為個人 360 內容重寫：`CustomerDataPort` 對應平台兩支 API、每題資料暫存、本顧客註記、`certNo`、mock 帳號與 `scope`，見 [customer360 內容重寫設計](../superpowers/specs/2026-10-28-customer360-content-rewrite-design.md) v0.2）
 
 ## 1. 系統元件
 
@@ -57,7 +57,7 @@ flowchart LR
     CC[ChatController]
     AC[AdminConfigController]
     O[ChatUseCase]
-    RD[PiiRedactor<br/>CustomerDeidentifier]
+    RD[PiiRedactor]
     IR[InstructionRouter<br/>RouterPrompt]
     PA[PromptAssembler]
     AA[AnswerAssembler<br/>NumberChecker]
@@ -77,8 +77,8 @@ flowchart LR
   DB[(MongoDB)]
 
   H --> W --> CC
-  CC -->|CustomerAccessPort| MP
   CC --> O
+  O -->|CustomerAccessPort| MP
   A --> AC --> CS --> DB
   A --> EV --> DB
   EV -->|同一套 Turn，換入指定 prompt| O
@@ -161,8 +161,8 @@ public interface CustomerDataPort {
 
 | 元件                     | 職責                                                                                                          | 套用位置                                         |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| `CustomerContextFactory` | 呼叫 `CustomerAccessPort` 判斷存取等級；建立只存在 Java 端的 `CustomerContext`（含 `certNo` 與已知識別資料）  | `ChatController` 收到請求時                      |
-| `CustomerDeidentifier`   | 把 Record 轉成只含可送出欄位的工具 `data`：刪除識別欄位、年齡泛化為區間                                       | 每個顧客工具                                     |
+| `CustomerContextFactory` | 呼叫 `CustomerAccessPort` 判斷存取等級；建立只存在 Java 端的 `CustomerContext`（含 `certNo` 與已知識別資料）  | `ChatUseCase.chat` 的第一步                      |
+| `CustomerDeidentifier`   | 年齡泛化為區間，以及「本顧客」等固定文字。欄位白名單由 `getCustomer` 的各區塊 formatter（`domain/tool/customer/sections/`）與 `getRealTimeCustomer` 負責，只取可送出的欄位                                       | 每個顧客工具                                     |
 | `PiiRedactor`            | 自由文字的去識別化：精確比對本顧客的識別資料，再以 regex 遮蔽身分證號、手機、Email、帳號、其他顧客的 `certNo` | 使用者提問、對話歷史、工具結果文字欄位、最終回答 |
 
 規則細節見 [03-tool-catalog.md](03-tool-catalog.md) 1.6。**送進 `ChatModel` 的每一則訊息都必須先經過這些元件**，由 `ChatUseCase` 統一把關，並以單元測試驗證。
@@ -172,11 +172,11 @@ public interface CustomerDataPort {
 ```mermaid
 flowchart LR
   subgraph JAVA["只在 Java 端（不送給模型）"]
-    CF["ChatController<br/>CustomerContextFactory"] --> CTX["CustomerContext<br/>certNo 與本顧客的識別資料"]
+    CF["ChatUseCase<br/>CustomerContextFactory"] --> CTX["CustomerContext<br/>certNo 與本顧客的識別資料"]
     CTX -->|綁定| T["顧客工具<br/>沒有顧客參數"]
     T --> REC["Customer360Record<br/>RealTimeStatusRecord<br/>平台回傳的原始資料"]
   end
-  REC --> CD["CustomerDeidentifier<br/>刪除識別欄位、年齡泛化"]
+  REC --> CD["sections/ formatter（欄位白名單）<br/>CustomerDeidentifier（年齡泛化）"]
   Q["使用者提問<br/>對話歷史、摘要"] --> PR
   CD --> PR["PiiRedactor<br/>精確比對 + regex 遮蔽"]
   CTX -.->|比對用的識別資料| PR
@@ -206,9 +206,10 @@ sequenceDiagram
   participant T as 工具
 
   U->>C: POST /api/ai-assistant/customers/{certNo}/chat
-  C->>C: CustomerAccessPort 判斷存取等級（NONE → 404）
-  C->>O: chat(request, UserContext, CustomerContext)
-  O->>O: 檢查輸入、PiiRedactor 處理提問、歷史與帶入的摘要；切分歷史（保留／超出）
+  C->>C: 檢查格式與長度（400）、權限（403）、限流（429）
+  C->>O: chat(certNo, ChatCommand, UserContext)
+  O->>O: CustomerContextFactory 經 CustomerAccessPort 判斷存取等級（NONE → 404）
+  O->>O: PiiRedactor 處理提問、歷史與帶入的摘要；切分歷史（保留／超出）
   O->>G: ⓪ 摘要（只有歷史超出保留範圍時）：帶入的摘要＋超出的較早訊息，整理成新摘要（失敗則捨棄超出的訊息，照常回答）
   O->>G: ⓪ 路由：去識別化的提問、目前摘要（最多 1,000 字）、最近 4 則歷史、各分類的「適用問題」（快捷按鈕帶 categoryKey 時略過）
   G-->>O: 分類的 configKey 或 none（失敗則載入全部分類）
@@ -227,7 +228,7 @@ sequenceDiagram
   O->>G: ④ role=tool（含 citationId）+ tool call id
   G-->>O: ⑤ 最終答案（JSON：blocks，每個區塊帶 sources）
   O->>O: AnswerAssembler 驗證、逐區塊去識別化、重新編號、核對數字；回答最前面加上程式提示（註記、未完成的步驟，3.2）；附加 citations、查詢時間、警語；寫入稽核
-  O-->>C: ChatResponse
+  O-->>C: ChatResult
   C-->>U: blocks、answer、citations、disclaimer、toolCalls
   Note over U: ⑥ 區塊顯示引用上標，可展開引用清單（toolCalls 不顯示，見 9.2）
 ```
@@ -275,15 +276,24 @@ flowchart TD
 
 標記只在內容發布前檢查：`WORKFLOW_INVALID`（見 [05-error-codes.md](05-error-codes.md) 2.3）。
 
+### 3.3 為什麼只用 `ChatModel`，迴圈自己寫
+
+決定於 2026-10-19（[POC 設計](../superpowers/specs/2026-10-19-marketing-advisor-poc-design.md) 第 2 節）：只使用 LangChain4j 的低階 `ChatModel`（與它的訊息、工具 schema、JSON Schema、listener 型別），不使用 `AiServices`、`@Tool` 自動執行與 `ChatMemory`。
+
+- **要自訂的地方太多，而且都在迴圈中間**：驗證、限額、稽核、去識別化都必須在 Java 控制之下。具體來說，每次送出前要檢查期限、依已查到的資料重建回答 schema；收到 tool call 要驗證並遮蔽參數；工具執行後要遮蔽、限制大小、配發引用編號；每次收到回應要累計 token；次數用完要再送一次不附工具的請求；工作流步驟要在第一輪之前由程式先查。
+- **和需求 2-2 的步驟一一對應**，審查時可以逐步對照。
+- **換模型的成本低**：其他程式只依賴 `ChatModel` 介面，供應商相關程式只有 `LlmConfiguration` 與 `LlmRequestParameters`。
+- **沒有用 `ChatMemory`**：內建的記憶元件有狀態、只會捨棄舊訊息；小幫手後端不保存對話，且需要摘要（`HistorySummarizer`）。
+
 ## 4. Prompt 組裝
 
-`PromptAssembler` 回傳 `AssembledPrompt(text, versions)`：`snapshot()` 取得 `PublishedConfigCache` 的當下快照；`assemble(PublishedConfigs configs, InstructionSelection selection, String customerNotes)` 以該快照（正式對話）或評測指定的設定（評測用）組裝，`selection` 為 `all()`、`none()`、`only(configKey)`。`versions` 是組裝時實際載入的設定的 `{configKey, version}`（`system.main` 加上 0 或 1 個問題分類；`all()` 時為全部），與文字出自同一份快照；路由用的分類清單也取自同一份快照。
+`PromptAssembler` 回傳 `AssembledPrompt(text, versions)`：`ChatUseCase` 在每題開始時以 `PublishedConfigCache.current()` 取得當下快照；`assemble(PublishedConfigs configs, InstructionSelection selection, String customerNotes)` 以該快照（正式對話）或評測指定的設定（評測用）組裝，`selection` 為 `all()`、`none()`、`only(configKey)`。`versions` 是組裝時實際載入的設定的 `{configKey, version}`（`system.main` 加上 0 或 1 個問題分類；`all()` 時為全部），與文字出自同一份快照；路由用的分類清單也取自同一份快照。
 
 下圖是組裝流程；`selection` 如何決定見 4.1。虛線框（③～⑥）寫死在 Java，管理頁無法修改。各段的完整內容見圖下方。
 
 ```mermaid
 flowchart TD
-  CACHE["PublishedConfigCache"] -->|"snapshot()：正式對話"| CFG["PublishedConfigs 快照"]
+  CACHE["PublishedConfigCache"] -->|"current()：正式對話"| CFG["PublishedConfigs 快照"]
   EVAL["評測：已發布設定＋編輯中版本"] -->|"評測（4.3）"| CFG
   CFG --> ROUTE["問題分類路由（4.1）<br/>分類清單取自同一份快照"]
   ROUTE --> SEL{"selection"}
@@ -446,7 +456,7 @@ backend/
    │  │  │               ScheduleWindow（預約時間窗）、SaveMode、ValidationError、PromptVersion、PublishedConfigs、ConfigValidator、
    │  │  │               WorkflowValidator（工具標記規則，由 ConfigValidator 呼叫）、
    │  │  │               ToolCatalog（驗證器需要的工具名稱與選項，由 ToolRegistry 實作）
-   │  │  ├─ customer/    CertNo（值物件）、AccessLevel、CustomerRecord、c360/（Customer360Record、RealTimeStatusRecord 等 record）
+   │  │  ├─ customer/    CertNo（值物件）、AccessLevel、CustomerRecord、CustomerRestrictions（註記限制）、c360/（Customer360Record、RealTimeStatusRecord 等 record）
    │  │  ├─ user/        UserContext
    │  │  ├─ chat/        ChatResult、EvaluationReport
    │  │  ├─ answer/      AnswerSchema（每輪請求的回答 JSON Schema）、AnswerAssembler（驗證、去識別化、
@@ -454,9 +464,10 @@ backend/
    │  │  ├─ privacy/     CustomerContext、CustomerDeidentifier、PiiRedactor
    │  │  ├─ prompt/      PromptAssembler（assemble）、AssembledPrompt、InstructionSelection、AnswerFormatRules、
    │  │  │               SafetyRules、CustomerNotes（本顧客註記）、ExampleQuestionParser、RouterPrompt、
-   │  │  │               RouteDecision、RouteSource、SummaryPrompt、SummaryResult、SummaryStatus
+   │  │  │               RouteDecision、RouteSource、SummaryPrompt、SummaryResult、SummaryStatus、
+   │  │  │               StepArgumentPrompt、WorkflowParser、WorkflowStep（工具標記）
    │  │  ├─ tool/        AssistantTool、ToolRegistry、ToolGuard、ToolExecutor（配發引用編號）、ToolResult、
-   │  │  │               ToolContext、ToolOutcome、ToolStatus、CitationDetail（工具對自己結果的引用說明）、
+   │  │  │               ToolContext、ToolOutcome、ToolOption、ToolStatus、CitationDetail（工具對自己結果的引用說明）、
    │  │  │               CitationIds、Source、NoArgs、TurnCustomerData（每題資料暫存）
    │  │  │  ├─ customer/  2 個顧客工具 getCustomer(sections)、getRealTimeCustomer（皆無顧客參數）、CustomerSection、
    │  │  │  │             DisplayFormat、MemberRankTable、RadarFacts、sections/（各分組的格式化）
@@ -471,7 +482,7 @@ backend/
    │  │  ├─ support/     ClasspathText、RequestContext（MDC traceId）、Transactions（交易管理器 bean 名稱常數 MONGO）
    │  │  ├─ llm/         LlmErrorMapper、LlmRequestParameters、LlmCallPurpose（每次模型呼叫的用途）
    │  │  ├─ chat/        CustomerContextFactory（含 forEvaluation，只供評測）、InstructionRouter、
-   │  │  │               HistorySummarizer、WorkflowRunner、StepArgumentExtractor
+   │  │  │               HistorySummarizer、WorkflowRunner、StepArgumentExtractor、RoutingInput
    │  │  ├─ command/     命令側；入口類別以 @UseCase 標註；@Transactional 只能出現在這裡（目前只有 ConfigCommandUseCase 的 publish／applyVersion／publishScheduled 使用）
    │  │  │  ├─ chat/       ChatUseCase（chat／evaluate）、ChatCommand
    │  │  │  ├─ config/     ConfigCommandUseCase（存草稿、發布、套用、預約發布 findScheduledDue／publishScheduled）、
@@ -491,7 +502,7 @@ backend/
    │  │  ├─ ApiError、AssistantExceptionHandler（只作用於 aiassistant 套件）、
    │  │  │  PerUserRateLimiter、RateLimitConfiguration
    │  │  ├─ chat/        ChatController、SuggestionController、dto/
-   │  │  ├─ config/      AdminConfigController、dto/
+   │  │  ├─ config/      AdminConfigController、AdminToolController、dto/
    │  │  ├─ evaluation/  EvalController、dto/
    │  │  └─ feedback/    FeedbackController、dto/
    │  └─ infrastructure/
@@ -554,7 +565,7 @@ flowchart TB
 
 - **Domain 允許的第三方函式庫**：LangChain4j（`dev.langchain4j.*`）、Jackson（`tools.jackson.*`、`com.fasterxml.jackson.annotation.*`，但不得使用 `@JsonIgnore`）、Bean Validation（`jakarta.validation.*`）、SLF4J、SnakeYAML。理由：守則明列的禁止項只有 Spring 與 MongoDB；LangChain4j 是本文第 1 節已定的 AI orchestration 決策，工具的 `ToolSpecification` 與回答的 JSON Schema 都與它綁定，包成 port 的成本高於收益；Jackson 與 Bean Validation 只用標註與資料綁定，不帶入執行環境。
 - **Domain 類別不加 `@Component`**：由 `infrastructure/config/DomainBeanConfiguration` 以 `@Bean` 建立；需要設定值的類別改由建構子接收，不讀 `AiAssistantProperties`。
-- **`ArchitectureRulesTest`**（`backend/src/test/java/com/example/copilot/aiassistant/`）掃描 `src/main/java` 的 `import` 行，不引入 ArchUnit（公司環境無法下載新套件）。固定規則：(1) domain 不得 import `org.springframework.`、`com.mongodb.`、`org.bson.`、`jakarta.servlet.`、`jakarta.annotation.`、`AiAssistantProperties`、application／interfaces／infrastructure 與 `mockplatform`；(2) application 不得 import `org.springframework.data.`、`org.springframework.transaction.support.`、`org.springframework.transaction.interceptor.`、`com.mongodb.`、`org.bson.`、`jakarta.servlet.`、interfaces、infrastructure 與 `mockplatform`；(3) interfaces 不得 import `domain.repository.`、infrastructure、`org.springframework.data.`、`com.mongodb.`、`org.bson.` 與 `mockplatform`；(4) infrastructure 不得 import interfaces 與 `mockplatform`；(5) infrastructure 中實作 `domain.repository.*` 或 `application.*QueryRepository` 的類別，檔名必須以 `Impl` 結尾；(6) `aiassistant` 底下只能有 `domain`、`application`、`interfaces`、`infrastructure` 四個子套件與 `AiAssistantProperties.java`；(7) 不得存在 `app/` 套件；(8) domain 不得 import `JsonIgnore`；(9) infrastructure 不得 import `org.springframework.data.mongodb.repository.`（不用 Spring Data 衍生查詢介面）；(10) 只有 `application/command/` 可 import `org.springframework.transaction.annotation.`，且 `@Transactional` 只能出現在標了 `@UseCase` 的類別（這是上限，不代表每個 UseCase 都有交易），`application/command/` 內的 `*UseCase.java` 必須標 `@UseCase`（反之亦然）；(11) `*Controller.java` 不得含 `catch (`；(12) application 內每個 `chatModel.chat(` 呼叫都要帶 `LlmCallPurpose`。
+- **`ArchitectureRulesTest`**（`backend/src/test/java/com/example/copilot/aiassistant/`）掃描 `src/main/java` 的 `import` 行，不引入 ArchUnit（公司環境無法下載新套件）。固定規則：(1) domain 不得 import `org.springframework.`、`com.mongodb.`、`org.bson.`、`jakarta.servlet.`、`jakarta.annotation.`、`AiAssistantProperties`、application／interfaces／infrastructure 與 `mockplatform`；(2) application 不得 import `org.springframework.data.`、`org.springframework.transaction.support.`、`org.springframework.transaction.interceptor.`、`com.mongodb.`、`org.bson.`、`jakarta.servlet.`、interfaces、infrastructure 與 `mockplatform`；(3) interfaces 不得 import `domain.repository.`、infrastructure、`org.springframework.data.`、`com.mongodb.`、`org.bson.` 與 `mockplatform`；(4) infrastructure 不得 import interfaces 與 `mockplatform`；(5) infrastructure 中實作 `domain.repository.*` 或 `application.*QueryRepository` 的類別，檔名必須以 `Impl` 結尾；(6) `aiassistant` 底下只能有 `domain`、`application`、`interfaces`、`infrastructure` 四個子套件與 `AiAssistantProperties.java`；(7) 不得存在 `app/` 套件；(8) domain 不得 import `JsonIgnore`；(9) infrastructure 不得 import `org.springframework.data.mongodb.repository.`（不用 Spring Data 衍生查詢介面）；(10) 只有 `application/command/` 可 import `org.springframework.transaction.annotation.`，且 `@Transactional` 只能出現在標了 `@UseCase` 的類別（這是上限，不代表每個 UseCase 都有交易），`application/command/` 內的 `*UseCase.java` 必須標 `@UseCase`（反之亦然）；(11) `*Controller.java` 不得含 `catch (`；(12) application 內每個 `chatModel.chat(` 呼叫都要帶 `LlmCallPurpose`；(13) `ConfigValidator`、`WorkflowValidator`、`ToolCatalog`、`ValidationError`、`ConfigType` 不得 import 工具、顧客、去識別化、使用者與 LangChain4j 的套件（之後要和 scheduler 模組共用）。
 - **CQRS 的套用範圍**：config 與 feedback 拆成命令側（`application/command/`，`*UseCase`）與查詢側（`application/query/`，`*QueryService`）；chat 與 evaluation 的命令側為 `ChatUseCase`、`EvalRunCommandUseCase`，查詢側為 `SuggestionQueryService`、`EvalRunQueryService`。config 為 `ConfigCommandUseCase`（存草稿、發布、套用、預約發布）與 `ConfigQueryService`，列表與版本歷程（不含 `content` 的投影）經 `ConfigQueryRepository`，由 `infrastructure/mongo/ConfigQueryRepositoryImpl` 實作；feedback 為 `FeedbackCommandUseCase`（只負責評分）與 `FeedbackQueryService`，版本統計經 `FeedbackStatsQueryRepository`。evaluation 不另建投影：查詢回傳的就是整個 `EvalRun` 聚合（`recent` 已排除 `cases`），沒有可以省下的欄位。
 - **Mongo 模型分離**：`AssistantConfigDocument`、`AuditRecordDocument`、`EvalRunDocument`（infrastructure，`@Document`，集合名稱取自 `AiAssistantCollections`）經 MapStruct 的 `*DocumentMapper` 與 domain 的 `AssistantConfig`、`AuditRecord`、`EvalRun` 互轉；domain 與 application 看不到 Mongo 型別。
 - **交易邊界**：交易宣告在 `application/command/` 的 UseCase 方法上，目前只有 `ConfigCommandUseCase` 的 `publish`、`applyVersion`、`publishScheduled`，寫成 `@Transactional(transactionManager = Transactions.MONGO)`（具名 bean `aiAssistantMongoTransactionManager`）；`ChatUseCase`、`FeedbackCommandUseCase`、`EvalRunCommandUseCase` 沒有交易；Repository 實作不自己開交易，`TransactionTemplate` 已移除；`ConfigTransactionConflictAspect` 把 `ConfigCommandUseCase` 的交易衝突轉成 `AI_CONFIG_CONFLICT`。預約發布的 Job 逐筆呼叫 `publishScheduled`，每筆一個交易；發布後送出 `ConfigPublishedEvent`，`PublishedConfigCache` 在 AFTER_COMMIT 清快取。

@@ -1,6 +1,6 @@
 # 05 錯誤碼清單
 
-> 版本：v1.0.4（POC）・2026-11-06（第 5 節新增回饋變更的 log；v1.0.3 2026-11-03：第 3 節 `MARKET_DATA_TIMEOUT` 與 `TOOL_TIMEOUT` 的分工；v1.0.2 2026-11-03：第 1 節補 `details` 格式表；2.3 `AI_CONFIG_NOT_FOUND`、`AI_CONFIG_INVALID_STATE`、`AI_CONFIG_VALIDATION_FAILED` 的情境調整，見 [Prompt 管理 review 修正設計](../superpowers/specs/2026-11-02-prompt-admin-review-fixes-design.md)；v1.0.1 2026-10-30：第 1 節補對話視窗不顯示工具呼叫的連結；內容同 v1.0 2026-10-26）
+> 版本：v1.0.5（POC）・2026-11-26（對齊程式：第 1 節 CSRF 失敗的回應、第 5 節 log 等級與欄位；v1.0.4 2026-11-06：第 5 節新增回饋變更的 log；v1.0.3 2026-11-03：第 3 節 `MARKET_DATA_TIMEOUT` 與 `TOOL_TIMEOUT` 的分工；v1.0.2 2026-11-03：第 1 節補 `details` 格式表；2.3 `AI_CONFIG_NOT_FOUND`、`AI_CONFIG_INVALID_STATE`、`AI_CONFIG_VALIDATION_FAILED` 的情境調整，見 [Prompt 管理 review 修正設計](../superpowers/specs/2026-11-02-prompt-admin-review-fixes-design.md)；v1.0.1 2026-10-30：第 1 節補對話視窗不顯示工具呼叫的連結；內容同 v1.0 2026-10-26）
 
 ## 1. 原則
 
@@ -8,7 +8,7 @@
   - **API 錯誤**：回傳 HTTP 錯誤，前端以 Toast 或對話視窗內的提示顯示。
   - **工具錯誤**：不中斷對話，寫進工具結果交給模型說明，並記在稽核紀錄 `toolCalls` 的狀態欄（對話視窗不顯示工具呼叫，由回答說明與引用清單呈現，見 [01-architecture.md](01-architecture.md) 9.2）。
 - `message` 一律是固定的友善訊息。供應商原始錯誤、stack trace、內部網址、token 只會出現在後端 log（並遮罩），不會回傳給前端或送給模型。
-- 每個錯誤回應都帶 `traceId`（與 `X-Trace-Id` header 同值），方便對照後端 log。
+- 每個錯誤回應都帶 `traceId`（與 `X-Trace-Id` header 同值），方便對照後端 log。例外是 CSRF 檢查失敗，由平台替身的 Spring Security 直接回應：已登入時是 Spring 預設格式的 403（不是本格式）；未登入時是 401 `AI_UNAUTHENTICATED`，但 body 的 `traceId` 為 null（header 有值）。整合後以平台的行為為準。
 
 錯誤回應格式：
 
@@ -153,9 +153,11 @@
 
 | 等級 | 內容 |
 |---|---|
-| INFO | traceId、userId、耗時、模型往返次數、tool call 次數、token 數（總數，另分 `inputTokens`、`outputTokens`）、回答區塊數（`blocks`）、有引用的區塊數（`citedBlocks`，不含 heading）、單次回應的最大輸出 token 數（`peakOutputTokens`） |
-| WARN | 工具失敗、限流、驗證失敗（只記錯誤碼） |
-| ERROR | GPT 或 TWSE 錯誤類型、未預期例外（stack trace 只在後端 log，敏感字串遮罩） |
+| INFO | traceId、userId、耗時、模型往返次數、tool call 次數、token 數（總數，另分 `inputTokens`、`outputTokens`）、回答區塊數（`blocks`）、有引用的區塊數（`citedBlocks`，不含 heading）、單次回應的最大輸出 token 數（`peakOutputTokens`）、路由結果（`routeSource`、`instructionKey`）、摘要欄位（`summaryIn`、`summaryStatus`、`summarizedMessages`、`summaryTokens`）。另有每次 GPT 呼叫一行 `Outbound` log（用途、模型、耗時、token） |
+| WARN | API 錯誤（限流、驗證失敗、查無顧客等，只記錯誤碼）、`chat failed`、路由／摘要／參數抽取失敗、工作流步驟被捨棄、註記讀不到、360 區塊缺少或轉換失敗（只記代碼、區塊名或例外類別） |
+| ERROR | GPT 呼叫失敗（`Outbound`）、工具執行時的未預期例外、稽核寫入失敗、其他未預期例外。只記類別名稱與呼叫位置，不記例外訊息 |
+
+工具被拒（`DENIED`）、逾時，以及 TWSE 失敗**不寫 log**，記在稽核的 `toolCalls`。
 
 **回饋的 log**：每次變更成功記一行 INFO：`feedback set traceId={這次 HTTP 請求} answerTraceId={被評分的回答} userId={使用者} rating={UP|DOWN|NONE}`（`NONE` 為取消），不含提問與回答。`answerTraceId` 可對回該回答的 `chat answered` 那行。回饋失敗只有 WARN 的錯誤碼，不算變更。
 
